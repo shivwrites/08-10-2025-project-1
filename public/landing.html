@@ -1,0 +1,1297 @@
+<!DOCTYPE html>
+<html lang="en" style="scroll-behavior: smooth;">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Career Clarified - Complete Landing Page</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #ffffff;
+            color: #1f2937;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+
+        main {
+            flex-grow: 1;
+        }
+
+        @keyframes scroll {
+            from {
+                transform: translateX(0);
+            }
+            to {
+                transform: translateX(-100%);
+            }
+        }
+
+        .animate-scroll {
+            animation: scroll 40s linear infinite;
+        }
+
+        .tab-btn.active {
+            background-color: #f1f4ff;
+            color: #260F14;
+            font-weight: 500;
+        }
+
+        .scroll-section {
+            scroll-margin-top: 120px;
+        }
+
+        .section-banner-sun {
+          height: 300px;
+          width: 300px;
+          position: relative;
+          transition: left 0.3s linear;
+          background-color: #E6E6FA;
+          border-radius: 50%;
+          animation: shadowPulse 5s ease-in-out infinite;
+          box-shadow:
+            0px 0px 40px 20px #7891D5,
+            -5px 0px 10px 1px #E8F0FF inset,
+            15px 2px 40px 20px #4D69B4c5 inset,
+            -24px -2px 50px 25px #7891D5c2 inset,
+            150px 0px 80px 35px #2B448Caa inset;
+        }
+        .curved-corner-star {
+          display: flex;
+          position: relative;
+        }
+        #curved-corner-bottomleft,
+        #curved-corner-bottomright,
+        #curved-corner-topleft,
+        #curved-corner-topright {
+          width: 4px;
+          height: 5px;
+          overflow: hidden;
+          position: relative;
+        }
+        #curved-corner-bottomleft:before,
+        #curved-corner-bottomright:before,
+        #curved-corner-topleft:before,
+        #curved-corner-topright:before {
+          content: "";
+          display: block;
+          width: 200%;
+          height: 200%;
+          position: absolute;
+          border-radius: 50%;
+        }
+        #curved-corner-bottomleft:before {
+          bottom: 0;
+          left: 0;
+          box-shadow: -5px 5px 0 0 #E8F0FF;
+        }
+        #curved-corner-bottomright:before {
+          bottom: 0;
+          right: 0;
+          box-shadow: 5px 5px 0 0 #E8F0FF;
+        }
+        #curved-corner-topleft:before {
+          top: 0;
+          left: 0;
+          box-shadow: -5px -5px 0 0 #E8F0FF;
+        }
+        #curved-corner-topright:before {
+          top: 0;
+          right: 0;
+          box-shadow: 5px -5px 0 0 #E8F0FF;
+        }
+        @keyframes twinkling {
+          0%, 100% {
+            opacity: 0.1;
+          }
+          50% {
+            opacity: 1;
+          }
+        }
+        @keyframes shadowPulse {
+          0%, 100% {
+            box-shadow:
+              0px 0px 40px 20px #7891D5,
+              -5px 0px 10px 1px #E8F0FF inset,
+              15px 2px 40px 20px #4D69B4c5 inset,
+              -24px -2px 50px 25px #7891D5c2 inset,
+              150px 0px 80px 35px #2B448Caa inset;
+          }
+          50% {
+            box-shadow:
+              0px 0px 60px 30px #AEBFE3,
+              -5px 0px 20px 5px #E8F0FF inset,
+              15px 2px 60px 30px #4D69B4c5 inset,
+              -24px -2px 70px 35px #7891D5c2 inset,
+              150px 0px 100px 45px #2B448Caa inset;
+          }
+        }
+        #star-1 {
+          position: absolute;
+          left: -20px;
+          animation: twinkling 3s infinite;
+        }
+        #star-2 {
+          position: absolute;
+          left: -40px;
+          top: 30px;
+          animation: twinkling 2s infinite;
+        }
+        #star-3 {
+          position: absolute;
+          left: 350px;
+          top: 90px;
+          animation: twinkling 4s infinite;
+        }
+        #star-4 {
+          position: absolute;
+          left: 200px;
+          top: 290px;
+          animation: twinkling 3s infinite;
+        }
+        #star-5 {
+          position: absolute;
+          left: 50px;
+          top: 270px;
+          animation: twinkling 1.5s infinite;
+        }
+        #star-6 {
+          position: absolute;
+          left: 250px;
+          top: -50px;
+          animation: twinkling 4s infinite;
+        }
+        #star-7 {
+          position: absolute;
+          left: 290px;
+          top: 60px;
+          animation: twinkling 2s infinite;
+        }
+        .hero-button:hover {
+          box-shadow: 10px 10px 22px #273049, -10px -10px 22px #6b84c5 !important;
+        }
+        .hero-button:active {
+          background: #4a5a86 !important;
+          box-shadow: inset 7px 7px 15px #273049, inset -7px -7px 15px #6b84c5 !important;
+        }
+        #header-container {
+            background-color: rgba(255, 255, 255, 0.25);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+        }
+        #header-container.header-scrolled {
+            background-color: #ffffff;
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+            border: none;
+        }
+        .button-light {
+            background-color: #f1f4ff;
+            color: #0f172a;
+            padding: 0.5rem 1rem;
+            border-radius: 9999px;
+            font-weight: 500;
+            transition: background-color 0.2s;
+            border: 1px solid #e2e8f0;
+        }
+        .button-light:hover {
+            background-color: #e0e7ff;
+        }
+        .button-gradient-dark {
+            background-color: #4f46e5;
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 9999px;
+            font-weight: 500;
+            transition: box-shadow 0.2s, background-color 0.2s;
+        }
+        .button-gradient-dark:hover {
+            background-color: #4338ca;
+            box-shadow: 0 4px 15px 0 rgba(79, 70, 229, 0.4);
+        }
+        .glass-header {
+            background-color: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+        }
+        .glass-effect {
+            background-color: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+            border: none;
+        }
+    </style>
+</head>
+
+<body>
+    <header class="fixed top-0 left-0 right-0 z-50 transition-all duration-300 py-2" id="page-header">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="transition-all duration-300 rounded-full" id="header-container">
+          <div class="flex items-center justify-between h-16 px-4 sm:px-6 lg:px-8">
+            <a href="#" class="flex items-center space-x-2">
+              <svg class="h-8 w-auto text-indigo-600" viewBox="0 0 32 32" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M4 4H20V20H4V4Z"></path>
+                  <path d="M12 12H28V28H12V12Z" fill-opacity="0.7"></path>
+              </svg>
+              <span class="text-lg font-bold text-slate-800">Career Clarified</span>
+            </a>
+            <nav class="hidden md:flex items-center justify-center flex-1 space-x-8">
+              <a href="#benefits" class="text-lg text-slate-600 hover:text-slate-900 font-medium transition-colors">Benefits</a>
+              <a href="#" class="text-lg text-slate-600 hover:text-slate-900 font-medium transition-colors">Pricing</a>
+              <a href="#success-stories" class="text-lg text-slate-600 hover:text-slate-900 font-medium transition-colors">Success Stories</a>
+              <a href="#" class="text-lg text-slate-600 hover:text-slate-900 font-medium transition-colors">FAQ</a>
+            </nav>
+            <div class="hidden md:flex items-center space-x-2">
+              <button class="button-light">Sign In</button>
+              <button class="button-gradient-dark">Start Free Trial</button>
+            </div>
+            <button class="md:hidden text-slate-600" id="mobile-menu-button">
+              <svg id="menu-open-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></svg>
+              <svg id="menu-close-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6 hidden"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+       <div class="hidden md:hidden absolute top-full mt-2 left-0 right-0 p-2" id="mobile-menu">
+            <div class="glass-header rounded-2xl">
+                <nav class="flex flex-col p-4 space-y-2">
+                  <a href="#benefits" class="text-lg text-slate-600 hover:text-slate-900 font-medium transition-colors p-2 text-center rounded-lg">Benefits</a>
+                  <a href="#" class="text-lg text-slate-600 hover:text-slate-900 font-medium transition-colors p-2 text-center rounded-lg">Pricing</a>
+                  <a href="#success-stories" class="text-lg text-slate-600 hover:text-slate-900 font-medium transition-colors p-2 text-center rounded-lg">Success Stories</a>
+                  <a href="#" class="text-lg text-slate-600 hover:text-slate-900 font-medium transition-colors p-2 text-center rounded-lg">FAQ</a>
+                  <div class="flex flex-col items-center space-y-4 pt-4 border-t border-slate-200">
+                     <button class="button-light w-full">Sign In</button>
+                    <button class="button-gradient-dark w-full">Start Free Trial</button>
+                  </div>
+               </nav>
+            </div>
+        </div>
+    </header>
+
+    <main>
+    <!-- Hero Section -->
+    <section class="relative min-h-screen flex flex-col items-center justify-center pt-16 pb-20 overflow-hidden" style="
+      background-image: url('https://ik.imagekit.io/fdd16n9cy/di.png?updatedAt=1757770843990');
+      background-size: cover;
+      background-position: center;
+    ">
+      <!-- Sun Animation -->
+      <div class="relative mb-8">
+        <div class="section-banner-sun">
+          <div id="star-1">
+            <div class="curved-corner-star">
+              <div id="curved-corner-bottomright"></div>
+              <div id="curved-corner-bottomleft"></div>
+            </div>
+            <div class="curved-corner-star">
+              <div id="curved-corner-topright"></div>
+              <div id="curved-corner-topleft"></div>
+            </div>
+          </div>
+          <div id="star-2">
+            <div class="curved-corner-star">
+              <div id="curved-corner-bottomright"></div>
+              <div id="curved-corner-bottomleft"></div>
+            </div>
+            <div class="curved-corner-star">
+              <div id="curved-corner-topright"></div>
+              <div id="curved-corner-topleft"></div>
+            </div>
+          </div>
+          <div id="star-3">
+            <div class="curved-corner-star">
+              <div id="curved-corner-bottomright"></div>
+              <div id="curved-corner-bottomleft"></div>
+            </div>
+            <div class="curved-corner-star">
+              <div id="curved-corner-topright"></div>
+              <div id="curved-corner-topleft"></div>
+            </div>
+          </div>
+          <div id="star-4">
+            <div class="curved-corner-star">
+              <div id="curved-corner-bottomright"></div>
+              <div id="curved-corner-bottomleft"></div>
+            </div>
+            <div class="curved-corner-star">
+              <div id="curved-corner-topright"></div>
+              <div id="curved-corner-topleft"></div>
+            </div>
+          </div>
+          <div id="star-5">
+            <div class="curved-corner-star">
+              <div id="curved-corner-bottomright"></div>
+              <div id="curved-corner-bottomleft"></div>
+            </div>
+            <div class="curved-corner-star">
+              <div id="curved-corner-topright"></div>
+              <div id="curved-corner-topleft"></div>
+            </div>
+          </div>
+          <div id="star-6">
+            <div class="curved-corner-star">
+              <div id="curved-corner-bottomright"></div>
+              <div id="curved-corner-bottomleft"></div>
+            </div>
+            <div class="curved-corner-star">
+              <div id="curved-corner-topright"></div>
+              <div id="curved-corner-topleft"></div>
+            </div>
+          </div>
+          <div id="star-7">
+            <div class="curved-corner-star">
+              <div id="curved-corner-bottomright"></div>
+              <div id="curved-corner-bottomleft"></div>
+            </div>
+            <div class="curved-corner-star">
+              <div id="curved-corner-topright"></div>
+              <div id="curved-corner-topleft"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Shadow Effect for seamless integration -->
+      <div class="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-white to-transparent"></div>
+    </section>
+
+    <!-- Trusted By Section -->
+    <div class="py-12 sm:py-16">
+        <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <h2 class="text-center text-lg font-semibold leading-8 text-gray-900">
+                Trusted by the world's most innovative teams
+            </h2>
+            <div class="mt-10 w-full overflow-hidden [mask-image:_linear_gradient(to_right,transparent_0,_black_128px,_black_calc(100%-128px),transparent_100%)]">
+                <div class="flex">
+                    <div class="flex w-max items-center animate-scroll space-x-16 hover:[animation-play-state:paused]">
+                        <!-- Logos Set 1 -->
+                        <svg class="max-h-12 w-40 flex-none object-contain" viewBox="0 0 158 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M39.13,32.35,36.5,25.8C35.84,24.13,35,22.25,35,22.25H34.8c-.13.4-1.2,3.33-2.06,5.4l-2.2,5.7H25.4L33.73,11.4h5.2l8.2,20.95Z" fill="#5E6D82" /><path d="M49.33,21.55c0-6-4.4-9.6-11.2-9.6H29.73v29.5H39c6.93,0,10.93-3.6,10.93-9.73,0-4.33-2.6-7.33-6.6-8.13a6,6,0,0,1,6-6.1Z" fill="#5E6D82" /><path d="M80.13,22.45c-1.2-1.2-3.13-2.13-5.2-2.13-4.2,0-7.6,3.47-7.6,7.93s3.4,8,7.6,8c2.07,0,4-.93,5.2-2.13v1.87a9.48,9.48,0,0,1-5.2,1.53c-6,0-10.8-4.6-10.8-11.2S69,15.25,75,15.25a9.48,9.48,0,0,1,5.2,1.53Z" fill="#5E6D82" /><path d="M93.33,16h-4.6V11.4h-4.6v4.6H79.83v4h4.3v9.47c0,5.2,2.4,6.73,6,6.73a8.23,8.23,0,0,0,3.2-.6V31.8a4.43,4.43,0,0,1-2.4.6c-1.8,0-2-1.07-2-2.8V20h4.4Z" fill="#5E6D82" /><path d="M100.2,11.4h4.6V35h-4.6Z" fill="#5E6D82" /><path d="M120.4,23.25c0,5.6-3.4,9.47-8.6,9.47s-8.6-3.87-8.6-9.47,3.4-9.46,8.6-9.46,8.6,3.86,8.6,9.46m-4.6,0c0-3.4-1.4-5.4-4-5.4s-4,2-4,5.4,1.4,5.4,4,5.4,4-2,4-5.4" fill="#5E6D82" /><path d="M136.2,11.4h4.4l-6.2,14.2-6.2-14.2h4.4l3.93,9.4,3.93-9.4ZM124,41.25h16.4V37.2h-16.4Z" fill="#5E6D82" /><g fill="#4285F4"><path d="M15.33,24.15c0-5.27-3.93-9-9.13-9s-9.14,3.73-9.14,9,3.94,9,9.14,9,9.13-3.73,9.13-9m-2.8,0c0,3.67-2.4,6.2-6.33,6.2s-6.34-2.53-6.34-6.2,2.4-6.2,6.34-6.2,6.33,2.53,6.33,6.2" /><path d="M26.2,15.85c-1.2-1.33-2.93-2.13-4.87-2.13a8.24,8.24,0,0,0-7.73,4.67l2.47,1.6a4.8,4.8,0,0,1,5.2-3c3.2,0,5.13,2,5.13,4.87V22h-10v2.8h7.2v10.6h2.8Z" /></g><path d="M157.2,30.35h-2.6v4.6h-2.8V30.35h-4l-.93-2.4,5-16.5h2.8v16.5h2.6Zm-5.4-2.8h2.6V15.15l-1.3,4.2Z" fill="#5E6D82" /></svg>
+                        <img class="max-h-12 w-40 flex-none object-contain" src="https://tailwindui.com/img/logos/158x48/reform-logo-gray-900.svg" alt="Reform">
+                        <img class="max-h-12 w-40 flex-none object-contain" src="https://tailwindui.com/img/logos/158x48/tuple-logo-gray-900.svg" alt="Tuple">
+                        <img class="max-h-12 w-40 flex-none object-contain" src="https://tailwindui.com/img/logos/158x48/savvycal-logo-gray-900.svg" alt="SavvyCal">
+                        <svg class="max-h-12 w-40 flex-none object-contain" viewBox="0 0 119 26" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M0 0.5H25.5V5.5H0V0.5Z" fill="#F25022" /><path d="M0 10.5H25.5V15.5H0V10.5Z" fill="#00A4EF" /><path d="M0 20.5H25.5V25.5H0V20.5Z" fill="#FFB900" /></svg>
+                        <img class="max-h-12 w-40 flex-none object-contain" src="https://tailwindui.com/img/logos/158x48/statamic-logo-gray-900.svg" alt="Statamic">
+                    </div>
+                     <div class="flex w-max items-center animate-scroll space-x-16 hover:[animation-play-state:paused]" aria-hidden="true">
+                        <!-- Logos Set 2 -->
+                        <svg class="max-h-12 w-40 flex-none object-contain" viewBox="0 0 158 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M39.13,32.35,36.5,25.8C35.84,24.13,35,22.25,35,22.25H34.8c-.13.4-1.2,3.33-2.06,5.4l-2.2,5.7H25.4L33.73,11.4h5.2l8.2,20.95Z" fill="#5E6D82" /><path d="M49.33,21.55c0-6-4.4-9.6-11.2-9.6H29.73v29.5H39c6.93,0,10.93-3.6,10.93-9.73,0-4.33-2.6-7.33-6.6-8.13a6,6,0,0,1,6-6.1Z" fill="#5E6D82" /><path d="M80.13,22.45c-1.2-1.2-3.13-2.13-5.2-2.13-4.2,0-7.6,3.47-7.6,7.93s3.4,8,7.6,8c2.07,0,4-.93,5.2-2.13v1.87a9.48,9.48,0,0,1-5.2,1.53c-6,0-10.8-4.6-10.8-11.2S69,15.25,75,15.25a9.48,9.48,0,0,1,5.2,1.53Z" fill="#5E6D82" /><path d="M93.33,16h-4.6V11.4h-4.6v4.6H79.83v4h4.3v9.47c0,5.2,2.4,6.73,6,6.73a8.23,8.23,0,0,0,3.2-.6V31.8a4.43,4.43,0,0,1-2.4.6c-1.8,0-2-1.07-2-2.8V20h4.4Z" fill="#5E6D82" /><path d="M100.2,11.4h4.6V35h-4.6Z" fill="#5E6D82" /><path d="M120.4,23.25c0,5.6-3.4,9.47-8.6,9.47s-8.6-3.87-8.6-9.47,3.4-9.46,8.6-9.46,8.6,3.86,8.6,9.46m-4.6,0c0-3.4-1.4-5.4-4-5.4s-4,2-4,5.4,1.4,5.4,4,5.4,4-2,4-5.4" fill="#5E6D82" /><path d="M136.2,11.4h4.4l-6.2,14.2-6.2-14.2h4.4l3.93,9.4,3.93-9.4ZM124,41.25h16.4V37.2h-16.4Z" fill="#5E6D82" /><g fill="#4285F4"><path d="M15.33,24.15c0-5.27-3.93-9-9.13-9s-9.14,3.73-9.14,9,3.94,9,9.14,9,9.13-3.73,9.13-9m-2.8,0c0,3.67-2.4,6.2-6.33,6.2s-6.34-2.53-6.34-6.2,2.4-6.2,6.34-6.2,6.33,2.53,6.33,6.2" /><path d="M26.2,15.85c-1.2-1.33-2.93-2.13-4.87-2.13a8.24,8.24,0,0,0-7.73,4.67l2.47,1.6a4.8,4.8,0,0,1,5.2-3c3.2,0,5.13,2,5.13,4.87V22h-10v2.8h7.2v10.6h2.8Z" /></g><path d="M157.2,30.35h-2.6v4.6h-2.8V30.35h-4l-.93-2.4,5-16.5h2.8v16.5h2.6Zm-5.4-2.8h2.6V15.15l-1.3,4.2Z" fill="#5E6D82" /></svg>
+                        <img class="max-h-12 w-40 flex-none object-contain" src="https://tailwindui.com/img/logos/158x48/reform-logo-gray-900.svg" alt="Reform">
+                        <img class="max-h-12 w-40 flex-none object-contain" src="https://tailwindui.com/img/logos/158x48/tuple-logo-gray-900.svg" alt="Tuple">
+                        <img class="max-h-12 w-40 flex-none object-contain" src="https://tailwindui.com/img/logos/158x48/savvycal-logo-gray-900.svg" alt="SavvyCal">
+                        <svg class="max-h-12 w-40 flex-none object-contain" viewBox="0 0 119 26" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M0 0.5H25.5V5.5H0V0.5Z" fill="#F25022" /><path d="M0 10.5H25.5V15.5H0V10.5Z" fill="#00A4EF" /><path d="M0 20.5H25.5V25.5H0V20.5Z" fill="#FFB900" /></svg>
+                        <img class="max-h-12 w-40 flex-none object-contain" src="https://tailwindui.com/img/logos/158x48/statamic-logo-gray-900.svg" alt="Statamic">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- Challenges Section -->
+    <div class="pt-16">
+
+        <!-- Header Section -->
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="max-w-3xl mx-auto text-center mb-12">
+                <p class="text-sm font-semibold uppercase tracking-widest text-gray-500">Challenges Employees Face</p>
+                <h1 class="mt-4 text-4xl md:text-5xl font-bold tracking-tight text-gray-900">
+                    If You're Qualified But Still Struggling, You're Not Alone.
+                </h1>
+                <h2 class="mt-6 text-lg md:text-xl text-gray-600">
+                    75% of qualified professionals are stuck in the same broken system. Here's why traditional approaches fail.
+                </h2>
+            </div>
+        </div>
+
+        <!-- Wrapper for sticky behavior -->
+        <div>
+            <!-- Sticky Tab Navigation -->
+            <div class="sticky top-20 z-10 py-4 mb-12">
+                <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                    <div
+                        class="border border-gray-200 rounded-lg p-1.5 grid grid-cols-3 gap-1.5 shadow-sm" style="background-color: #ffffff; box-shadow: 15px 15px 30px #8fa7e9, -15px -15px 30px #eaeefa;">
+                        <button data-tab="career-hub" class="tab-btn active w-full text-center py-3 px-4 rounded-md text-gray-900">Career
+                            Hub</button>
+                        <button data-tab="brand-building"
+                            class="tab-btn w-full text-center py-3 px-4 rounded-md text-gray-900">Brand Building</button>
+                        <button data-tab="upskilling" class="tab-btn w-full text-center py-3 px-4 rounded-md text-gray-900">Upskilling</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Content Sections -->
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div id="content-sections-challenges">
+                    <!-- Career Hub Section -->
+                    <section id="career-hub" class="scroll-section mb-16">
+                        <div
+                            class="grid grid-cols-1 md:grid-cols-2 gap-8 items-center bg-white rounded-3xl overflow-hidden" style="box-shadow: 15px 15px 30px #8fa7e9, -15px -15px 30px #eaeefa;">
+                            <div class="p-8 md:p-12 order-2 md:order-1">
+                                <div class="flex items-center text-2xl font-bold text-gray-800 mb-6">
+                                    <div
+                                    </svg>
+                                </div>
+                                The ATS Black Hole
+                            </div>
+
+                            <div class="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+                                <div class="flex items-start">
+                                    <div class="text-red-600 mr-3 mt-1">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20"
+                                            fill="currentColor">
+                                            <path fill-rule="evenodd"
+                                                d="M10 18a8 8 0 100-16 8 8 0 000 16zm.707-10.293a1 1 0 00-1.414-1.414l-3 3a1 1 0 001.414 1.414L9 9.414V13a1 1 0 102 0V9.414l1.293 1.293a1 1 0 001.414-1.414l-3-3z"
+                                                clip-rule="evenodd" />
+                                        </svg>
+                                    </div>
+                                    <div>
+                                        <h3 class="font-semibold text-red-800">75% of resumes never reach human eyes</h3>
+                                        <p class="text-red-700 text-sm mt-1">ATS systems reject qualified candidates due to
+                                            formatting issues, missing keywords, or poor optimization</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <ul class="space-y-3">
+                                <li class="flex items-start">
+                                    <span class="h-6 w-6 flex items-center justify-center rounded-full bg-red-100 text-red-600 mr-3 flex-shrink-0">•</span>
+                                    <span>You spend hours tailoring each application, only to hear nothing back</span>
+                                </li>
+                                 <li class="flex items-start">
+                                    <span class="h-6 w-6 flex items-center justify-center rounded-full bg-red-100 text-red-600 mr-3 flex-shrink-0">•</span>
+                                    <span>Less qualified candidates get interviews while you're stuck in the system</span>
+                                </li>
+                                 <li class="flex items-start">
+                                    <span class="h-6 w-6 flex items-center justify-center rounded-full bg-red-100 text-red-600 mr-3 flex-shrink-0">•</span>
+                                    <span>The whole process feels like throwing darts in the dark</span>
+                                </li>
+                            </ul>
+                        </div>
+                        <div class="h-64 md:h-full order-1 md:order-2 flex items-center justify-center p-8">
+                            <img src="https://ik.imagekit.io/fdd16n9cy/-a-sleek--modern-laptop-sits-on-a-dark-desk--the-s.png?updatedAt=1757888837988" alt="ATS Black Hole Visual" class="w-full h-full object-cover rounded-xl shadow-2xl">
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Brand Building Section -->
+                <section id="brand-building" class="scroll-section mb-16">
+                    <div
+                        class="grid grid-cols-1 md:grid-cols-2 gap-8 items-center bg-white rounded-3xl overflow-hidden" style="box-shadow: 15px 15px 30px #8fa7e9, -15px -15px 30px #eaeefa;">
+                        <div class="p-8 md:p-12 order-2 md:order-1">
+                            <div class="flex items-center text-2xl font-bold text-gray-800 mb-6">
+                                <div
+                                    class="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center mr-4 text-blue-600">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24"
+                                        stroke="currentColor" stroke-width="2">
+                                        <path stroke-linecap="round" stroke-linejoin="round"
+                                            d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
+                                </div>
+                                The Authority Gap
+                            </div>
+
+                            <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                                <div class="flex items-start">
+                                    <div class="text-blue-600 mr-3 mt-1">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20"
+                                            fill="currentColor">
+                                            <path fill-rule="evenodd"
+                                                d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z"
+                                                clip-rule="evenodd" />
+                                        </svg>
+                                    </div>
+                                    <div>
+                                        <h3 class="font-semibold text-blue-800">Your expertise stays hidden</h3>
+                                        <p class="text-blue-700 text-sm mt-1">While louder voices get the opportunities,
+                                            your knowledge and skills remain invisible to decision-makers</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <ul class="space-y-3">
+                                <li class="flex items-start">
+                                    <span class="h-6 w-6 flex items-center justify-center rounded-full bg-blue-100 text-blue-600 mr-3 flex-shrink-0">•</span>
+                                    <span>You know you should be posting on LinkedIn, but staring at that blank text box
+                                        gives you instant writer's block</span>
+                                </li>
+                                 <li class="flex items-start">
+                                    <span class="h-6 w-6 flex items-center justify-center rounded-full bg-blue-100 text-blue-600 mr-3 flex-shrink-0">•</span>
+                                    <span>You see others building authority while you struggle to find time for consistent
+                                        content creation</span>
+                                </li>
+                                 <li class="flex items-start">
+                                    <span class="h-6 w-6 flex items-center justify-center rounded-full bg-blue-100 text-blue-600 mr-3 flex-shrink-0">•</span>
+                                    <span>Opportunities go to those who are visible, not necessarily those who are most
+                                        qualified</span>
+                                </li>
+                            </ul>
+                        </div>
+                        <div class="h-64 md:h-full order-1 md:order-2">
+                            <img src="https://ik.imagekit.io/fdd16n9cy/_Isometric%20illustration%20of%20a%20LinkedIn%20feed%20with%20blue%20tones,%20cards,%20and%20interaction%20buttons%20(thumbs%20up,%20comment%20icons),%20but%20avoid%20using%20the%20exact%20logo.%20Minimalist%20blue%20and%20white%20color%20palette,%20clean%20lines,%20mo.jpg?updatedAt=1757931363825" alt="Brand Building Visual" class="w-full h-full object-cover">
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Upskilling Section -->
+                <section id="upskilling" class="scroll-section">
+                    <div
+                        class="grid grid-cols-1 md:grid-cols-2 gap-8 items-center bg-white rounded-3xl overflow-hidden" style="box-shadow: 15px 15px 30px #8fa7e9, -15px -15px 30px #eaeefa;">
+                        <div class="p-8 md:p-12 order-2 md:order-1">
+                            <div class="flex items-center text-2xl font-bold text-gray-800 mb-6">
+                                <div
+                                    class="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center mr-4 text-green-600">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24"
+                                        stroke="currentColor" stroke-width="2">
+                                        <path stroke-linecap="round" stroke-linejoin="round"
+                                            d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7.014A8.003 8.003 0 0112 3c1.398 0 2.743.57 3.714 1.543C18.5 6.5 19 9 19 11c2 1 2.657 1.657 2.657 1.657a8 8 0 01-4.001 6.001z" />
+                                    </svg>
+                                </div>
+                                Staying Future-Proof
+                            </div>
+                            <div class="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
+                                <div class="flex items-start">
+                                    <div class="text-green-600 mr-3 mt-1">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20"
+                                            fill="currentColor">
+                                            <path fill-rule="evenodd"
+                                                d="M17.707 9.293a1 1 0 010 1.414l-7 7a1 1 0 01-1.414 0l-7-7a1 1 0 011.414-1.414L8 12.586V5a1 1 0 012 0v7.586l3.293-3.293a1 1 0 011.414 0z"
+                                                clip-rule="evenodd" />
+                                        </svg>
+                                    </div>
+                                    <div>
+                                        <h3 class="font-semibold text-green-800">The Upskilling Dilemma</h3>
+                                        <p class="text-green-700 text-sm mt-1">It's not about finding time to learn; it's about the fear of learning the wrong thing.</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <ul class="space-y-3">
+                               <li class="flex items-start">
+                                    <span class="h-6 w-6 flex items-center justify-center rounded-full bg-green-100 text-green-600 mr-3 flex-shrink-0">•</span>
+                                    <span>Struggling to decide which career path or skill set to pursue for long-term growth.</span>
+                                </li>
+                                 <li class="flex items-start">
+                                    <span class="h-6 w-6 flex items-center justify-center rounded-full bg-green-100 text-green-600 mr-3 flex-shrink-0">•</span>
+                                    <span>Lack of clear insights into how industries, technologies, and job demands will shift in the future.</span>
+                                </li>
+                                 <li class="flex items-start">
+                                    <span class="h-6 w-6 flex items-center justify-center rounded-full bg-green-100 text-green-600 mr-3 flex-shrink-0">•</span>
+                                    <span>Mental struggles of upskilling—less about "I don't have time" and more about "Am I even going in the right direction?</span>
+                                </li>
+                            </ul>
+                        </div>
+                        <div class="h-64 md:h-full order-1 md:order-2 bg-gray-100 flex items-center justify-center">
+                            <span class="text-gray-500 text-lg">Upskilling Visual</span>
+                        </div>
+                    </div>
+                </section>
+                </div>
+            </div>
+        </div>
+
+        <!-- Career Growth Ecosystem Title -->
+        <div class="text-center pt-16">
+            <h1 class="text-4xl md:text-5xl font-bold tracking-tight text-gray-900">
+                Your Complete Career Growth Ecosystem
+            </h1>
+            <h2 class="mt-6 text-lg md:text-xl text-gray-600 max-w-3xl mx-auto">
+                Three integrated pillars working together to accelerate your career and build unstoppable authority
+            </h2>
+        </div>
+
+        <!-- Content Creation Section -->
+        <div class="max-w-xl mx-auto text-center py-12">
+            <div class="inline-flex items-center rounded-full bg-blue-100 text-blue-800 px-4 py-2 mb-6">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                </svg>
+                Content Creation
+            </div>
+            <h3 class="text-3xl font-bold text-gray-900 mb-4">Build Authority Without the Burnout</h3>
+            <p class="text-gray-600">
+                Generate authentic content that builds real authority while you focus on your actual work
+            </p>
+        </div>
+
+        <!-- React Carousel Section -->
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div id="root"></div>
+        </div>
+
+        <!-- Career Hub Section Title -->
+        <div class="max-w-xl mx-auto text-center py-12">
+            <div class="inline-flex items-center rounded-full bg-indigo-100 text-indigo-800 px-4 py-2 mb-6">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+                Career Hub
+            </div>
+            <h3 class="text-3xl font-bold text-gray-900 mb-4">Land Your Dream Job Faster</h3>
+            <p class="text-gray-600">
+                Optimize your resume, tailor applications, and ace interviews with powerful AI tools.
+            </p>
+        </div>
+
+        <!-- Second React Carousel Section -->
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div id="root2"></div>
+        </div>
+
+        <!-- Upskilling Section Title -->
+        <div class="max-w-xl mx-auto text-center py-12">
+            <div class="inline-flex items-center rounded-full bg-purple-100 text-purple-800 px-4 py-2 mb-6">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                  <path d="M3.5 2.5a.5.5 0 00-1 0V3a2 2 0 00-2 2v9.5a.5.5 0 001 0V5a1 1 0 011-1h10a1 1 0 011 1v10a1 1 0 01-1 1H5a1 1 0 01-1-1v-2.5a.5.5 0 00-1 0V15a2 2 0 002 2h10a2 2 0 002-2V5a2 2 0 00-2-2H3.5v-.5z" />
+                  <path d="M14.354 1.646a.5.5 0 010 .708l-7 7a.5.5 0 01-.708 0l-3.5-3.5a.5.5 0 11.708-.708L7 8.293l6.646-6.647a.5.5 0 01.708 0z" />
+                </svg>
+                Upskilling
+            </div>
+            <h3 class="text-3xl font-bold text-gray-900 mb-4">Stay Ahead of Market Demands</h3>
+            <p class="text-gray-600">
+                AI-guided skill development that keeps you competitive and future-ready
+            </p>
+        </div>
+
+        <!-- Third React Carousel Section -->
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div id="root3"></div>
+        </div>
+
+        <!-- New Feature Section -->
+        <div class="py-24">
+          <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="bg-white rounded-3xl p-8 md:p-12" style="box-shadow: 15px 15px 30px #8fa7e9, -15px -15px 30px #eaeefa;">
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
+                  <!-- Left side: Text Content -->
+                  <div class="space-y-12">
+                    <!-- Feature 1 -->
+                    <div class="relative pl-8 border-l-2 border-gray-200">
+                      <div class="absolute -left-px top-2 h-8 w-1 bg-indigo-600 rounded-full"></div>
+                      <h3 class="text-3xl font-bold text-gray-900">Innovative Career Solutions</h3>
+                      <p class="mt-4 text-lg text-gray-600 leading-relaxed">
+                        Experience a suite of tools designed to simplify your job search and enhance your professional presence. Our platform empowers you to take charge of your career with tailored resources.
+                      </p>
+                    </div>
+                    <!-- Feature 2 -->
+                    <div class="relative pl-8 border-l-2 border-gray-200">
+                      <h3 class="text-3xl font-bold text-gray-900">Streamlined Job Applications</h3>
+                      <p class="mt-4 text-lg text-gray-600 leading-relaxed">
+                        Automate your application process with AI-driven resume tailoring and cover letter generation. Save time and increase your chances of landing interviews with our smart features.
+                      </p>
+                    </div>
+                    <!-- Feature 3 -->
+                    <div class="relative pl-8 border-l-2 border-gray-200">
+                      <h3 class="text-3xl font-bold text-gray-900">Personalized Learning Paths</h3>
+                      <p class="mt-4 text-lg text-gray-600 leading-relaxed">
+                        Stay competitive with customized learning roadmaps that align with industry trends. Our platform provides strategic skill recommendations to enhance your career growth.
+                      </p>
+                    </div>
+                  </div>
+                  <!-- Right side: Image -->
+                  <div class="flex items-center justify-center">
+                    <img class="w-full max-w-md lg:max-w-full h-auto rounded-xl shadow-2xl" src="https://ik.imagekit.io/fdd16n9cy/-a-sleek--modern-laptop-sits-on-a-dark-desk--the-s.png?updatedAt=1757888837988" alt="Sleek modern laptop on a dark desk">
+                  </div>
+                </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Stats Section -->
+        <div class="py-24">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="bg-white rounded-3xl p-8 md:p-12" style="box-shadow: 15px 15px 30px #8fa7e9, -15px -15px 30px #eaeefa;">
+                    <div class="max-w-3xl mx-auto text-center">
+                        <p class="text-base font-semibold leading-7 text-indigo-600">Tagline</p>
+                        <h2 class="mt-2 text-4xl font-bold tracking-tight text-gray-900 sm:text-5xl">Medium length section heading goes here</h2>
+                        <p class="mt-6 text-lg leading-8 text-gray-600">Lorem ipsum dolor sit amet, consectetur adipiscing elit. Suspendisse varius enim in eros elementum tristique. Duis cursus, mi quis viverra ornare, eros dolor interdum nulla, ut commodo diam libero vitae erat.</p>
+                    </div>
+                    <div class="mt-16 grid grid-cols-1 md:grid-cols-3 gap-8">
+                        <!-- Stat 1 -->
+                        <div class="bg-white p-8 rounded-xl border border-gray-200 text-center">
+                            <p class="text-7xl font-bold text-indigo-600">75%</p>
+                            <h3 class="mt-4 text-xl font-semibold text-gray-900">Faster job applications</h3>
+                            <p class="mt-2 text-gray-600">Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>
+                        </div>
+                        <!-- Stat 2 -->
+                        <div class="bg-white p-8 rounded-xl border border-gray-200 text-center">
+                            <p class="text-7xl font-bold text-indigo-600">60%</p>
+                            <h3 class="mt-4 text-xl font-semibold text-gray-900">Improved interview success</h3>
+                            <p class="mt-2 text-gray-600">Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>
+                        </div>
+                        <!-- Stat 3 -->
+                        <div class="bg-white p-8 rounded-xl border border-gray-200 text-center">
+                            <p class="text-7xl font-bold text-indigo-600">50%</p>
+                            <h3 class="mt-4 text-xl font-semibold text-gray-900">Enhanced professional visibility</h3>
+                            <p class="mt-2 text-gray-600">Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>
+                        </div>
+                    </div>
+                     <div class="mt-16 flex justify-center items-center gap-x-6">
+                        <a href="#" class="rounded-md bg-indigo-600 px-6 py-3 text-base font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600">Button</a>
+                        <a href="#" class="text-base font-semibold leading-6 text-gray-900 group">Button <span class="transition-transform group-hover:translate-x-1" aria-hidden="true">→</span></a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Benefits Section -->
+        <div id="benefits" class="py-24">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="bg-white rounded-3xl p-8 md:p-12" style="box-shadow: 15px 15px 30px #8fa7e9, -15px -15px 30px #eaeefa;">
+                    <div class="max-w-3xl">
+                        <p class="text-base font-semibold leading-7 text-indigo-600">Benefits</p>
+                        <h2 class="mt-2 text-4xl font-bold tracking-tight text-gray-900 sm:text-5xl">Automated job application process</h2>
+                        <p class="mt-6 text-lg leading-8 text-gray-600">Transform your career journey with an intelligent platform that combines cutting-edge AI technology and comprehensive professional development tools.</p>
+                    </div>
+                    <div class="mt-16 grid grid-cols-1 md:grid-cols-3 gap-8">
+                        <!-- Benefit 1 -->
+                        <div class="flex flex-col overflow-hidden rounded-lg shadow-lg">
+                            <div class="flex-shrink-0">
+                                <img class="h-48 w-full object-cover" src="https://placehold.co/395x240/ddd6fe/3730a3?text=Brand+Building" alt="Professional brand building">
+                            </div>
+                            <div class="flex flex-1 flex-col justify-between bg-white p-6">
+                                <div class="flex-1">
+                                    <h3 class="mt-2 text-2xl font-bold text-gray-900">Build your professional brand</h3>
+                                    <p class="mt-3 text-base text-gray-600">Lorem ipsum dolor sit amet, consectetur adipiscing elit. Suspendisse varius enim in eros elementum tristique. Duis cursus, mi quis viverra ornare, eros dolor interdum nulla.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Benefit 2 -->
+                        <div class="flex flex-col overflow-hidden rounded-lg shadow-lg">
+                            <div class="flex-shrink-0">
+                                <img class="h-48 w-full object-cover" src="https://placehold.co/395x240/c7d2fe/3730a3?text=Skill+Development" alt="Skill development">
+                            </div>
+                            <div class="flex flex-1 flex-col justify-between bg-white p-6">
+                                <div class="flex-1">
+                                    <h3 class="mt-2 text-2xl font-bold text-gray-900">Future-ready skill development</h3>
+                                    <p class="mt-3 text-base text-gray-600">Lorem ipsum dolor sit amet, consectetur adipiscing elit. Suspendisse varius enim in eros elementum tristique. Duis cursus, mi quis viverra ornare, eros dolor interdum nulla.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Benefit 3 -->
+                        <div class="flex flex-col overflow-hidden rounded-lg shadow-lg">
+                            <div class="flex-shrink-0">
+                                <img class="h-48 w-full object-cover" src="https://placehold.co/395x240/a5b4fc/3730a3?text=Career+Growth" alt="Medium length section heading">
+                            </div>
+                            <div class="flex flex-1 flex-col justify-between bg-white p-6">
+                                <div class="flex-1">
+                                    <h3 class="mt-2 text-2xl font-bold text-gray-900">Medium length section heading goes here</h3>
+                                    <p class="mt-3 text-base text-gray-600">Lorem ipsum dolor sit amet, consectetur adipiscing elit. Suspendisse varius enim in eros elementum tristique. Duis cursus, mi quis viverra ornare, eros dolor interdum nulla.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-16 flex items-center gap-x-6">
+                        <a href="#" class="rounded-md bg-indigo-600 px-6 py-3 text-base font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600">Get started</a>
+                        <a href="#" class="text-base font-semibold leading-6 text-gray-900 group">Learn more <span class="transition-transform group-hover:translate-x-1" aria-hidden="true">→</span></a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Success Stories Section -->
+        <div id="success-stories" class="py-24">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="bg-white rounded-3xl p-8 md:p-12" style="box-shadow: 15px 15px 30px #8fa7e9, -15px -15px 30px #eaeefa;">
+                    <div class="max-w-2xl">
+                        <h2 class="text-4xl font-bold tracking-tight text-gray-900 sm:text-5xl">Success stories</h2>
+                        <p class="mt-4 text-lg leading-8 text-gray-600">Real professionals, real transformations</p>
+                    </div>
+                    <div class="mt-16 grid grid-cols-1 lg:grid-cols-2 gap-8">
+                        <!-- Story 1 -->
+                        <div class="p-8 border border-gray-200 rounded-2xl flex flex-col justify-between">
+                            <div>
+                                <div class="h-8">
+                                    <svg class="h-8 w-auto text-gray-400" viewBox="0 0 120 48" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                                        <path d="M115.7 19.29H113.59V30.75H110.16V19.29H106.73V16.22H115.7V19.29Z" />
+                                        <path d="M96.44 16.22H102.35V19.29H99.78V30.75H96.44V16.22Z" />
+                                        <path d="M85.16 16.22H88.5V28.08L94.04 16.22H97.64L90.89 25.53L97.78 30.75H94.18L88.5 21.9V30.75H85.16V16.22Z" />
+                                        <path d="M72.27 16.22H75.61V28.01C75.61 29.81 76.54 30.82 78.41 30.82C80.28 30.82 81.21 29.81 81.21 28.01V16.22H84.55V28.22C84.55 31.82 82.21 33.82 78.41 33.82C74.61 33.82 72.27 31.82 72.27 28.22V16.22Z" />
+                                        <path d="M59.34 25.4C59.34 21.8 61.44 19.53 65.41 19.53C67.14 19.53 68.61 20.13 69.54 21.03L67.44 23.06C66.88 22.53 66.18 22.23 65.41 22.23C63.41 22.23 62.74 23.53 62.74 25.4V25.47H69.61V27.93H62.74V33.52H59.34V25.4Z" />
+                                        <path d="M42.03 25.05C42.03 21.75 44.53 19.29 48.33 19.29C52.13 19.29 54.63 21.75 54.63 25.05C54.63 28.35 52.13 30.82 48.33 30.82C44.53 30.82 42.03 28.35 42.03 25.05ZM51.23 25.05C51.23 23.25 50.13 21.99 48.33 21.99C46.53 21.99 45.43 23.25 45.43 25.05C45.43 26.85 46.53 28.12 48.33 28.12C50.13 28.12 51.23 26.85 51.23 25.05Z" />
+                                        <path d="M29.93 16.22H33.27V33.52H29.93V16.22Z" />
+                                        <path d="M19.19 25.05C19.19 21.75 21.69 19.29 25.49 19.29C29.29 19.29 31.79 21.75 31.79 25.05C31.79 28.35 29.29 30.82 25.49 30.82C21.69 30.82 19.19 28.35 19.19 25.05ZM28.39 25.05C28.39 23.25 27.29 21.99 25.49 21.99C23.69 21.99 22.59 23.25 22.59 25.05C22.59 26.85 23.69 28.12 25.49 28.12C27.29 28.12 28.39 26.85 28.39 25.05Z" />
+                                        <path d="M3.43 16.22H11.83L14.43 25.29L17.03 16.22H18.53L15.16 30.75H13.69L11.13 21.39L8.56 30.75H7.09L3.43 16.22Z" />
+                                    </svg>
+                                </div>
+                                <blockquote class="mt-8 text-xl font-medium text-gray-900">
+                                    <p>"Career Clarified helped me land my dream job in tech within weeks"</p>
+                                </blockquote>
+                            </div>
+                            <div class="mt-6">
+                                <div class="flex items-center gap-x-4">
+                                    <img class="h-14 w-14 rounded-full" src="https://placehold.co/56x56/e2e8f0/64748b" alt="">
+                                    <div>
+                                        <div class="font-semibold text-gray-900">Sarah Johnson</div>
+                                        <div class="text-gray-600">Senior product manager</div>
+                                    </div>
+                                </div>
+                                 <a href="#" class="mt-8 text-indigo-600 font-semibold flex items-center group">
+                                    Read case study
+                                    <span class="transition-transform group-hover:translate-x-1 ml-2" aria-hidden="true">→</span>
+                                </a>
+                            </div>
+                        </div>
+                        <!-- Story 2 -->
+                        <div class="p-8 border border-gray-200 rounded-2xl flex flex-col justify-between">
+                            <div>
+                                 <div class="h-8">
+                                    <svg class="h-8 w-auto text-gray-400" viewBox="0 0 120 48" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                                        <path d="M113.59 9H110.16V20.46H106.73V9H103.3V30.75H106.73V23.53H110.16V30.75H113.59V9Z"/>
+                                        <path d="M96.44 9H102.35V12.07H99.78V30.75H96.44V9Z"/>
+                                        <path d="M85.16 9H88.5V20.86L94.04 9H97.64L90.89 18.31L97.78 23.53H94.18L88.5 14.68V23.53H85.16V9Z"/>
+                                        <path d="M72.27 9H75.61V20.79C75.61 22.59 76.54 23.6 78.41 23.6C80.28 23.6 81.21 22.59 81.21 20.79V9H84.55V21C84.55 24.6 82.21 26.6 78.41 26.6C74.61 26.6 72.27 24.6 72.27 21V9Z"/>
+                                        <path d="M59.34 18.18C59.34 14.58 61.44 12.31 65.41 12.31C67.14 12.31 68.61 12.91 69.54 13.81L67.44 15.84C66.88 15.31 66.18 15.01 65.41 15.01C63.41 15.01 62.74 16.31 62.74 18.18V18.25H69.61V20.71H62.74V26.3H59.34V18.18Z"/>
+                                        <path d="M42.03 17.83C42.03 14.53 44.53 12.07 48.33 12.07C52.13 12.07 54.63 14.53 54.63 17.83C54.63 21.13 52.13 23.6 48.33 23.6C44.53 23.6 42.03 21.13 42.03 17.83ZM51.23 17.83C51.23 16.03 50.13 14.77 48.33 14.77C46.53 14.77 45.43 16.03 45.43 17.83C45.43 19.63 46.53 20.9 48.33 20.9C50.13 20.9 51.23 19.63 51.23 17.83Z"/>
+                                        <path d="M29.93 9H33.27V26.3H29.93V9Z"/>
+                                        <path d="M19.19 17.83C19.19 14.53 21.69 12.07 25.49 12.07C29.29 12.07 31.79 14.53 31.79 17.83C31.79 21.13 29.29 23.6 25.49 23.6C21.69 23.6 19.19 21.13 19.19 17.83ZM28.39 17.83C28.39 16.03 27.29 14.77 25.49 14.77C23.69 14.77 22.59 16.03 22.59 17.83C22.59 19.63 23.69 20.9 25.49 20.9C27.29 20.9 28.39 19.63 28.39 17.83Z"/>
+                                        <path d="M3.43 9H11.83L14.43 18.07L17.03 9H18.53L15.16 23.53H13.69L11.13 14.17L8.56 23.53H7.09L3.43 9Z"/>
+                                    </svg>
+                                </div>
+                                <blockquote class="mt-8 text-xl font-medium text-gray-900">
+                                    <p>"The AI resume builder is a game-changer for job seekers"</p>
+                                </blockquote>
+                            </div>
+                            <div class="mt-6">
+                                <div class="flex items-center gap-x-4">
+                                    <img class="h-14 w-14 rounded-full" src="https://placehold.co/56x56/e2e8f0/64748b" alt="">
+                                    <div>
+                                        <div class="font-semibold text-gray-900">Michael Chen</div>
+                                        <div class="text-gray-600">Software engineer</div>
+                                    </div>
+                                </div>
+                                 <a href="#" class="mt-8 text-indigo-600 font-semibold flex items-center group">
+                                    Read case study
+                                    <span class="transition-transform group-hover:translate-x-1 ml-2" aria-hidden="true">→</span>
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- CTA Section -->
+        <div class="py-24">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="relative isolate overflow-hidden bg-white px-6 py-24 sm:rounded-3xl sm:px-24 xl:py-32 xl:px-32" style="box-shadow: 15px 15px 30px #8fa7e9, -15px -15px 30px #eaeefa;">
+                       <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+                            <!-- Left Side: Text and Form -->
+                            <div>
+                                <h2 class="text-4xl font-bold tracking-tight text-gray-900 sm:text-5xl">Ready to transform your career?</h2>
+                                <p class="mt-6 text-lg leading-8 text-gray-600">Start your professional growth journey with our comprehensive AI-powered career development platform.</p>
+                                <div class="mt-10 flex flex-col sm:flex-row items-center gap-4">
+                                    <input type="email" placeholder="Enter your email" class="w-full sm:flex-auto rounded-md border-0 bg-gray-100 px-4 py-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-200 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6">
+                                    <button type="submit" class="w-full sm:w-auto flex-none rounded-md bg-indigo-600 px-6 py-3 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600">Sign Up</button>
+                                </div>
+                                <p class="mt-4 text-xs text-gray-500">By clicking Sign Up you're confirming that you agree with our <a href="#" class="underline hover:text-gray-900">Terms and Conditions</a>.</p>
+                            </div>
+                            <!-- Right Side: Image -->
+                            <div class="hidden lg:block">
+                                <img class="w-full h-auto rounded-xl object-cover" src="https://ik.imagekit.io/fdd16n9cy/di.png?updatedAt=1757770843990" alt="Career transformation visual">
+                            </div>
+                        </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+        <!-- Footer -->
+        <footer class="relative bg-cover bg-center pt-8 sm:pt-12" style="background-image: url('https://ik.imagekit.io/fdd16n9cy/di.png?updatedAt=1757770843990');">
+             <!-- Overlay to brighten the background image -->
+            <div class="absolute inset-0 bg-white/40 z-0"></div>
+
+            <div class="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="glass-effect p-8 sm:p-10 rounded-2xl">
+
+                    <!-- Header Section -->
+                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-10">
+                        <div class="max-w-3xl mb-8 md:mb-0">
+                            <h2 class="text-4xl sm:text-5xl lg:text-6xl font-bold leading-tight mb-4 text-indigo-600">Empower Your Career Journey Today</h2>
+                            <p class="text-base sm:text-lg text-slate-600">Join thousands transforming their careers with our innovative AI-driven platform.</p>
+                        </div>
+                        <div class="flex space-x-4">
+                            <button class="bg-indigo-600 text-white px-6 py-3 rounded-md hover:bg-indigo-700 transition-colors duration-300 shadow-sm">Subscribe</button>
+                            <button class="border border-indigo-600 text-indigo-600 px-6 py-3 rounded-md hover:bg-indigo-50 transition-colors duration-300">Contact</button>
+                        </div>
+                    </div>
+
+                    <!-- Footer Links Section -->
+                    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-8 mb-16">
+                        <!-- Resources -->
+                        <div class="space-y-4">
+                            <h3 class="font-semibold text-lg text-indigo-600">Resources</h3>
+                            <ul class="space-y-2">
+                                <li><a href="#" class="text-slate-600 hover:text-indigo-600">Blog Posts</a></li>
+                                <li><a href="#" class="text-slate-600 hover:text-indigo-600">FAQs</a></li>
+                                <li><a href="#" class="text-slate-600 hover:text-indigo-600">Help Center</a></li>
+                                <li><a href="#" class="text-slate-600 hover:text-indigo-600">Privacy Policy</a></li>
+                                <li><a href="#" class="text-slate-600 hover:text-indigo-600">Terms of Use</a></li>
+                            </ul>
+                        </div>
+                        <!-- Company -->
+                        <div class="space-y-4">
+                            <h3 class="font-semibold text-lg text-indigo-600">Company</h3>
+                            <ul class="space-y-2">
+                                <li><a href="#" class="text-slate-600 hover:text-indigo-600">About Us</a></li>
+                                <li><a href="#" class="text-slate-600 hover:text-indigo-600">Careers</a></li>
+                                <li><a href="#" class="text-slate-600 hover:text-indigo-600">Press Releases</a></li>
+                                <li><a href="#" class="text-slate-600 hover:text-indigo-600">Contact Us</a></li>
+                                <li><a href="#" class="text-slate-600 hover:text-indigo-600">Support</a></li>
+                            </ul>
+                        </div>
+                        <!-- Connect -->
+                        <div class="space-y-4">
+                            <h3 class="font-semibold text-lg text-indigo-600">Connect</h3>
+                            <ul class="space-y-2">
+                                <li><a href="#" class="text-slate-600 hover:text-indigo-600">LinkedIn</a></li>
+                                <li><a href="#" class="text-slate-600 hover:text-indigo-600">Twitter</a></li>
+                                <li><a href="#" class="text-slate-600 hover:text-indigo-600">Facebook</a></li>
+                                <li><a href="#" class="text-slate-600 hover:text-indigo-600">Instagram</a></li>
+                                <li><a href="#" class="text-slate-600 hover:text-indigo-600">YouTube</a></li>
+                            </ul>
+                        </div>
+                        <!-- Community -->
+                        <div class="space-y-4">
+                            <h3 class="font-semibold text-lg text-indigo-600">Community</h3>
+                            <ul class="space-y-2">
+                                <li><a href="#" class="text-slate-600 hover:text-indigo-600">User Forum</a></li>
+                                <li><a href="#" class="text-slate-600 hover:text-indigo-600">Feedback</a></li>
+                                <li><a href="#" class="text-slate-600 hover:text-indigo-600">Events</a></li>
+                                <li><a href="#" class="text-slate-600 hover:text-indigo-600">Webinars</a></li>
+                                <li><a href="#" class="text-slate-600 hover:text-indigo-600">Workshops</a></li>
+                            </ul>
+                        </div>
+                        <!-- Newsletters -->
+                        <div class="space-y-4">
+                            <h3 class="font-semibold text-lg text-indigo-600">Newsletters</h3>
+                            <ul class="space-y-2">
+                                <li><a href="#" class="text-slate-600 hover:text-indigo-600">Join Our Community</a></li>
+                                <li><a href="#" class="text-slate-600 hover:text-indigo-600">Stay Updated</a></li>
+                                <li><a href="#" class="text-slate-600 hover:text-indigo-600">Get Involved</a></li>
+                                <li><a href="#" class="text-slate-600 hover:text-indigo-600">Share Your Story</a></li>
+                                <li><a href="#" class="text-slate-600 hover:text-indigo-600">Explore Opportunities</a></li>
+                            </ul>
+                        </div>
+                        <!-- Legal -->
+                        <div class="space-y-4">
+                            <h3 class="font-semibold text-lg text-indigo-600">Legal</h3>
+                            <ul class="space-y-2">
+                                <li><a href="#" class="text-slate-600 hover:text-indigo-600">Cookie Policy</a></li>
+                                <li><a href="#" class="text-slate-600 hover:text-indigo-600">Accessibility</a></li>
+                                <li><a href="#" class="text-slate-600 hover:text-indigo-600">User Agreement</a></li>
+                                <li><a href="#" class="text-slate-600 hover:text-indigo-600">Sitemap</a></li>
+                                <li><a href="#" class="text-slate-600 hover:text-indigo-600">Contact</a></li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <!-- Bottom Footer -->
+                    <div class="mt-16 space-y-8">
+                        <div class="flex flex-col sm:flex-row justify-between items-center space-y-4 sm:space-y-0">
+                            <!-- Logo Placeholder -->
+                            <div class="flex items-center space-x-2">
+                                 <svg class="h-8 w-auto text-indigo-600" viewBox="0 0 32 32" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                                     <path d="M4 4H20V20H4V4Z" />
+                                     <path d="M12 12H28V28H12V12Z" fill-opacity="0.7"/>
+                                 </svg>
+                                 <span class="font-bold text-xl text-slate-900">Career Clarified</span>
+                            </div>
+
+                            <!-- Overlapping Avatars -->
+                            <div class="flex -space-x-4">
+                                <img class="inline-block h-12 w-12 rounded-full ring-2 ring-white" src="https://images.unsplash.com/photo-1491528323818-fdd1faba62cc?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80" alt="User 1" onerror="this.onerror=null;this.src='https://placehold.co/48x48/E0E0E0/000000?text=U1';">
+                                <img class="inline-block h-12 w-12 rounded-full ring-2 ring-white" src="https://images.unsplash.com/photo-1550525811-e586910b323f?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80" alt="User 2" onerror="this.onerror=null;this.src='https://placehold.co/48x48/E0E0E0/000000?text=U2';">
+                                <img class="inline-block h-12 w-12 rounded-full ring-2 ring-white" src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80" alt="User 3" onerror="this.onerror=null;this.src='https://placehold.co/48x48/E0E0E0/000000?text=U3';">
+                                <img class="inline-block h-12 w-12 rounded-full ring-2 ring-white" src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80" alt="User 4" onerror="this.onerror=null;this.src='https://placehold.co/48x48/E0E0E0/000000?text=U4';">
+                                <div class="flex items-center justify-center h-12 w-12 rounded-full ring-2 ring-white bg-gray-200 text-gray-600 font-semibold">+99</div>
+                            </div>
+                        </div>
+
+                        <div class="flex flex-col-reverse sm:flex-row justify-between items-center space-y-4 space-y-reverse sm:space-y-0">
+                            <p class="text-sm text-slate-500">© 2025 Career Clarified. All rights reserved.</p>
+                            <div class="flex space-x-4">
+                                <!-- Social Icons -->
+                                <a href="#" class="text-slate-500 hover:text-indigo-600">
+                                     <svg class="h-6 w-6" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path fill-rule="evenodd" d="M22 12c0-5.523-4.477-10-10-10S2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.878v-6.987h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.988C18.343 21.128 22 16.991 22 12z" clip-rule="evenodd" /></svg>
+                                </a>
+                                <a href="#" class="text-slate-500 hover:text-indigo-600">
+                                      <svg class="h-6 w-6" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M8.29 20.251c7.547 0 11.675-6.253 11.675-11.675 0-.178 0-.355-.012-.53A8.348 8.348 0 0022 5.92a8.19 8.19 0 01-2.357.646 4.118 4.118 0 001.804-2.27 8.224 8.224 0 01-2.605.996 4.107 4.107 0 00-6.993 3.743 11.65 11.65 0 01-8.457-4.287 4.106 4.106 0 001.27 5.477A4.072 4.072 0 012.8 9.71v.052a4.105 4.105 0 003.292 4.022 4.095 4.095 0 01-1.853.07 4.108 4.108 0 003.834 2.85A8.233 8.233 0 012 18.407a11.616 11.616 0 006.29 1.84" /></svg>
+                                </a>
+                                 <a href="#" class="text-slate-500 hover:text-indigo-600">
+                                      <svg class="h-6 w-6" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path fill-rule="evenodd" d="M12.315 2c2.43 0 2.784.013 3.808.06 1.064.049 1.791.218 2.427.465a4.902 4.902 0 011.772 1.153 4.902 4.902 0 011.153 1.772c.247.636.416 1.363.465 2.427.048 1.024.06 1.378.06 3.808s-.012 2.784-.06 3.808c-.049 1.064-.218 1.791-.465 2.427a4.902 4.902 0 01-1.153 1.772 4.902 4.902 0 01-1.772 1.153c-.636.247-1.363.416-2.427.465-1.024.048-1.378.06-3.808.06s-2.784-.013-3.808-.06c-1.064-.049-1.791-.218-2.427-.465a4.902 4.902 0 01-1.772-1.153 4.902 4.902 0 01-1.153-1.772c-.247-.636-.416-1.363-.465-2.427-.048-1.024-.06-1.378-.06-3.808s.012-2.784.06-3.808c.049-1.064.218-1.791.465-2.427a4.902 4.902 0 011.153-1.772A4.902 4.902 0 016.345 2.525c.636-.247 1.363-.416 2.427-.465C9.793 2.013 10.147 2 12.315 2zm-1.163 1.943h.001c-2.296 0-2.586.01-3.486.05-1.178.05-1.84.21-2.494.45-1.025.38-1.88.94-2.73 1.78a6.8 6.8 0 00-1.78 2.73c-.24 1.15-.4 1.81-.45 2.49-.04 1.02-.05 1.28-.05 3.48s.01 2.46.05 3.48c.05 1.18.21 1.84.45 2.49.38 1.02.94 1.88 1.78 2.73a6.8 6.8 0 002.73 1.78c1.15.24 1.81.4 2.49.45 1.02.04 1.28.05 3.48.05s2.46-.01 3.48-.05c1.18-.05 1.84-.21 2.49-.45.99-.38 1.84-.94 2.73-1.78.79-.85 1.35-1.7 1.78-2.73.24-1.15.4-1.81.45-2.49.04-1.02.05-1.28.05-3.48s-.01-2.46-.05-3.48c-.05-1.18-.21-1.84-.45-2.49-.38-.99-.94-1.84-1.78-2.73-.85-.79-1.7-1.35-2.73-1.78-1.15-.24-1.81-.4-2.49-.45-1.02-.04-1.28-.05-3.48-.05zm-4.4 2.61a5.4 5.4 0 1110.8 0 5.4 5.4 0 01-10.8 0zM12 15.11a3.11 3.11 0 100-6.22 3.11 3.11 0 000 6.22zm4.3-8.11a1.2 1.2 0 11-2.4 0 1.2 1.2 0 012.4 0z" clip-rule="evenodd" /></svg>
+                                 </a>
+                                <a href="#" class="text-slate-500 hover:text-indigo-600">
+                                      <svg class="h-6 w-6" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.701V8.115l6.5 4.333-6.5 4.437z" /></svg>
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </footer>
+
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const allTabButtons = document.querySelectorAll('.tab-btn');
+            const allSections = document.querySelectorAll('.scroll-section');
+
+            // Header scroll effect
+            const headerContainer = document.getElementById('header-container');
+            window.addEventListener('scroll', () => {
+                if (window.scrollY > 20) {
+                    headerContainer.classList.add('header-scrolled');
+                } else {
+                    headerContainer.classList.remove('header-scrolled');
+                }
+            });
+
+            // Mobile menu toggle
+            const mobileMenuButton = document.getElementById('mobile-menu-button');
+            const mobileMenu = document.getElementById('mobile-menu');
+            const menuOpenIcon = document.getElementById('menu-open-icon');
+            const menuCloseIcon = document.getElementById('menu-close-icon');
+
+            mobileMenuButton.addEventListener('click', () => {
+                mobileMenu.classList.toggle('hidden');
+                menuOpenIcon.classList.toggle('hidden');
+                menuCloseIcon.classList.toggle('hidden');
+            });
+
+            // Close mobile menu on link click
+            mobileMenu.querySelectorAll('a, button').forEach(item => {
+                item.addEventListener('click', () => {
+                    mobileMenu.classList.add('hidden');
+                    menuOpenIcon.classList.remove('hidden');
+                    menuCloseIcon.classList.add('hidden');
+                });
+            });
+
+
+            // Function to handle click for smooth scrolling
+            allTabButtons.forEach(button => {
+                button.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const targetId = button.getAttribute('data-tab');
+                    const targetSection = document.getElementById(targetId);
+                    if (targetSection) {
+                        targetSection.scrollIntoView({ behavior: 'smooth' });
+                    }
+                });
+            });
+
+            // Function to update the active tab based on scroll position
+            const updateActiveTabOnScroll = () => {
+                const triggerPoint = window.scrollY + (window.innerHeight / 2);
+                let currentSectionId = '';
+
+                allSections.forEach(section => {
+                    if (section.offsetTop < triggerPoint) {
+                        currentSectionId = section.getAttribute('id');
+                    }
+                });
+
+                if ((window.innerHeight + window.scrollY) >= document.body.offsetHeight - 2) {
+                   if(allSections.length > 0) {
+                        currentSectionId = allSections[allSections.length - 1].id;
+                   }
+                }
+
+                if (!currentSectionId && allSections.length > 0) {
+                    currentSectionId = allSections[0].id;
+                }
+
+                allTabButtons.forEach(button => {
+                    button.classList.toggle('active', button.getAttribute('data-tab') === currentSectionId);
+                });
+            };
+
+            window.addEventListener('scroll', updateActiveTabOnScroll, { passive: true });
+            updateActiveTabOnScroll();
+        });
+    </script>
+
+    <!-- React and Babel CDN scripts -->
+    <script src="https://unpkg.com/react@17/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@17/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
+
+    <!-- Your React component code -->
+    <script type="text/babel">
+        const { useRef, useEffect, useState } = React;
+
+        const useCases = [
+            {
+                title: "AI Post Generator",
+                desc: "Generate authentic LinkedIn posts in minutes with AI that learns your voice and expertise.",
+                tags: ["AI"],
+                image: "https://placehold.co/600x400/4f46e5/white?text=AI+Post+Generator",
+            },
+            {
+                title: "Professional Carousel Maker",
+                desc: "Create stunning multi-slide carousels with professional templates and AI content generation.",
+                tags: ["Design"],
+                image: "https://placehold.co/600x400/be185d/white?text=Carousel+Maker",
+            },
+            {
+                title: "Content Repurposing Engine",
+                desc: "Transform existing articles, videos, and podcasts into multiple LinkedIn post formats.",
+                tags: ["Content"],
+                image: "https://placehold.co/600x400/059669/white?text=Repurposing+Engine",
+            },
+            {
+                title: "Thought Leadership Engine",
+                desc: "Build authority with AI-powered content strategy and trending topic identification.",
+                tags: ["Strategy"],
+                image: "https://placehold.co/600x400/d97706/white?text=Leadership+Engine",
+            },
+        ];
+
+        function ScrollSyncedCarousel({useCases, id}) {
+            const [activeIndex, setActiveIndex] = useState(0);
+            const contentRefs = useRef([]);
+            const scrollWrapperRef = useRef(null);
+            const contentCarouselRef = useRef(null);
+
+            useEffect(() => {
+                const handleScroll = () => {
+                    const wrapper = scrollWrapperRef.current;
+                    if (!wrapper) return;
+                    const wrapperRect = wrapper.getBoundingClientRect();
+                    if (wrapperRect.bottom < 0 || wrapperRect.top > window.innerHeight) return;
+                    const scrollableHeight = wrapper.offsetHeight - window.innerHeight;
+                    const pixelsScrolled = Math.max(0, window.scrollY - wrapper.offsetTop);
+                    const progress = scrollableHeight > 0 ? pixelsScrolled / scrollableHeight : 0;
+                    let newActiveIndex = Math.floor(progress * useCases.length);
+                    newActiveIndex = Math.min(useCases.length - 1, newActiveIndex);
+                    setActiveIndex(newActiveIndex);
+                };
+                window.addEventListener("scroll", handleScroll, { passive: true });
+                handleScroll();
+                return () => window.removeEventListener("scroll", handleScroll);
+            }, [useCases]);
+
+            useEffect(() => {
+                const contentPanel = contentCarouselRef.current;
+                const activeItem = contentRefs.current[activeIndex];
+                if (contentPanel && activeItem) {
+                    const panelHeight = contentPanel.clientHeight;
+                    const itemHeight = activeItem.clientHeight;
+                    const itemOffsetTop = activeItem.offsetTop;
+                    const targetScrollTop = itemOffsetTop - (panelHeight / 2) + (itemHeight / 2);
+                    contentPanel.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
+                }
+            }, [activeIndex]);
+
+            return (
+                <React.Fragment>
+                    <style>{`
+                        .scroll-wrapper { min-height: 250vh; position: relative; }
+                        .sticky-container { position: sticky; top: 10vh; height: 80vh; max-height: 700px; width: 100%; display: flex; align-items: stretch; background: #ffffff; border-radius: 24px; box-shadow: 15px 15px 30px #8fa7e9, -15px -15px 30px #eaeefa; overflow: hidden; }
+                        .content-carousel { flex: 1; height: 100%; padding: 0 1.5rem 0 3rem; box-sizing: border-box; overflow-y: scroll; -ms-overflow-style: none; scrollbar-width: none; }
+                        .content-carousel::-webkit-scrollbar { display: none; }
+                        .content-item { height: 80vh; max-width: 450px; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; transition: opacity 0.5s ease-in-out; }
+                        .content-item:last-child { padding-bottom: 0; }
+                        .image-display { flex: 1; height: 100%; display: flex; align-items: center; justify-center; padding: 3rem; }
+                        .image-card { width: 100%; height: 100%; background: white; border-radius: 1.5rem; box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1); position: relative; overflow: hidden; }
+                        .image-card img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transition: opacity 0.5s ease-in-out; }
+                        .tag { display: inline-block; background: #eef2ff; color: #4f46e5; border-radius: 9999px; font-size: 0.875rem; font-weight: 600; padding: 0.25rem 0.75rem; box-shadow: none; }
+                        .content-title { font-size: 2rem; font-weight: 700; color: #1f2937; margin-top: 0.75rem; }
+                        .content-desc { font-size: 1.125rem; color: #4b5563; margin-top: 0.75rem; line-height: 1.75; }
+                        @media (max-width: 1024px) { .sticky-container { flex-direction: column; height: 90vh; top: 5vh; } .content-carousel { padding: 2rem; flex: 0 0 50%; } .image-display { padding: 0 2rem 2rem 2rem; flex: 1; } }
+                        @media (max-width: 640px) { .content-carousel { padding: 1.5rem; } .image-display { padding: 0 1.5rem 1.5rem 1.5rem; } .content-title { font-size: 1.5rem; } .content-desc { font-size: 1rem; } }
+                    `}</style>
+                    <div className="scroll-wrapper" ref={scrollWrapperRef}>
+                        <section className="sticky-container">
+                            <div className="content-carousel" ref={contentCarouselRef}>
+                                {useCases.map((useCase, i) => (
+                                    <div key={useCase.title} ref={el => (contentRefs.current[i] = el)} className="content-item" style={{ opacity: activeIndex === i ? 1 : 0.3 }}>
+                                        <span className="tag">{useCase.tags[0]}</span>
+                                        <h3 className="content-title">{useCase.title}</h3>
+                                        <p className="content-desc">{useCase.desc}</p>
+                                    </div>
+                                ))}
+                            </div>
+                            <div className="image-display">
+                                <div className="image-card">
+                                    {useCases.map((useCase, i) => (
+                                        <img key={useCase.image} src={useCase.image} alt={useCase.title} style={{ opacity: activeIndex === i ? 1 : 0 }} />
+                                    ))}
+                                </div>
+                            </div>
+                        </section>
+                    </div>
+                </React.Fragment>
+            );
+        }
+
+        const useCases2 = [
+            {
+                title: "Smart Resume Studio",
+                desc: "AI-powered resume optimization with real-time ATS scoring and master/campaign resume management.",
+                tags: ["Resume"],
+                image: "https://placehold.co/600x400/1d4ed8/white?text=Resume+Studio",
+            },
+            {
+                title: "Application Tailor",
+                desc: "Create laser-focused applications tailored to specific job postings with AI analysis.",
+                tags: ["Applications"],
+                image: "https://placehold.co/600x400/9333ea/white?text=Application+Tailor",
+            },
+            {
+                title: "Job Finder & Tracker",
+                desc: "AI-powered job discovery with Kanban-style application pipeline management.",
+                tags: ["Jobs"],
+                image: "https://placehold.co/600x400/c026d3/white?text=Job+Tracker",
+            },
+            {
+                title: "Interview Prep Kit",
+                desc: "AI mock interviews, question banks, and performance analytics for interview mastery.",
+                tags: ["Interview"],
+                image: "https://placehold.co/600x400/db2777/white?text=Interview+Prep",
+            },
+        ];
+
+        const useCases3 = [
+           {
+                title: "Skill Radar",
+                desc: "Live market intelligence tracking rising skills and high-ROI learning opportunities.",
+                tags: ["Radar"],
+                image: "https://placehold.co/600x400/7c3aed/white?text=Skill+Radar",
+            },
+            {
+                title: "Learning Sprints",
+                desc: "Focused 2-3 week learning missions with tangible deliverables and portfolio artifacts.",
+                tags: ["Sprints"],
+                image: "https://placehold.co/600x400/6d28d9/white?text=Learning+Sprints",
+            },
+            {
+                title: "Certification Planning",
+                desc: "Strategic certification roadmap with study guides and market value analysis.",
+                tags: ["Certs"],
+                image: "https://placehold.co/600x400/5b21b6/white?text=Cert+Planning",
+            },
+            {
+                title: "Skill Benchmarking",
+                desc: "Real-time comparison against market demand with weekly alignment scoring.",
+                tags: ["Benchmark"],
+                image: "https://placehold.co/600x400/4c1d95/white?text=Benchmarking",
+            },
+        ];
+
+        ReactDOM.render(<ScrollSyncedCarousel useCases={useCases} id="carousel1" />, document.getElementById('root'));
+        ReactDOM.render(<ScrollSyncedCarousel useCases={useCases2} id="carousel2" />, document.getElementById('root2'));
+        ReactDOM.render(<ScrollSyncedCarousel useCases={useCases3} id="carousel3" />, document.getElementById('root3'));
+
+    </script>
+</body>
+
+</html>
