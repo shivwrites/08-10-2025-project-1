@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Smart Resume Studio</title>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React libraries -->
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <!-- Babel for JSX transpilation -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    </style>
+</head>
+<body class="bg-[#dee5fb]">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState } = React;
+
+        // Simple App Component
+        const App = () => {
+            const [step, setStep] = useState('selection');
+
+            if (step === 'selection') {
+                return (
+                    <div className="p-6 lg:p-8 w-full h-screen mx-auto bg-[#dee5fb] text-slate-800 overflow-y-auto">
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 max-w-4xl mx-auto">
+                            {/* Choose CV Card */}
+                            <div className="rounded-2xl p-8 border text-center hover:transform hover:scale-105 transition-all duration-300 cursor-pointer bg-white/50 backdrop-blur-xl border-white/30 hover:border-indigo-300">
+                                <div className="w-20 h-20 bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full flex items-center justify-center mx-auto mb-6">
+                                    <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                                    </svg>
+                                </div>
+                                <h2 className="text-2xl font-bold mb-4 text-slate-900">Choose your CV/Resume</h2>
+                                <p className="text-lg mb-6 text-slate-600">Load your existing CV and format it with our professional templates and AI optimization</p>
+                                <div className="space-y-3 text-sm text-slate-500">
+                                    <div className="flex items-center gap-2">
+                                        <svg className="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"></path>
+                                        </svg>
+                                        <span>Upload PDF, DOCX, DOC, or TXT</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <svg className="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"></path>
+                                        </svg>
+                                        <span>AI content extraction and formatting</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <svg className="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"></path>
+                                        </svg>
+                                        <span>Professional template application</span>
+                                    </div>
+                                </div>
+                                <button className="mt-6 px-6 py-3 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-lg font-semibold hover:shadow-lg hover:shadow-blue-500/25 transition-all duration-300 flex items-center gap-2 mx-auto">
+                                    Select Files 
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path>
+                                    </svg>
+                                </button>
+                            </div>
+
+                            {/* Start from Scratch Card */}
+                            <div className="rounded-2xl p-8 border text-center hover:transform hover:scale-105 transition-all duration-300 cursor-pointer bg-white/50 backdrop-blur-xl border-white/30 hover:border-green-300" onClick={() => setStep('studio')}>
+                                <div className="w-20 h-20 bg-gradient-to-r from-green-500 to-emerald-500 rounded-full flex items-center justify-center mx-auto mb-6">
+                                    <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+                                    </svg>
+                                </div>
+                                <h2 className="text-2xl font-bold mb-4 text-slate-900">Start from Scratch</h2>
+                                <p className="text-lg mb-6 text-slate-600">Create a new resume from scratch with AI guidance and professional templates</p>
+                                <div className="space-y-3 text-sm text-slate-500">
+                                    <div className="flex items-center gap-2">
+                                        <svg className="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"></path>
+                                        </svg>
+                                        <span>AI-powered content suggestions</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <svg className="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"></path>
+                                        </svg>
+                                        <span>Step-by-step guidance</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <svg className="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd"></path>
+                                        </svg>
+                                        <span>Professional formatting</span>
+                                    </div>
+                                </div>
+                                <button className="mt-6 px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-lg font-semibold hover:shadow-lg hover:shadow-green-500/25 transition-all duration-300 flex items-center gap-2 mx-auto">
+                                    Create New CV
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Features Overview */}
+                        <div className="mt-16 max-w-6xl mx-auto">
+                            <h3 className="text-2xl font-bold text-center mb-8 text-slate-900">
+                                What You'll Get with Smart Resume Studio
+                            </h3>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                                <div className="p-6 rounded-xl border bg-white/50 backdrop-blur-xl border-white/30">
+                                    <svg className="w-8 h-8 text-blue-500 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
+                                    </svg>
+                                    <h4 className="font-semibold mb-2 text-slate-800">ATS Optimization</h4>
+                                    <p className="text-sm text-slate-600">Beat applicant tracking systems with AI-powered formatting</p>
+                                </div>
+                                <div className="p-6 rounded-xl border bg-white/50 backdrop-blur-xl border-white/30">
+                                    <svg className="w-8 h-8 text-green-500 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"></path>
+                                    </svg>
+                                    <h4 className="font-semibold mb-2 text-slate-800">Impact Enhancement</h4>
+                                    <p className="text-sm text-slate-600">Transform job duties into quantifiable achievements</p>
+                                </div>
+                                <div className="p-6 rounded-xl border bg-white/50 backdrop-blur-xl border-white/30">
+                                    <svg className="w-8 h-8 text-purple-500 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                                    </svg>
+                                    <h4 className="font-semibold mb-2 text-slate-800">Job Targeting</h4>
+                                    <p className="text-sm text-slate-600">Create tailored resumes for specific opportunities</p>
+                                </div>
+                                <div className="p-6 rounded-xl border bg-white/50 backdrop-blur-xl border-white/30">
+                                    <svg className="w-8 h-8 text-orange-500 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
+                                    </svg>
+                                    <h4 className="font-semibold mb-2 text-slate-800">AI Copilot</h4>
+                                    <p className="text-sm text-slate-600">Get intelligent suggestions and gap justification</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            if (step === 'studio') {
+                return (
+                    <div className="p-8 bg-[#dee5fb] min-h-screen">
+                        <div className="max-w-4xl mx-auto">
+                            <div className="bg-white rounded-2xl shadow-2xl p-8">
+                                <h1 className="text-3xl font-bold text-slate-900 mb-6">Smart Resume Studio</h1>
+                                <p className="text-lg text-slate-600 mb-8">Welcome to your resume editing workspace!</p>
+                                
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div className="p-6 bg-slate-50 rounded-lg">
+                                        <h3 className="text-xl font-semibold text-slate-800 mb-4">Resume Editor</h3>
+                                        <p className="text-slate-600 mb-4">Create and edit your resume with our powerful editor.</p>
+                                        <button className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors">
+                                            Start Editing
+                                        </button>
+                                    </div>
+                                    
+                                    <div className="p-6 bg-slate-50 rounded-lg">
+                                        <h3 className="text-xl font-semibold text-slate-800 mb-4">AI Features</h3>
+                                        <p className="text-slate-600 mb-4">Get AI-powered suggestions and optimizations.</p>
+                                        <button className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
+                                            Use AI Tools
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="mt-8 text-center">
+                                    <button 
+                                        onClick={() => setStep('selection')}
+                                        className="px-6 py-3 bg-slate-600 text-white rounded-lg hover:bg-slate-700 transition-colors"
+                                    >
+                                        Back to Selection
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            return null;
+        };
+
+        // Render the App
+        try {
+            const root = ReactDOM.createRoot(document.getElementById('root'));
+            root.render(<App />);
+        } catch (error) {
+            console.error('Error rendering Smart Resume Studio:', error);
+            document.getElementById('root').innerHTML = `
+                <div style="padding: 20px; text-align: center; color: red;">
+                    <h2>Error loading Smart Resume Studio</h2>
+                    <p>${error.message}</p>
+                </div>
+            `;
+        }
+    </script>
+</body>
+</html>
