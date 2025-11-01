@@ -4885,6 +4885,263 @@ Return only the cover letter text, no additional explanation:`
             }
         };
 
+        // ============================================================================
+        // SHARED JOB TRACKING UTILITIES
+        // ============================================================================
+        
+        // Shared utilities for Job Finder and Job Tracker integration
+        const JobTrackingUtils = {
+            // Get all tracked jobs from localStorage
+            getAllTrackedJobs() {
+                try {
+                    const stored = localStorage.getItem('tracked_jobs');
+                    return stored ? JSON.parse(stored) : [];
+                } catch (e) {
+                    console.error('Error loading tracked jobs:', e);
+                    return [];
+                }
+            },
+
+            // Save tracked jobs to localStorage
+            saveTrackedJobs(jobs) {
+                try {
+                    localStorage.setItem('tracked_jobs', JSON.stringify(jobs));
+                    localStorage.setItem('tracked_jobs_last_updated', Date.now().toString());
+                    return true;
+                } catch (e) {
+                    console.error('Error saving tracked jobs:', e);
+                    return false;
+                }
+            },
+
+            // Add a job to tracker (with duplicate detection)
+            addJobToTracker(job, source = 'job-finder', status = 'new-leads') {
+                const trackedJobs = this.getAllTrackedJobs();
+                
+                // Check for duplicates by URL and title+company
+                const isDuplicate = trackedJobs.some(tracked => {
+                    const urlMatch = tracked.url && job.url && 
+                        tracked.url.toLowerCase() === job.url.toLowerCase();
+                    const titleCompanyMatch = tracked.title === job.title && 
+                        tracked.company === job.company;
+                    return urlMatch || titleCompanyMatch;
+                });
+
+                if (isDuplicate) {
+                    return { success: false, message: 'This job is already being tracked', duplicate: true };
+                }
+
+                // Transform job to tracker format
+                const trackerJob = {
+                    id: Date.now() + Math.random(), // Unique ID
+                    title: job.title || 'Untitled Position',
+                    company: job.company || 'Unknown Company',
+                    location: job.location || 'Not specified',
+                    salary: job.salary || 'Competitive',
+                    matchScore: job.matchScore || 0,
+                    postedDate: job.postedDate || new Date().toISOString().split('T')[0],
+                    source: job.source || source,
+                    status: status,
+                    notes: job.whyMatch ? `Why this matches: ${job.whyMatch}` : '',
+                    applicationDate: '',
+                    interviewDate: '',
+                    contacts: '',
+                    url: job.url || '#',
+                    whyMatch: job.whyMatch || '',
+                    description: job.description || job.snippet || '',
+                    addedFrom: source,
+                    addedAt: new Date().toISOString()
+                };
+
+                trackedJobs.push(trackerJob);
+                this.saveTrackedJobs(trackedJobs);
+
+                return { success: true, message: 'Job added to tracker!', job: trackerJob };
+            },
+
+            // Check if a job is already tracked
+            isJobTracked(job) {
+                const trackedJobs = this.getAllTrackedJobs();
+                return trackedJobs.some(tracked => {
+                    const urlMatch = tracked.url && job.url && 
+                        tracked.url.toLowerCase() === job.url.toLowerCase();
+                    const titleCompanyMatch = tracked.title === job.title && 
+                        tracked.company === job.company;
+                    return urlMatch || titleCompanyMatch;
+                });
+            },
+
+            // Get tracked job by URL
+            getTrackedJobByUrl(url) {
+                const trackedJobs = this.getAllTrackedJobs();
+                return trackedJobs.find(job => 
+                    job.url && url && job.url.toLowerCase() === url.toLowerCase()
+                );
+            },
+
+            // Get tracked job by title and company
+            getTrackedJobByTitleAndCompany(title, company) {
+                const trackedJobs = this.getAllTrackedJobs();
+                return trackedJobs.find(job => 
+                    job.title === title && job.company === company
+                );
+            },
+
+            // Update job status
+            updateJobStatus(jobId, newStatus) {
+                const trackedJobs = this.getAllTrackedJobs();
+                const updated = trackedJobs.map(job => {
+                    if (job.id === jobId) {
+                        const updated = { ...job, status: newStatus };
+                        
+                        // Auto-set dates based on status
+                        if (newStatus === 'applied' && !updated.applicationDate) {
+                            updated.applicationDate = new Date().toISOString().split('T')[0];
+                        }
+                        if (newStatus === 'interviewing' && !updated.interviewDate) {
+                            // Don't auto-set, let user set it
+                        }
+                        
+                        return updated;
+                    }
+                    return job;
+                });
+                this.saveTrackedJobs(updated);
+                return updated.find(job => job.id === jobId);
+            },
+
+            // Bulk add jobs to tracker
+            bulkAddJobs(jobs, source = 'job-finder', minMatchScore = 0) {
+                const results = [];
+                const filteredJobs = minMatchScore > 0 
+                    ? jobs.filter(job => (job.matchScore || 0) >= minMatchScore)
+                    : jobs;
+
+                filteredJobs.forEach(job => {
+                    const result = this.addJobToTracker(job, source, 'new-leads');
+                    results.push(result);
+                });
+
+                const successCount = results.filter(r => r.success).length;
+                return {
+                    total: filteredJobs.length,
+                    added: successCount,
+                    duplicates: results.filter(r => r.duplicate).length,
+                    results
+                };
+            },
+
+            // Get analytics
+            getAnalytics() {
+                const jobs = this.getAllTrackedJobs();
+                const now = new Date();
+                const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+                const stats = {
+                    total: jobs.length,
+                    byStatus: {},
+                    bySource: {},
+                    averageMatchScore: 0,
+                    recentActivity: jobs.filter(job => {
+                        const addedDate = new Date(job.addedAt || job.postedDate);
+                        return addedDate >= weekAgo;
+                    }).length,
+                    totalApplied: 0,
+                    totalInterviews: 0,
+                    totalOffers: 0
+                };
+
+                let totalMatchScore = 0;
+                jobs.forEach(job => {
+                    // Count by status
+                    stats.byStatus[job.status] = (stats.byStatus[job.status] || 0) + 1;
+                    
+                    // Count by source
+                    stats.bySource[job.source] = (stats.bySource[job.source] || 0) + 1;
+                    
+                    // Sum match scores
+                    if (job.matchScore) {
+                        totalMatchScore += job.matchScore;
+                    }
+                    
+                    // Count applications
+                    if (job.status === 'applied' || job.status === 'interviewing' || 
+                        job.status === 'offer' || job.applicationDate) {
+                        stats.totalApplied++;
+                    }
+                    
+                    // Count interviews
+                    if (job.status === 'interviewing' || job.status === 'offer' || job.interviewDate) {
+                        stats.totalInterviews++;
+                    }
+                    
+                    // Count offers
+                    if (job.status === 'offer') {
+                        stats.totalOffers++;
+                    }
+                });
+
+                stats.averageMatchScore = jobs.length > 0 
+                    ? Math.round(totalMatchScore / jobs.length) 
+                    : 0;
+
+                return stats;
+            },
+
+            // Show notification
+            showNotification(message, type = 'success', duration = 3000) {
+                // Create notification element
+                const notification = document.createElement('div');
+                notification.className = `fixed top-4 right-4 z-[10000] px-6 py-4 rounded-xl shadow-2xl ${
+                    type === 'success' ? 'bg-green-500 text-white' :
+                    type === 'error' ? 'bg-red-500 text-white' :
+                    type === 'info' ? 'bg-blue-500 text-white' :
+                    'bg-yellow-500 text-white'
+                }`;
+                notification.style.animation = 'slideInRight 0.3s ease-out';
+                notification.innerHTML = `
+                    <div class="flex items-center gap-3">
+                        <span class="text-xl">${type === 'success' ? '✓' : type === 'error' ? '✕' : 'ℹ️'}</span>
+                        <span class="font-medium">${message}</span>
+                    </div>
+                `;
+
+                // Add animation style if not exists
+                if (!document.getElementById('notification-styles')) {
+                    const style = document.createElement('style');
+                    style.id = 'notification-styles';
+                    style.textContent = `
+                        @keyframes slideInRight {
+                            from { transform: translateX(100%); opacity: 0; }
+                            to { transform: translateX(0); opacity: 1; }
+                        }
+                        @keyframes slideOutRight {
+                            from { transform: translateX(0); opacity: 1; }
+                            to { transform: translateX(100%); opacity: 0; }
+                        }
+                    `;
+                    document.head.appendChild(style);
+                }
+
+                document.body.appendChild(notification);
+
+                // Remove after duration
+                setTimeout(() => {
+                    notification.style.animation = 'slideOutRight 0.3s ease-out';
+                    setTimeout(() => notification.remove(), 300);
+                }, duration);
+
+                return notification;
+            }
+        };
+
+        // Make utils available globally
+        window.JobTrackingUtils = JobTrackingUtils;
+
+        // ============================================================================
+        // END SHARED UTILITIES
+        // ============================================================================
+
         // Job Finder React Component
         const JobFinder = () => {
             const [activeTab, setActiveTab] = useState('search');
@@ -4948,6 +5205,10 @@ Return only the cover letter text, no additional explanation:`
             const [selectedSearchStrategy, setSelectedSearchStrategy] = useState(null);
             const [isGeneratingQuery, setIsGeneratingQuery] = useState(false);
             const [aiReasoning, setAiReasoning] = useState(null);
+            
+            // Tracking integration state
+            const [trackedJobIds, setTrackedJobIds] = useState(new Set());
+            const [refreshTracking, setRefreshTracking] = useState(0);
             
             // Common locations database - Expanded with global cities
             const locationDatabase = [
@@ -6552,6 +6813,130 @@ Return only valid JSON, no additional text. Be comprehensive and extract all ski
                 return true; // Passed all filters
             };
             
+            // Track job function
+            const handleTrackJob = (job, source = 'job-finder') => {
+                const result = window.JobTrackingUtils.addJobToTracker(job, source, 'new-leads');
+                
+                if (result.success) {
+                    window.JobTrackingUtils.showNotification(
+                        `Job "${job.title}" added to tracker! View in Job Tracker →`,
+                        'success',
+                        4000
+                    );
+                    
+                    // Update tracked jobs set
+                    const tracked = window.JobTrackingUtils.getAllTrackedJobs();
+                    const trackedSet = new Set(tracked.map(j => j.url));
+                    setTrackedJobIds(trackedSet);
+                    setRefreshTracking(prev => prev + 1);
+                    
+                    // Optional: Navigate to tracker
+                    setTimeout(() => {
+                        const trackerLink = document.querySelector('[data-id="job-tracker"]');
+                        if (trackerLink && confirm('Job added! Would you like to view it in Job Tracker?')) {
+                            trackerLink.click();
+                        }
+                    }, 1000);
+                } else if (result.duplicate) {
+                    window.JobTrackingUtils.showNotification(
+                        result.message + ' Would you like to view it in Job Tracker?',
+                        'info',
+                        4000
+                    );
+                    
+                    // Optional: Navigate to tracker
+                    setTimeout(() => {
+                        if (confirm('View this job in Job Tracker?')) {
+                            const trackerLink = document.querySelector('[data-id="job-tracker"]');
+                            if (trackerLink) trackerLink.click();
+                        }
+                    }, 1000);
+                } else {
+                    window.JobTrackingUtils.showNotification(
+                        'Failed to add job to tracker. Please try again.',
+                        'error'
+                    );
+                }
+            };
+
+            // Apply & Track function
+            const handleApplyAndTrack = (job) => {
+                // First track the job
+                const result = window.JobTrackingUtils.addJobToTracker(job, 'job-finder', 'applied');
+                
+                if (result.success) {
+                    window.JobTrackingUtils.updateJobStatus(result.job.id, 'applied');
+                    window.JobTrackingUtils.showNotification(
+                        `Job tracked and marked as Applied! Opening application page...`,
+                        'success'
+                    );
+                    
+                    // Open application page
+                    setTimeout(() => {
+                        window.open(job.url, '_blank');
+                    }, 500);
+                    
+                    // Update tracked jobs
+                    const tracked = window.JobTrackingUtils.getAllTrackedJobs();
+                    const trackedSet = new Set(tracked.map(j => j.url));
+                    setTrackedJobIds(trackedSet);
+                    setRefreshTracking(prev => prev + 1);
+                } else if (result.duplicate) {
+                    // Update existing job to applied
+                    const trackedJob = window.JobTrackingUtils.getTrackedJobByUrl(job.url);
+                    if (trackedJob) {
+                        window.JobTrackingUtils.updateJobStatus(trackedJob.id, 'applied');
+                    }
+                    window.open(job.url, '_blank');
+                }
+            };
+
+            // Bulk track high matches
+            const handleBulkTrackHighMatches = (jobs, minScore = 80) => {
+                const result = window.JobTrackingUtils.bulkAddJobs(jobs, 'job-finder', minScore);
+                
+                window.JobTrackingUtils.showNotification(
+                    `Added ${result.added} jobs to tracker${result.duplicates > 0 ? ` (${result.duplicates} duplicates skipped)` : ''}`,
+                    result.added > 0 ? 'success' : 'info'
+                );
+                
+                // Refresh tracked jobs
+                const tracked = window.JobTrackingUtils.getAllTrackedJobs();
+                const trackedSet = new Set(tracked.map(j => j.url));
+                setTrackedJobIds(trackedSet);
+                setRefreshTracking(prev => prev + 1);
+            };
+
+            // Check if job is tracked
+            const isJobTracked = (job) => {
+                return window.JobTrackingUtils.isJobTracked(job);
+            };
+
+            // Get tracked job status for display
+            const getTrackedJobStatus = (job) => {
+                const trackedJob = window.JobTrackingUtils.getTrackedJobByUrl(job.url) ||
+                                  window.JobTrackingUtils.getTrackedJobByTitleAndCompany(job.title, job.company);
+                
+                if (!trackedJob) return null;
+                
+                const statusLabels = {
+                    'new-leads': 'New Lead',
+                    'reviewing': 'Reviewing',
+                    'applied': `Applied on ${trackedJob.applicationDate || 'recently'}`,
+                    'interviewing': `Interview scheduled${trackedJob.interviewDate ? `: ${trackedJob.interviewDate}` : ''}`,
+                    'offer': 'Offer Received',
+                    'rejected': 'Rejected',
+                    'archived': 'Archived'
+                };
+                
+                return {
+                    status: trackedJob.status,
+                    label: statusLabels[trackedJob.status] || 'Tracked',
+                    applicationDate: trackedJob.applicationDate,
+                    interviewDate: trackedJob.interviewDate
+                };
+            };
+
             // Check for saved resume and detect IP location
             React.useEffect(() => {
                 const savedResumes = JSON.parse(localStorage.getItem('parsed_resumes') || '{}');
@@ -6604,6 +6989,11 @@ Return only valid JSON, no additional text. Be comprehensive and extract all ski
                 // Load search history
                 const savedHistory = JSON.parse(localStorage.getItem('job_search_history') || '[]');
                 setSearchHistory(savedHistory);
+                
+                // Load tracked jobs for duplicate detection
+                const tracked = window.JobTrackingUtils.getAllTrackedJobs();
+                const trackedSet = new Set(tracked.map(j => j.url));
+                setTrackedJobIds(trackedSet);
                 
                 // Close dropdowns when clicking outside
                 const handleClickOutside = (event) => {
@@ -7667,23 +8057,32 @@ Return ONLY a number between 0-100 representing the match percentage.`
                             {/* Job Results Display */}
                             {jobResults.length > 0 && (
                                 <div className="mt-6">
-                                    <div className="flex items-center justify-between mb-4">
+                                    <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
                                         <h3 className="text-xl font-bold text-slate-800">🎯 Search Results ({jobResults.length})</h3>
-                                        <button
-                                            onClick={() => {
-                                                const csv = jobResults.map(job => 
-                                                    `"${job.title}","${job.company}","${job.location}","${job.salary}","${job.type}","${job.url}"`
-                                                ).join('\n');
-                                                const csvContent = 'data:text/csv;charset=utf-8,' + encodeURIComponent('Title,Company,Location,Salary,Type,URL\n' + csv);
-                                                const link = document.createElement('a');
-                                                link.href = csvContent;
-                                                link.download = `job-search-results-${Date.now()}.csv`;
-                                                link.click();
-                                            }}
-                                            className="px-4 py-2 bg-green-100 text-green-700 rounded-lg font-medium hover:bg-green-200 transition-colors flex items-center gap-2 text-sm"
-                                        >
-                                            📥 Export CSV
-                                        </button>
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            <button
+                                                onClick={() => handleBulkTrackHighMatches(jobResults, 80)}
+                                                className="px-4 py-2 bg-purple-100 text-purple-700 rounded-lg font-medium hover:bg-purple-200 transition-colors flex items-center gap-2 text-sm"
+                                                title="Track all jobs with 80%+ match score"
+                                            >
+                                                📌 Track All High Matches (80%+)
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    const csv = jobResults.map(job => 
+                                                        `"${job.title}","${job.company}","${job.location}","${job.salary}","${job.type}","${job.url}"`
+                                                    ).join('\n');
+                                                    const csvContent = 'data:text/csv;charset=utf-8,' + encodeURIComponent('Title,Company,Location,Salary,Type,URL\n' + csv);
+                                                    const link = document.createElement('a');
+                                                    link.href = csvContent;
+                                                    link.download = `job-search-results-${Date.now()}.csv`;
+                                                    link.click();
+                                                }}
+                                                className="px-4 py-2 bg-green-100 text-green-700 rounded-lg font-medium hover:bg-green-200 transition-colors flex items-center gap-2 text-sm"
+                                            >
+                                                📥 Export CSV
+                                            </button>
+                                        </div>
                                     </div>
                                     
                                     <div className="space-y-4">
@@ -7725,7 +8124,55 @@ Return ONLY a number between 0-100 representing the match percentage.`
                                                             </div>
                                                         )}
 
+                                                       {/* Tracked Status Indicator */}
+                                                       {(() => {
+                                                           const trackedStatus = getTrackedJobStatus(job);
+                                                           return trackedStatus ? (
+                                                               <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+                                                                   <p className="text-sm text-green-700 font-medium">
+                                                                       ✓ {trackedStatus.label}
+                                                                   </p>
+                                                               </div>
+                                                           ) : null;
+                                                       })()}
+
                                                        <div className="flex flex-wrap gap-2 mt-2">
+                                                            {isJobTracked(job) ? (
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        const trackerLink = document.querySelector('[data-id="job-tracker"]');
+                                                                        if (trackerLink) {
+                                                                            window.JobTrackingUtils.showNotification('Opening Job Tracker...', 'info');
+                                                                            trackerLink.click();
+                                                                        }
+                                                                    }}
+                                                                    className="px-4 py-2 bg-indigo-100 text-indigo-700 rounded-xl font-semibold hover:bg-indigo-200 transition-all whitespace-nowrap flex items-center gap-1"
+                                                                >
+                                                                    ✓ View in Tracker
+                                                                </button>
+                                                            ) : (
+                                                                <>
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            handleTrackJob(job, 'job-finder');
+                                                                        }}
+                                                                        className="px-4 py-2 bg-purple-100 text-purple-700 rounded-xl font-semibold hover:bg-purple-200 transition-all whitespace-nowrap flex items-center gap-1"
+                                                                    >
+                                                                        📌 Track This Job
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            handleApplyAndTrack(job);
+                                                                        }}
+                                                                        className="px-4 py-2 bg-green-100 text-green-700 rounded-xl font-semibold hover:bg-green-200 transition-all whitespace-nowrap flex items-center gap-1"
+                                                                    >
+                                                                        ✅ Apply & Track
+                                                                    </button>
+                                                                </>
+                                                            )}
                                                             <button
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
@@ -8216,23 +8663,32 @@ Return ONLY a number between 0-100 representing the match percentage.`
                                     {/* Search Results Display */}
                                     {personalizedJobResults.length > 0 && (
                                         <div className="mt-6">
-                                            <div className="flex items-center justify-between mb-4">
+                                            <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
                                                     <h3 className="text-xl font-bold text-slate-800">Found {personalizedJobResults.length} Jobs</h3>
-                                                <button
-                                                    onClick={() => {
-                                                        const csv = personalizedJobResults.map(job => 
-                                                            `"${job.title}","${job.company}","${job.location}","${job.salary}","${job.type}","${job.url}"`
-                                                        ).join('\n');
-                                                        const csvContent = 'data:text/csv;charset=utf-8,' + encodeURIComponent('Title,Company,Location,Salary,Type,URL\n' + csv);
-                                                        const link = document.createElement('a');
-                                                        link.href = csvContent;
-                                                        link.download = `personalized-job-results-${Date.now()}.csv`;
-                                                        link.click();
-                                                    }}
-                                                    className="px-4 py-2 bg-green-100 text-green-700 rounded-lg font-medium hover:bg-green-200 transition-colors flex items-center gap-2 text-sm"
-                                                >
-                                                    📥 Export CSV
-                                                </button>
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    <button
+                                                        onClick={() => handleBulkTrackHighMatches(personalizedJobResults, 80)}
+                                                        className="px-4 py-2 bg-purple-100 text-purple-700 rounded-lg font-medium hover:bg-purple-200 transition-colors flex items-center gap-2 text-sm"
+                                                        title="Track all jobs with 80%+ match score"
+                                                    >
+                                                        📌 Track All High Matches (80%+)
+                                                    </button>
+                                                    <button
+                                                        onClick={() => {
+                                                            const csv = personalizedJobResults.map(job => 
+                                                                `"${job.title}","${job.company}","${job.location}","${job.salary}","${job.type}","${job.url}"`
+                                                            ).join('\n');
+                                                            const csvContent = 'data:text/csv;charset=utf-8,' + encodeURIComponent('Title,Company,Location,Salary,Type,URL\n' + csv);
+                                                            const link = document.createElement('a');
+                                                            link.href = csvContent;
+                                                            link.download = `personalized-job-results-${Date.now()}.csv`;
+                                                            link.click();
+                                                        }}
+                                                        className="px-4 py-2 bg-green-100 text-green-700 rounded-lg font-medium hover:bg-green-200 transition-colors flex items-center gap-2 text-sm"
+                                                    >
+                                                        📥 Export CSV
+                                                    </button>
+                                                </div>
                                             </div>
                                             
                                             <div className="space-y-4">
@@ -8274,7 +8730,55 @@ Return ONLY a number between 0-100 representing the match percentage.`
                                                                     </div>
                                                                 )}
 
+                                                               {/* Tracked Status Indicator */}
+                                                               {(() => {
+                                                                   const trackedStatus = getTrackedJobStatus(job);
+                                                                   return trackedStatus ? (
+                                                                       <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+                                                                           <p className="text-sm text-green-700 font-medium">
+                                                                               ✓ {trackedStatus.label}
+                                                                           </p>
+                                                                       </div>
+                                                                   ) : null;
+                                                               })()}
+
                                                                <div className="flex flex-wrap gap-2 mt-2">
+                                                                    {isJobTracked(job) ? (
+                                                                        <button
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                const trackerLink = document.querySelector('[data-id="job-tracker"]');
+                                                                                if (trackerLink) {
+                                                                                    window.JobTrackingUtils.showNotification('Opening Job Tracker...', 'info');
+                                                                                    trackerLink.click();
+                                                                                }
+                                                                            }}
+                                                                            className="px-4 py-2 bg-indigo-100 text-indigo-700 rounded-xl font-semibold hover:bg-indigo-200 transition-all whitespace-nowrap flex items-center gap-1"
+                                                                        >
+                                                                            ✓ View in Tracker
+                                                                        </button>
+                                                                    ) : (
+                                                                        <>
+                                                                            <button
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    handleTrackJob(job, 'job-finder');
+                                                                                }}
+                                                                                className="px-4 py-2 bg-purple-100 text-purple-700 rounded-xl font-semibold hover:bg-purple-200 transition-all whitespace-nowrap flex items-center gap-1"
+                                                                            >
+                                                                                📌 Track This Job
+                                                                            </button>
+                                                                            <button
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    handleApplyAndTrack(job);
+                                                                                }}
+                                                                                className="px-4 py-2 bg-green-100 text-green-700 rounded-xl font-semibold hover:bg-green-200 transition-all whitespace-nowrap flex items-center gap-1"
+                                                                            >
+                                                                                ✅ Apply & Track
+                                                                            </button>
+                                                                        </>
+                                                                    )}
                                                                     <button
                                                                         onClick={(e) => {
                                                                             e.stopPropagation();
@@ -8861,89 +9365,21 @@ Return ONLY a number between 0-100 representing the match percentage.`
             // Check for light mode
             const isLightMode = !document.documentElement.classList.contains('dark');
 
-            // Mock job cards data
-            const [jobCards, setJobCards] = useState([
-                {
-                    id: 1,
-                    title: 'Senior Full Stack Engineer',
-                    company: 'TechCorp Inc.',
-                    location: 'San Francisco, CA',
-                    salary: '$120k - $160k',
-                    matchScore: 94,
-                    postedDate: '2024-01-15',
-                    source: 'LinkedIn',
-                    status: 'new-leads',
-                    notes: '',
-                    applicationDate: '',
-                    interviewDate: '',
-                    contacts: '',
-                    url: '#'
-                },
-                {
-                    id: 2,
-                    title: 'Product Manager',
-                    company: 'StartupXYZ',
-                    location: 'Remote',
-                    salary: '$100k - $140k',
-                    matchScore: 87,
-                    postedDate: '2024-01-12',
-                    source: 'Indeed',
-                    status: 'reviewing',
-                    notes: 'Great company culture',
-                    applicationDate: '',
-                    interviewDate: '',
-                    contacts: '',
-                    url: '#'
-                },
-                {
-                    id: 3,
-                    title: 'Software Engineer',
-                    company: 'BigTech Corp',
-                    location: 'New York, NY',
-                    salary: '$110k - $150k',
-                    matchScore: 82,
-                    postedDate: '2024-01-10',
-                    source: 'Glassdoor',
-                    status: 'applied',
-                    notes: 'Applied through company website',
-                    applicationDate: '2024-01-18',
-                    interviewDate: '',
-                    contacts: 'hr@bigtech.com',
-                    url: '#'
-                },
-                {
-                    id: 4,
-                    title: 'Frontend Developer',
-                    company: 'DesignStudio',
-                    location: 'Austin, TX',
-                    salary: '$90k - $120k',
-                    matchScore: 89,
-                    postedDate: '2024-01-08',
-                    source: 'LinkedIn',
-                    status: 'interviewing',
-                    notes: 'Phone interview scheduled',
-                    applicationDate: '2024-01-15',
-                    interviewDate: '2024-01-25',
-                    contacts: 'john@designstudio.com',
-                    url: '#'
-                },
-                {
-                    id: 5,
-                    title: 'DevOps Engineer',
-                    company: 'CloudTech',
-                    location: 'Seattle, WA',
-                    salary: '$130k - $170k',
-                    matchScore: 91,
-                    postedDate: '2024-01-05',
-                    source: 'Company Website',
-                    status: 'offer',
-                    notes: 'Received offer, negotiating salary',
-                    applicationDate: '2024-01-12',
-                    interviewDate: '2024-01-20',
-                    contacts: 'sarah@cloudtech.com',
-                    url: '#'
+            // Load job cards from localStorage
+            const [jobCards, setJobCards] = useState(() => {
+                try {
+                    const stored = localStorage.getItem('tracked_jobs');
+                    if (stored) {
+                        const jobs = JSON.parse(stored);
+                        return jobs.length > 0 ? jobs : [
+                            // Fallback empty state
+                        ];
+                    }
+                } catch (e) {
+                    console.error('Error loading tracked jobs:', e);
                 }
-            ]);
+                return [];
+            });
 
             const columns = [
                 { id: 'new-leads', title: 'New Leads (from AI)', color: 'bg-blue-500', count: 0 },
@@ -8977,16 +9413,41 @@ Return ONLY a number between 0-100 representing the match percentage.`
 
             const handleDrop = (e, newStatus) => {
                 e.preventDefault();
-                const cardId = parseInt(e.dataTransfer.getData('text/plain'));
+                const cardId = parseFloat(e.dataTransfer.getData('text/plain')); // Use parseFloat for IDs
                 
-                setJobCards(prevCards => 
-                    prevCards.map(card => 
-                        card.id === cardId ? { ...card, status: newStatus } : card
-                    )
-                );
+                const updatedCards = jobCards.map(card => {
+                    if (card.id === cardId) {
+                        const updated = { ...card, status: newStatus };
+                        
+                        // Auto-set dates based on status
+                        if (newStatus === 'applied' && !updated.applicationDate) {
+                            updated.applicationDate = new Date().toISOString().split('T')[0];
+                        }
+                        if (newStatus === 'interviewing') {
+                            // Suggest setting interview date
+                            if (!updated.interviewDate) {
+                                window.JobTrackingUtils.showNotification(
+                                    'Job moved to Interviewing! Consider setting an interview date.',
+                                    'info'
+                                );
+                            }
+                        }
+                        
+                        return updated;
+                    }
+                    return card;
+                });
+                
+                setJobCards(updatedCards);
+                window.JobTrackingUtils.saveTrackedJobs(updatedCards);
 
                 // Generate interview prep kit if moving to interviewing
                 if (newStatus === 'interviewing') {
+                    window.JobTrackingUtils.showNotification(
+                        'Job moved to Interviewing! Would you like to prepare for the interview?',
+                        'info',
+                        5000
+                    );
                     console.log('Generating interview prep kit for job:', cardId);
                 }
             };
@@ -9004,13 +9465,66 @@ Return ONLY a number between 0-100 representing the match percentage.`
 
             const handleSaveNotes = () => {
                 if (selectedCard) {
-                    setJobCards(prevCards =>
-                        prevCards.map(card =>
-                            card.id === selectedCard.id ? { ...card, notes: selectedCard.notes } : card
-                        )
+                    const updated = jobCards.map(card =>
+                        card.id === selectedCard.id ? { ...card, ...selectedCard } : card
                     );
+                    setJobCards(updated);
+                    window.JobTrackingUtils.saveTrackedJobs(updated);
+                    window.JobTrackingUtils.showNotification('Notes saved!', 'success');
                 }
             };
+
+            // Find similar jobs function
+            const handleFindSimilarJobs = (card) => {
+                // Navigate to Job Finder with pre-filled search
+                const jobFinderLink = document.querySelector('[data-id="job-finder"]');
+                if (jobFinderLink) {
+                    jobFinderLink.click();
+                    // Store search query in localStorage for Job Finder to pick up
+                    setTimeout(() => {
+                        localStorage.setItem('similar_job_search', JSON.stringify({
+                            title: card.title,
+                            location: card.location,
+                            excludeCompany: card.company
+                        }));
+                        window.location.reload(); // Refresh to trigger search
+                    }, 500);
+                }
+            };
+
+            // Refresh job cards from localStorage
+            React.useEffect(() => {
+                const loadJobs = () => {
+                    const jobs = window.JobTrackingUtils.getAllTrackedJobs();
+                    if (jobs.length > 0) {
+                        setJobCards(jobs);
+                    }
+                };
+                
+                loadJobs();
+                
+                // Listen for storage changes (when jobs are added from Job Finder)
+                const handleStorageChange = (e) => {
+                    if (e.key === 'tracked_jobs') {
+                        loadJobs();
+                    }
+                };
+                
+                window.addEventListener('storage', handleStorageChange);
+                
+                // Also check periodically for updates (for same-tab updates)
+                const interval = setInterval(loadJobs, 2000);
+                
+                return () => {
+                    window.removeEventListener('storage', handleStorageChange);
+                    clearInterval(interval);
+                };
+            }, []);
+
+            // Get analytics
+            const analytics = React.useMemo(() => {
+                return window.JobTrackingUtils.getAnalytics();
+            }, [jobCards]);
 
             return (
                 <div className="space-y-8">
@@ -9026,10 +9540,52 @@ Return ONLY a number between 0-100 representing the match percentage.`
                                     <p className={`${isLightMode ? 'text-slate-600' : 'text-gray-400'}`}>Kanban board for managing your application pipeline</p>
                                 </div>
                             </div>
-                            <button className="bg-gradient-to-r from-indigo-500 to-violet-600 text-white px-6 py-3 rounded-2xl font-semibold flex items-center gap-2 hover:from-indigo-600 hover:to-violet-700 transition-all duration-300 hover:transform hover:scale-105">
-                                <div className="w-5 h-5">➕</div>
-                                Add Job Manually
-                            </button>
+                            <div className="flex gap-3">
+                                <button 
+                                    onClick={() => {
+                                        // Simple manual add - could be enhanced with a modal
+                                        const title = prompt('Enter job title:');
+                                        const company = prompt('Enter company name:');
+                                        if (title && company) {
+                                            const newJob = {
+                                                id: Date.now() + Math.random(),
+                                                title: title,
+                                                company: company,
+                                                location: prompt('Enter location (optional):') || 'Not specified',
+                                                salary: prompt('Enter salary (optional):') || 'Competitive',
+                                                matchScore: 0,
+                                                postedDate: new Date().toISOString().split('T')[0],
+                                                source: 'Manual Entry',
+                                                status: 'new-leads',
+                                                notes: '',
+                                                applicationDate: '',
+                                                interviewDate: '',
+                                                contacts: '',
+                                                url: '#',
+                                                addedFrom: 'manual',
+                                                addedAt: new Date().toISOString()
+                                            };
+                                            const updated = [...jobCards, newJob];
+                                            setJobCards(updated);
+                                            window.JobTrackingUtils.saveTrackedJobs(updated);
+                                            window.JobTrackingUtils.showNotification('Job added manually!', 'success');
+                                        }
+                                    }}
+                                    className="bg-gradient-to-r from-indigo-500 to-violet-600 text-white px-6 py-3 rounded-2xl font-semibold flex items-center gap-2 hover:from-indigo-600 hover:to-violet-700 transition-all duration-300 hover:transform hover:scale-105"
+                                >
+                                    <div className="w-5 h-5">➕</div>
+                                    Add Job Manually
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        const finderLink = document.querySelector('[data-id="job-finder"]');
+                                        if (finderLink) finderLink.click();
+                                    }}
+                                    className="bg-blue-500 text-white px-6 py-3 rounded-2xl font-semibold flex items-center gap-2 hover:bg-blue-600 transition-all duration-300"
+                                >
+                                    🔍 Find More Jobs
+                                </button>
+                            </div>
                         </div>
                     </div>
 
@@ -9077,12 +9633,52 @@ Return ONLY a number between 0-100 representing the match percentage.`
                                     <div className="w-6 h-6 text-white text-xl">⭐</div>
                                 </div>
                                 <div>
-                                    <div className={`text-2xl font-bold ${isLightMode ? 'text-slate-800' : 'text-gray-50'}`}>87%</div>
+                                    <div className={`text-2xl font-bold ${isLightMode ? 'text-slate-800' : 'text-gray-50'}`}>{analytics.averageMatchScore}%</div>
                                     <div className={`text-sm ${isLightMode ? 'text-slate-600' : 'text-gray-400'}`}>Avg. Match Score</div>
                                 </div>
                             </div>
                         </div>
                     </div>
+
+                    {/* Analytics Dashboard */}
+                    {jobCards.length > 0 && (
+                        <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border shadow-lg rounded-2xl p-6`}>
+                            <h3 className={`text-xl font-bold ${isLightMode ? 'text-slate-800' : 'text-gray-50'} mb-4`}>📊 Job Search Analytics</h3>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                <div>
+                                    <div className={`text-lg font-semibold ${isLightMode ? 'text-slate-700' : 'text-gray-300'}`}>Total Tracked</div>
+                                    <div className={`text-2xl font-bold ${isLightMode ? 'text-slate-800' : 'text-gray-50'}`}>{analytics.total}</div>
+                                </div>
+                                <div>
+                                    <div className={`text-lg font-semibold ${isLightMode ? 'text-slate-700' : 'text-gray-300'}`}>Applied</div>
+                                    <div className={`text-2xl font-bold text-green-600`}>{analytics.totalApplied}</div>
+                                </div>
+                                <div>
+                                    <div className={`text-lg font-semibold ${isLightMode ? 'text-slate-700' : 'text-gray-300'}`}>Interviews</div>
+                                    <div className={`text-2xl font-bold text-orange-600`}>{analytics.totalInterviews}</div>
+                                </div>
+                                <div>
+                                    <div className={`text-lg font-semibold ${isLightMode ? 'text-slate-700' : 'text-gray-300'}`}>Offers</div>
+                                    <div className={`text-2xl font-bold text-green-700`}>{analytics.totalOffers}</div>
+                                </div>
+                            </div>
+                            {analytics.bySource && Object.keys(analytics.bySource).length > 0 && (
+                                <div className="mt-4 pt-4 border-t border-slate-200">
+                                    <div className={`text-sm font-semibold ${isLightMode ? 'text-slate-700' : 'text-gray-300'} mb-2`}>Top Sources:</div>
+                                    <div className="flex flex-wrap gap-2">
+                                        {Object.entries(analytics.bySource)
+                                            .sort((a, b) => b[1] - a[1])
+                                            .slice(0, 5)
+                                            .map(([source, count]) => (
+                                                <span key={source} className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-medium">
+                                                    {source}: {count}
+                                                </span>
+                                            ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
 
                     {/* Kanban Board */}
                     <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border shadow-lg rounded-2xl p-6`}>
@@ -9261,9 +9857,17 @@ Return ONLY a number between 0-100 representing the match percentage.`
                                                         with talented engineers to build scalable solutions.
                                                     </p>
                                                 </div>
-                                                <button className="mt-4 bg-gradient-to-r from-indigo-500 to-violet-600 text-white px-6 py-3 rounded-xl font-semibold hover:from-indigo-600 hover:to-violet-700 transition-all duration-300">
-                                                    Apply Now
-                                                </button>
+                                                <div className="flex gap-3 mt-4">
+                                                    <button className="bg-gradient-to-r from-indigo-500 to-violet-600 text-white px-6 py-3 rounded-xl font-semibold hover:from-indigo-600 hover:to-violet-700 transition-all duration-300">
+                                                        Apply Now
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleFindSimilarJobs(selectedCard)}
+                                                        className="bg-blue-500 text-white px-6 py-3 rounded-xl font-semibold hover:bg-blue-600 transition-all duration-300 flex items-center gap-2"
+                                                    >
+                                                        🔍 Find Similar Jobs
+                                                    </button>
+                                                </div>
                                             </div>
                                         </div>
                                     )}
