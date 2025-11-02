@@ -13124,9 +13124,23 @@ Best regards,
             const [documents, setDocuments] = useState([]);
             const [isLoading, setIsLoading] = useState(true);
             const [error, setError] = useState(null);
+            const [viewingDoc, setViewingDoc] = useState(null);
+            const [editingDoc, setEditingDoc] = useState(null);
+            const [creatingDoc, setCreatingDoc] = useState(false);
+            const [saveError, setSaveError] = useState(null);
             
             // Check for light mode
             const isLightMode = !document.documentElement.classList.contains('dark');
+            
+            // Refresh documents from storage
+            const refreshDocuments = async () => {
+                try {
+                    const loadedDocuments = await WorkHistoryStorage.getAllDocuments();
+                    setDocuments(loadedDocuments);
+                } catch (err) {
+                    console.error('Error refreshing documents:', err);
+                }
+            };
 
             // Load documents on component mount
             useEffect(() => {
@@ -13254,28 +13268,139 @@ Best regards,
                 }
             });
 
-            const handleView = (doc) => {
-                alert(`Viewing: ${doc.title}`);
+            // Sanitize filename for download
+            const sanitizeFilename = (filename) => {
+                return filename.replace(/[^a-z0-9]/gi, '_').toLowerCase();
             };
 
-            const handleEdit = (doc) => {
-                alert(`Editing: ${doc.title}`);
+            const handleView = async (doc) => {
+                try {
+                    // Fetch full document from storage
+                    const fullDoc = await WorkHistoryStorage.getDocumentById(doc.id);
+                    if (fullDoc) {
+                        setViewingDoc(fullDoc);
+                    } else {
+                        setViewingDoc(doc);
+                    }
+                } catch (err) {
+                    console.error('Error loading document:', err);
+                    setViewingDoc(doc);
+                }
+            };
+
+            const handleEdit = async (doc) => {
+                try {
+                    // Fetch full document from storage
+                    const fullDoc = await WorkHistoryStorage.getDocumentById(doc.id);
+                    if (fullDoc) {
+                        setEditingDoc({ ...fullDoc });
+                    } else {
+                        setEditingDoc({ ...doc });
+                    }
+                    setSaveError(null);
+                } catch (err) {
+                    console.error('Error loading document:', err);
+                    setEditingDoc({ ...doc });
+                    setSaveError(null);
+                }
+            };
+
+            const handleSaveEdit = async () => {
+                if (!editingDoc) return;
+                
+                try {
+                    setSaveError(null);
+                    // Validate required fields
+                    if (!editingDoc.title || !editingDoc.title.trim()) {
+                        setSaveError('Title is required');
+                        return;
+                    }
+                    
+                    await WorkHistoryStorage.saveDocument(editingDoc);
+                    await refreshDocuments();
+                    setEditingDoc(null);
+                } catch (err) {
+                    console.error('Error saving document:', err);
+                    setSaveError(err.message || 'Failed to save document');
+                }
             };
 
             const handleDownload = (doc) => {
-                const blob = new Blob([doc.content], { type: 'text/plain' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `${doc.title}.txt`;
-                a.click();
-                URL.revokeObjectURL(url);
+                try {
+                    if (!doc.content) {
+                        alert('No content to download');
+                        return;
+                    }
+                    
+                    const blob = new Blob([doc.content], { type: 'text/plain' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    // Sanitize filename
+                    const safeFilename = sanitizeFilename(doc.title) || 'document';
+                    a.download = `${safeFilename}.txt`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                } catch (err) {
+                    console.error('Error downloading document:', err);
+                    alert('Failed to download document');
+                }
             };
 
-            const handleDelete = (doc) => {
-                if (confirm(`Are you sure you want to delete "${doc.title}"?`)) {
-                    alert(`Deleted: ${doc.title}`);
+            const handleDelete = async (doc) => {
+                // Use custom confirmation instead of browser confirm
+                if (window.confirm(`Are you sure you want to delete "${doc.title}"? This action cannot be undone.`)) {
+                    try {
+                        await WorkHistoryStorage.deleteDocument(doc.id);
+                        await refreshDocuments();
+                    } catch (err) {
+                        console.error('Error deleting document:', err);
+                        alert('Failed to delete document');
+                    }
                 }
+            };
+
+            const handleCreate = () => {
+                setCreatingDoc(true);
+                setSaveError(null);
+            };
+
+            const handleSaveCreate = async (newDoc) => {
+                try {
+                    setSaveError(null);
+                    // Validate required fields
+                    if (!newDoc.title || !newDoc.title.trim()) {
+                        setSaveError('Title is required');
+                        return;
+                    }
+                    if (!newDoc.type) {
+                        setSaveError('Document type is required');
+                        return;
+                    }
+                    
+                    await WorkHistoryStorage.saveDocument(newDoc);
+                    await refreshDocuments();
+                    setCreatingDoc(false);
+                } catch (err) {
+                    console.error('Error creating document:', err);
+                    setSaveError(err.message || 'Failed to create document');
+                }
+            };
+
+            const handleCloseView = () => {
+                setViewingDoc(null);
+            };
+
+            const handleCloseEdit = () => {
+                setEditingDoc(null);
+                setSaveError(null);
+            };
+
+            const handleCloseCreate = () => {
+                setCreatingDoc(false);
+                setSaveError(null);
             };
 
             const getStats = () => {
@@ -13345,6 +13470,18 @@ Best regards,
 
                     {/* Filters and Search */}
                     <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
+                        {/* Header with Create Button */}
+                        <div className="flex items-center justify-between mb-6">
+                            <h2 className={`text-xl font-bold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>My Documents</h2>
+                            <button
+                                onClick={handleCreate}
+                                className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors flex items-center gap-2"
+                            >
+                                <span className="text-lg">+</span>
+                                <span>Create New</span>
+                            </button>
+                        </div>
+                        
                         {/* Tab Navigation */}
                         <div className="flex flex-wrap gap-2 mb-6">
                             {[
@@ -13522,11 +13659,331 @@ Best regards,
                             <div className="col-span-full text-center py-20">
                                 <div className={`w-16 h-16 ${isLightMode ? 'text-gray-500' : 'text-gray-400'} mx-auto mb-4 text-6xl`}>📁</div>
                                 <h3 className={`text-xl font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-2`}>No documents found</h3>
-                                <p className={isLightMode ? 'text-gray-500' : 'text-gray-400'}>Try adjusting your search or filters to find what you're looking for.</p>
+                                <p className={`${isLightMode ? 'text-gray-500' : 'text-gray-400'} mb-4`}>
+                                    {documents.length === 0 
+                                        ? 'Get started by creating your first document.' 
+                                        : 'Try adjusting your search or filters to find what you\'re looking for.'}
+                                </p>
+                                {documents.length === 0 && (
+                                    <button
+                                        onClick={handleCreate}
+                                        className="px-6 py-3 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors"
+                                    >
+                                        Create Your First Document
+                                    </button>
+                                )}
                             </div>
                         )}
                         </div>
                     )}
+
+                    {/* View Document Modal */}
+                    {viewingDoc && (
+                        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={handleCloseView}>
+                            <div className={`${isLightMode ? 'bg-white' : 'bg-gray-800'} rounded-2xl p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto`} onClick={(e) => e.stopPropagation()}>
+                                <div className="flex items-center justify-between mb-4">
+                                    <h2 className={`text-2xl font-bold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>{viewingDoc.title}</h2>
+                                    <button
+                                        onClick={handleCloseView}
+                                        className={`p-2 rounded-lg ${isLightMode ? 'hover:bg-gray-100' : 'hover:bg-gray-700'} transition-colors`}
+                                    >
+                                        <span className="text-2xl">×</span>
+                                    </button>
+                                </div>
+                                <div className="space-y-4">
+                                    <div className="flex items-center gap-4 text-sm">
+                                        <span className={`px-3 py-1 rounded-full ${getStatusColor(viewingDoc.status)}`}>
+                                            {viewingDoc.status}
+                                        </span>
+                                        <span className={isLightMode ? 'text-gray-600' : 'text-gray-400'}>{getTypeLabel(viewingDoc.type)}</span>
+                                        {viewingDoc.jobTitle && (
+                                            <span className={isLightMode ? 'text-gray-600' : 'text-gray-400'}>• {viewingDoc.jobTitle}</span>
+                                        )}
+                                        {viewingDoc.company && (
+                                            <span className={isLightMode ? 'text-gray-600' : 'text-gray-400'}>• {viewingDoc.company}</span>
+                                        )}
+                                    </div>
+                                    <div className={`${isLightMode ? 'bg-gray-50' : 'bg-gray-900'} rounded-lg p-4 border ${isLightMode ? 'border-gray-200' : 'border-gray-700'}`}>
+                                        <pre className={`whitespace-pre-wrap ${isLightMode ? 'text-gray-900' : 'text-gray-100'} font-sans`}>
+                                            {viewingDoc.content || 'No content available.'}
+                                        </pre>
+                                    </div>
+                                    {viewingDoc.atsScore !== null && viewingDoc.atsScore !== undefined && (
+                                        <div className={`text-sm ${getScoreColor(viewingDoc.atsScore)}`}>
+                                            ATS Score: {viewingDoc.atsScore}%
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Edit Document Modal */}
+                    {editingDoc && (
+                        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={handleCloseEdit}>
+                            <div className={`${isLightMode ? 'bg-white' : 'bg-gray-800'} rounded-2xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto`} onClick={(e) => e.stopPropagation()}>
+                                <div className="flex items-center justify-between mb-4">
+                                    <h2 className={`text-2xl font-bold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>Edit Document</h2>
+                                    <button
+                                        onClick={handleCloseEdit}
+                                        className={`p-2 rounded-lg ${isLightMode ? 'hover:bg-gray-100' : 'hover:bg-gray-700'} transition-colors`}
+                                    >
+                                        <span className="text-2xl">×</span>
+                                    </button>
+                                </div>
+                                <div className="space-y-4">
+                                    {saveError && (
+                                        <div className={`p-3 rounded-lg ${isLightMode ? 'bg-red-50 text-red-700' : 'bg-red-900/20 text-red-400'}`}>
+                                            {saveError}
+                                        </div>
+                                    )}
+                                    <div>
+                                        <label className={`block text-sm font-medium mb-1 ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>
+                                            Title *
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={editingDoc.title || ''}
+                                            onChange={(e) => setEditingDoc({ ...editingDoc, title: e.target.value })}
+                                            className={`w-full px-3 py-2 ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                                        />
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className={`block text-sm font-medium mb-1 ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>
+                                                Job Title
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={editingDoc.jobTitle || ''}
+                                                onChange={(e) => setEditingDoc({ ...editingDoc, jobTitle: e.target.value })}
+                                                className={`w-full px-3 py-2 ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className={`block text-sm font-medium mb-1 ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>
+                                                Company
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={editingDoc.company || ''}
+                                                onChange={(e) => setEditingDoc({ ...editingDoc, company: e.target.value })}
+                                                className={`w-full px-3 py-2 ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className={`block text-sm font-medium mb-1 ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>
+                                                Status
+                                            </label>
+                                            <select
+                                                value={editingDoc.status || 'draft'}
+                                                onChange={(e) => setEditingDoc({ ...editingDoc, status: e.target.value })}
+                                                className={`w-full px-3 py-2 ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                                            >
+                                                <option value="draft">Draft</option>
+                                                <option value="completed">Completed</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className={`block text-sm font-medium mb-1 ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>
+                                                ATS Score (0-100)
+                                            </label>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                max="100"
+                                                value={editingDoc.atsScore || ''}
+                                                onChange={(e) => setEditingDoc({ ...editingDoc, atsScore: e.target.value ? parseInt(e.target.value) : null })}
+                                                className={`w-full px-3 py-2 ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                                            />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className={`block text-sm font-medium mb-1 ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>
+                                            Content
+                                        </label>
+                                        <textarea
+                                            value={editingDoc.content || ''}
+                                            onChange={(e) => setEditingDoc({ ...editingDoc, content: e.target.value })}
+                                            rows={10}
+                                            className={`w-full px-3 py-2 ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                                        />
+                                    </div>
+                                    <div className="flex gap-3 justify-end">
+                                        <button
+                                            onClick={handleCloseEdit}
+                                            className={`px-4 py-2 rounded-lg ${isLightMode ? 'bg-gray-200 text-gray-700 hover:bg-gray-300' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'} transition-colors`}
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            onClick={handleSaveEdit}
+                                            className="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
+                                        >
+                                            Save Changes
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Create Document Modal */}
+                    {creatingDoc && (
+                        <CreateDocumentModal
+                            isLightMode={isLightMode}
+                            onClose={handleCloseCreate}
+                            onSave={handleSaveCreate}
+                            error={saveError}
+                        />
+                    )}
+                </div>
+            );
+        };
+
+        // Create Document Modal Component
+        const CreateDocumentModal = ({ isLightMode, onClose, onSave, error }) => {
+            const [newDoc, setNewDoc] = useState({
+                title: '',
+                type: 'resume',
+                content: '',
+                jobTitle: '',
+                company: '',
+                status: 'draft',
+                atsScore: null
+            });
+
+            const handleSubmit = () => {
+                onSave(newDoc);
+            };
+
+            return (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={onClose}>
+                    <div className={`${isLightMode ? 'bg-white' : 'bg-gray-800'} rounded-2xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto`} onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-between mb-4">
+                            <h2 className={`text-2xl font-bold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>Create New Document</h2>
+                            <button
+                                onClick={onClose}
+                                className={`p-2 rounded-lg ${isLightMode ? 'hover:bg-gray-100' : 'hover:bg-gray-700'} transition-colors`}
+                            >
+                                <span className="text-2xl">×</span>
+                            </button>
+                        </div>
+                        <div className="space-y-4">
+                            {error && (
+                                <div className={`p-3 rounded-lg ${isLightMode ? 'bg-red-50 text-red-700' : 'bg-red-900/20 text-red-400'}`}>
+                                    {error}
+                                </div>
+                            )}
+                            <div>
+                                <label className={`block text-sm font-medium mb-1 ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>
+                                    Title *
+                                </label>
+                                <input
+                                    type="text"
+                                    value={newDoc.title}
+                                    onChange={(e) => setNewDoc({ ...newDoc, title: e.target.value })}
+                                    className={`w-full px-3 py-2 ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                                    placeholder="Enter document title"
+                                />
+                            </div>
+                            <div>
+                                <label className={`block text-sm font-medium mb-1 ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>
+                                    Document Type *
+                                </label>
+                                <select
+                                    value={newDoc.type}
+                                    onChange={(e) => setNewDoc({ ...newDoc, type: e.target.value })}
+                                    className={`w-full px-3 py-2 ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                                >
+                                    <option value="resume">Resume</option>
+                                    <option value="tailored-resume">Tailored Resume</option>
+                                    <option value="application-tailor">Application Tailor</option>
+                                    <option value="cover-letter">Cover Letter</option>
+                                </select>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className={`block text-sm font-medium mb-1 ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>
+                                        Job Title
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={newDoc.jobTitle}
+                                        onChange={(e) => setNewDoc({ ...newDoc, jobTitle: e.target.value })}
+                                        className={`w-full px-3 py-2 ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                                    />
+                                </div>
+                                <div>
+                                    <label className={`block text-sm font-medium mb-1 ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>
+                                        Company
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={newDoc.company}
+                                        onChange={(e) => setNewDoc({ ...newDoc, company: e.target.value })}
+                                        className={`w-full px-3 py-2 ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                                    />
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className={`block text-sm font-medium mb-1 ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>
+                                        Status
+                                    </label>
+                                    <select
+                                        value={newDoc.status}
+                                        onChange={(e) => setNewDoc({ ...newDoc, status: e.target.value })}
+                                        className={`w-full px-3 py-2 ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                                    >
+                                        <option value="draft">Draft</option>
+                                        <option value="completed">Completed</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className={`block text-sm font-medium mb-1 ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>
+                                        ATS Score (0-100)
+                                    </label>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        max="100"
+                                        value={newDoc.atsScore || ''}
+                                        onChange={(e) => setNewDoc({ ...newDoc, atsScore: e.target.value ? parseInt(e.target.value) : null })}
+                                        className={`w-full px-3 py-2 ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                                    />
+                                </div>
+                            </div>
+                            <div>
+                                <label className={`block text-sm font-medium mb-1 ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>
+                                    Content
+                                </label>
+                                <textarea
+                                    value={newDoc.content}
+                                    onChange={(e) => setNewDoc({ ...newDoc, content: e.target.value })}
+                                    rows={10}
+                                    className={`w-full px-3 py-2 ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                                    placeholder="Enter document content..."
+                                />
+                            </div>
+                            <div className="flex gap-3 justify-end">
+                                <button
+                                    onClick={onClose}
+                                    className={`px-4 py-2 rounded-lg ${isLightMode ? 'bg-gray-200 text-gray-700 hover:bg-gray-300' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'} transition-colors`}
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={handleSubmit}
+                                    className="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
+                                >
+                                    Create Document
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             );
         };
