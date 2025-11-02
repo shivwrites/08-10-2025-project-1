@@ -10149,6 +10149,182 @@ Return ONLY a number between 0-100 representing the match percentage.`
                 } catch (e) {
                     return null;
                 }
+            },
+            saveAnxietyData(jobId, data) {
+                try {
+                    const key = `interview_prep_anxiety_${jobId || 'default'}`;
+                    localStorage.setItem(key, JSON.stringify({
+                        ...data,
+                        lastUpdated: new Date().toISOString()
+                    }));
+                    return true;
+                } catch (e) {
+                    console.error('Error saving anxiety data:', e);
+                    return false;
+                }
+            },
+            loadAnxietyData(jobId) {
+                try {
+                    const key = `interview_prep_anxiety_${jobId || 'default'}`;
+                    const data = localStorage.getItem(key);
+                    return data ? JSON.parse(data) : null;
+                } catch (e) {
+                    console.error('Error loading anxiety data:', e);
+                    return null;
+                }
+            },
+            saveStoryBank(jobId, stories) {
+                try {
+                    const key = `interview_prep_stories_${jobId || 'default'}`;
+                    localStorage.setItem(key, JSON.stringify({
+                        stories: stories || [],
+                        lastUpdated: new Date().toISOString()
+                    }));
+                    return true;
+                } catch (e) {
+                    console.error('Error saving story bank:', e);
+                    return false;
+                }
+            },
+            loadStoryBank(jobId) {
+                try {
+                    const key = `interview_prep_stories_${jobId || 'default'}`;
+                    const data = localStorage.getItem(key);
+                    if (data) {
+                        const parsed = JSON.parse(data);
+                        return parsed.stories || [];
+                    }
+                    return [];
+                } catch (e) {
+                    console.error('Error loading story bank:', e);
+                    return [];
+                }
+            },
+            saveConfidenceScore(jobId, score, metadata = {}) {
+                try {
+                    const key = `interview_prep_confidence_${jobId || 'default'}`;
+                    const existing = this.loadConfidenceHistory(jobId);
+                    const history = existing.history || [];
+                    history.push({
+                        score,
+                        date: new Date().toISOString(),
+                        ...metadata
+                    });
+                    localStorage.setItem(key, JSON.stringify({
+                        currentScore: score,
+                        history: history.slice(-30), // Keep last 30 entries
+                        lastUpdated: new Date().toISOString()
+                    }));
+                    return true;
+                } catch (e) {
+                    console.error('Error saving confidence score:', e);
+                    return false;
+                }
+            },
+            loadConfidenceHistory(jobId) {
+                try {
+                    const key = `interview_prep_confidence_${jobId || 'default'}`;
+                    const data = localStorage.getItem(key);
+                    if (data) {
+                        const parsed = JSON.parse(data);
+                        return {
+                            currentScore: parsed.currentScore || 50,
+                            history: parsed.history || []
+                        };
+                    }
+                    return { currentScore: 50, history: [] };
+                } catch (e) {
+                    console.error('Error loading confidence history:', e);
+                    return { currentScore: 50, history: [] };
+                }
+            },
+            buildStoryBankFromResume() {
+                try {
+                    const resumeData = this.getResumeData();
+                    if (!resumeData) {
+                        return [];
+                    }
+                    
+                    const stories = [];
+                    let storyId = 1;
+                    
+                    // Extract stories from work experience
+                    if (resumeData.experience && Array.isArray(resumeData.experience)) {
+                        resumeData.experience.forEach((exp, idx) => {
+                            if (exp.achievements && Array.isArray(exp.achievements)) {
+                                exp.achievements.forEach((achievement) => {
+                                    stories.push({
+                                        id: `story_${storyId++}`,
+                                        title: `${achievement} at ${exp.company || 'Previous Role'}`,
+                                        source: 'resume',
+                                        category: 'work_experience',
+                                        company: exp.company || '',
+                                        position: exp.position || '',
+                                        date: exp.endDate || exp.startDate || '',
+                                        achievement: achievement,
+                                        description: exp.description || '',
+                                        starFormat: {
+                                            Situation: `While working as ${exp.position || 'an employee'} at ${exp.company || 'my previous company'}`,
+                                            Task: achievement,
+                                            Action: exp.description || 'Took initiative and executed effectively',
+                                            Result: achievement
+                                        }
+                                    });
+                                });
+                            }
+                            
+                            // Also create story from position itself
+                            if (exp.description || exp.position) {
+                                stories.push({
+                                    id: `story_${storyId++}`,
+                                    title: `${exp.position || 'Role'} at ${exp.company || 'Previous Company'}`,
+                                    source: 'resume',
+                                    category: 'work_experience',
+                                    company: exp.company || '',
+                                    position: exp.position || '',
+                                    date: `${exp.startDate || ''} - ${exp.endDate || 'Present'}`,
+                                    achievement: exp.achievements?.[0] || exp.description || '',
+                                    description: exp.description || '',
+                                    starFormat: {
+                                        Situation: `In my role as ${exp.position || 'an employee'} at ${exp.company || 'my previous company'}`,
+                                        Task: `My responsibilities included ${exp.description || 'various duties'}`,
+                                        Action: exp.achievements?.[0] || 'I executed my responsibilities effectively',
+                                        Result: exp.achievements?.[0] || 'Achieved positive results'
+                                    }
+                                });
+                            }
+                        });
+                    }
+                    
+                    // Extract stories from projects
+                    if (resumeData.projects && Array.isArray(resumeData.projects)) {
+                        resumeData.projects.forEach((project) => {
+                            stories.push({
+                                id: `story_${storyId++}`,
+                                title: project.name || 'Project',
+                                source: 'resume',
+                                category: 'project',
+                                company: '',
+                                position: '',
+                                date: '',
+                                achievement: project.description || '',
+                                description: project.description || '',
+                                technologies: project.technologies || [],
+                                starFormat: {
+                                    Situation: `While working on the ${project.name || 'project'}`,
+                                    Task: `The goal was to ${project.description || 'deliver a successful project'}`,
+                                    Action: `I utilized ${(project.technologies || []).join(', ') || 'various technologies'} to build the solution`,
+                                    Result: project.description || 'Successfully completed the project'
+                                }
+                            });
+                        });
+                    }
+                    
+                    return stories;
+                } catch (e) {
+                    console.error('Error building story bank from resume:', e);
+                    return [];
+                }
             }
         };
 
@@ -10169,6 +10345,7 @@ Return ONLY a number between 0-100 representing the match percentage.`
             const [searchQuery, setSearchQuery] = useState('');
             const [filterCategory, setFilterCategory] = useState('all');
             const [filterDifficulty, setFilterDifficulty] = useState('all');
+            const [filterPriority, setFilterPriority] = useState('all');
             const [sortBy, setSortBy] = useState('id');
             const [showTips, setShowTips] = useState(false);
             const [showChecklist, setShowChecklist] = useState(false);
@@ -10178,6 +10355,21 @@ Return ONLY a number between 0-100 representing the match percentage.`
             const [userAnswers, setUserAnswers] = useState({});
             const [answerFeedback, setAnswerFeedback] = useState({});
             const [practiceSessions, setPracticeSessions] = useState([]);
+            
+            // New state variables for Interview Prep Kit 2.0 features
+            const [starMode, setStarMode] = useState(false);
+            const [starAnswers, setStarAnswers] = useState({
+                Situation: '',
+                Task: '',
+                Action: '',
+                Result: ''
+            });
+            const [anxietyLevel, setAnxietyLevel] = useState(null);
+            const [confidenceScore, setConfidenceScore] = useState(50);
+            const [userStories, setUserStories] = useState([]);
+            const [questionPriorities, setQuestionPriorities] = useState({});
+            const [showAnxietyAssessment, setShowAnxietyAssessment] = useState(false);
+            const [anxietyAssessmentAnswers, setAnxietyAssessmentAnswers] = useState({});
             
             // Check for light mode
             const isLightMode = !document.documentElement.classList.contains('dark');
@@ -10438,6 +10630,168 @@ Format as JSON: {"score": 8, "strengths": [...], "improvements": [...], "feedbac
                 return null;
             };
 
+            // Helper Functions for Interview Prep Kit 2.0
+            
+            // Build story bank from resume data
+            const buildStoryBankFromResume = () => {
+                try {
+                    const stories = InterviewPrepStorage.buildStoryBankFromResume();
+                    // Also load any manually added stories
+                    const savedStories = currentJob?.jobId ? InterviewPrepStorage.loadStoryBank(currentJob.jobId) : [];
+                    // Merge and deduplicate
+                    const allStories = [...stories, ...savedStories.filter(s => s.source === 'manual')];
+                    // Remove duplicates based on title
+                    const uniqueStories = allStories.filter((story, index, self) => 
+                        index === self.findIndex(s => s.title === story.title)
+                    );
+                    return uniqueStories;
+                } catch (e) {
+                    console.error('Error building story bank:', e);
+                    return [];
+                }
+            };
+
+            // Prioritize questions based on statistics and context
+            const prioritizeQuestions = (questions, job, interviewDate) => {
+                if (!questions || !Array.isArray(questions)) return {};
+                
+                const priorities = {};
+                const now = new Date();
+                const interview = interviewDate ? new Date(interviewDate) : null;
+                const daysUntilInterview = interview ? Math.ceil((interview - now) / (1000 * 60 * 60 * 24)) : null;
+                
+                questions.forEach((q) => {
+                    let priority = 'Medium'; // Default
+                    const questionLower = q.question.toLowerCase();
+                    
+                    // Critical priority: "Tell me about yourself" (70% struggle with this)
+                    if (questionLower.includes('tell me about yourself') || 
+                        questionLower === 'tell me about yourself.') {
+                        priority = 'Critical';
+                    }
+                    // High priority: Common behavioral questions
+                    else if (q.category === 'Behavioral' || 
+                             questionLower.includes('tell me about a time') ||
+                             questionLower.includes('describe a time') ||
+                             questionLower.includes('give me an example')) {
+                        priority = 'High';
+                    }
+                    // High priority: Company-specific if interview is soon
+                    else if ((questionLower.includes((job?.company || '').toLowerCase()) || 
+                             questionLower.includes('why do you want to work')) && 
+                             daysUntilInterview !== null && daysUntilInterview <= 7) {
+                        priority = 'High';
+                    }
+                    // High priority: Weakness questions (common struggle)
+                    else if (questionLower.includes('weakness') || 
+                             questionLower.includes('greatest weakness')) {
+                        priority = 'High';
+                    }
+                    // Medium-High: Role-specific based on match score
+                    else if (q.category === 'Role-Specific' || q.category === 'Technical') {
+                        priority = job?.matchScore && job.matchScore >= 80 ? 'High' : 'Medium';
+                    }
+                    // Low priority: Easy questions that are straightforward
+                    else if (q.difficulty === 'Easy' && q.category === 'General') {
+                        priority = 'Low';
+                    }
+                    
+                    priorities[q.id] = priority;
+                });
+                
+                return priorities;
+            };
+
+            // Anxiety assessment function
+            const assessAnxietyLevel = () => {
+                // 5-question assessment based on common fears
+                const questions = [
+                    {
+                        id: 'nervous',
+                        question: 'How nervous do you feel about the interview?',
+                        fear: 'Being too nervous'
+                    },
+                    {
+                        id: 'stumped',
+                        question: 'How worried are you about being stumped by questions?',
+                        fear: 'Being stumped by questions'
+                    },
+                    {
+                        id: 'late',
+                        question: 'How concerned are you about being late?',
+                        fear: 'Being late'
+                    },
+                    {
+                        id: 'underqualified',
+                        question: 'Do you feel underqualified for this role?',
+                        fear: 'Being underqualified'
+                    },
+                    {
+                        id: 'unprepared',
+                        question: 'How prepared do you feel?',
+                        fear: 'Not being prepared',
+                        reverse: true // Lower score = more anxiety
+                    }
+                ];
+                
+                // Calculate anxiety level from assessment answers
+                if (Object.keys(anxietyAssessmentAnswers).length === questions.length) {
+                    let totalScore = 0;
+                    questions.forEach(q => {
+                        const answer = anxietyAssessmentAnswers[q.id] || 3;
+                        totalScore += q.reverse ? (6 - answer) : answer; // Reverse scale for preparedness
+                    });
+                    const averageScore = totalScore / questions.length;
+                    // Convert to 1-10 anxiety scale (1 = low anxiety, 10 = high anxiety)
+                    const anxiety = Math.round(averageScore);
+                    return {
+                        level: anxiety,
+                        fears: questions.filter(q => {
+                            const answer = anxietyAssessmentAnswers[q.id] || 3;
+                            const score = q.reverse ? (6 - answer) : answer;
+                            return score >= 4; // Identify significant fears
+                        }).map(q => q.fear)
+                    };
+                }
+                return null;
+            };
+
+            // Calculate confidence score based on preparation progress
+            const calculateConfidenceScore = () => {
+                if (!currentJob || !interviewQuestions.length) return 50;
+                
+                let score = 0;
+                const maxScore = 100;
+                
+                // Questions reviewed (30% weight)
+                const reviewedCount = Object.keys(questionProgress).filter(k => questionProgress[k].reviewed).length;
+                const reviewProgress = (reviewedCount / interviewQuestions.length) * 100;
+                score += (reviewProgress * 0.3);
+                
+                // Answers saved (25% weight)
+                const answersCount = Object.keys(userAnswers).length;
+                const answersProgress = Math.min((answersCount / interviewQuestions.length) * 100, 100);
+                score += (answersProgress * 0.25);
+                
+                // Critical questions reviewed (20% weight)
+                const criticalQuestions = interviewQuestions.filter(q => (questionPriorities[q.id] || 'Medium') === 'Critical');
+                const criticalReviewed = criticalQuestions.filter(q => questionProgress[q.id]?.reviewed).length;
+                const criticalProgress = criticalQuestions.length > 0 ? (criticalReviewed / criticalQuestions.length) * 100 : 50;
+                score += (criticalProgress * 0.2);
+                
+                // Practice sessions (15% weight)
+                const sessionsCount = practiceSessions.length;
+                const sessionsScore = Math.min(sessionsCount * 10, 100); // 1 session = 10 points, max 100
+                score += (sessionsScore * 0.15);
+                
+                // Story bank prepared (10% weight)
+                const storiesCount = userStories.length;
+                const storiesScore = Math.min(storiesCount * 5, 100); // 1 story = 5 points, max 100
+                score += (storiesScore * 0.1);
+                
+                return Math.round(Math.min(Math.max(score, 0), 100)); // Clamp between 0-100
+            };
+
             // Enhanced function to mark interview as prepared with progress tracking
             const markInterviewPrepared = () => {
                 if (!currentJob) return;
@@ -10490,6 +10844,14 @@ Format as JSON: {"score": 8, "strengths": [...], "improvements": [...], "feedbac
                             userAnswers: updated,
                             questionProgress
                         });
+                        // Recalculate and save confidence
+                        setTimeout(() => {
+                            const newConfidence = calculateConfidenceScore();
+                            setConfidenceScore(newConfidence);
+                            InterviewPrepStorage.saveConfidenceScore(currentJob.jobId, newConfidence, {
+                                answersSaved: Object.keys(updated).length
+                            });
+                        }, 100);
                     }
                     return updated;
                 });
@@ -10504,10 +10866,35 @@ Format as JSON: {"score": 8, "strengths": [...], "improvements": [...], "feedbac
                             userAnswers,
                             questionProgress: updated
                         });
+                        // Recalculate and save confidence
+                        setTimeout(() => {
+                            const newConfidence = calculateConfidenceScore();
+                            setConfidenceScore(newConfidence);
+                            InterviewPrepStorage.saveConfidenceScore(currentJob.jobId, newConfidence, {
+                                questionsReviewed: Object.keys(updated).filter(k => updated[k].reviewed).length
+                            });
+                        }, 100);
                     }
                     return updated;
                 });
             };
+
+            // Auto-update confidence score when progress changes
+            React.useEffect(() => {
+                if (currentJob && interviewQuestions.length > 0) {
+                    const newConfidence = calculateConfidenceScore();
+                    if (Math.abs(newConfidence - confidenceScore) > 1) { // Only update if significant change
+                        setConfidenceScore(newConfidence);
+                        if (currentJob.jobId) {
+                            InterviewPrepStorage.saveConfidenceScore(currentJob.jobId, newConfidence, {
+                                questionsReviewed: Object.keys(questionProgress).filter(k => questionProgress[k].reviewed).length,
+                                answersSaved: Object.keys(userAnswers).length,
+                                storiesCount: userStories.length
+                            });
+                        }
+                    }
+                }
+            }, [questionProgress, userAnswers, practiceSessions, userStories, interviewQuestions.length, currentJob?.jobId]);
 
             // Load job data from localStorage or event (with error handling and data persistence)
             React.useEffect(() => {
@@ -10540,11 +10927,70 @@ Format as JSON: {"score": 8, "strengths": [...], "improvements": [...], "feedbac
                         );
                         setInterviewQuestions(questions);
                         
+                        // Prioritize questions
+                        const priorities = prioritizeQuestions(questions, jobData, jobData.interviewDate);
+                        setQuestionPriorities(priorities);
+                        
+                        // Build story bank from resume
+                        const stories = buildStoryBankFromResume();
+                        setUserStories(stories);
+                        
+                        // Load saved story bank and merge
+                        if (jobData.jobId) {
+                            const savedStories = InterviewPrepStorage.loadStoryBank(jobData.jobId);
+                            if (savedStories.length > 0) {
+                                const mergedStories = [...stories, ...savedStories.filter(s => s.source === 'manual')];
+                                const uniqueStories = mergedStories.filter((story, index, self) => 
+                                    index === self.findIndex(s => s.title === story.title)
+                                );
+                                setUserStories(uniqueStories);
+                            }
+                        }
+                        
+                        // Load anxiety and confidence data
+                        if (jobData.jobId) {
+                            const anxietyData = InterviewPrepStorage.loadAnxietyData(jobData.jobId);
+                            if (anxietyData) {
+                                setAnxietyLevel(anxietyData.level || null);
+                                setAnxietyAssessmentAnswers(anxietyData.assessmentAnswers || {});
+                            }
+                            
+                            const confidenceData = InterviewPrepStorage.loadConfidenceHistory(jobData.jobId);
+                            if (confidenceData && confidenceData.currentScore !== undefined) {
+                                setConfidenceScore(confidenceData.currentScore);
+                            }
+                        }
+                        
+                        // Calculate initial confidence score
+                        setTimeout(() => {
+                            const calculatedConfidence = calculateConfidenceScore();
+                            if (calculatedConfidence !== confidenceScore) {
+                                setConfidenceScore(calculatedConfidence);
+                                if (jobData.jobId) {
+                                    InterviewPrepStorage.saveConfidenceScore(jobData.jobId, calculatedConfidence, {
+                                        questionsReviewed: Object.keys(questionProgress).filter(k => questionProgress[k].reviewed).length,
+                                        answersSaved: Object.keys(userAnswers).length
+                                    });
+                                }
+                            }
+                        }, 100);
+                        
                         // Load practice sessions
                         const sessions = InterviewPrepStorage.getAllSessions().filter(
                             s => s.jobId === jobData.jobId
                         );
                         setPracticeSessions(sessions);
+                        
+                        // Check if anxiety assessment needed (if not done yet)
+                        if (!anxietyLevel && jobData.jobId) {
+                            const anxietyData = InterviewPrepStorage.loadAnxietyData(jobData.jobId);
+                            if (!anxietyData) {
+                                // Show anxiety assessment after a short delay
+                                setTimeout(() => {
+                                    setShowAnxietyAssessment(true);
+                                }, 1000);
+                            }
+                        }
                         
                         setLoading(false);
                         
@@ -10647,6 +11093,8 @@ Format as JSON: {"score": 8, "strengths": [...], "improvements": [...], "feedbac
                 { id: 'overview', label: 'Overview', icon: '📊' },
                 { id: 'practice', label: 'Practice', icon: '🎯' },
                 { id: 'questions', label: 'Questions', icon: '❓' },
+                { id: 'stories', label: 'Story Bank', icon: '📚' },
+                { id: 'wellness', label: 'Wellness', icon: '🧘' },
                 { id: 'analytics', label: 'Analytics', icon: '📈' },
                 { id: 'tips', label: 'Tips & Guides', icon: '💡' },
                 { id: 'checklist', label: 'Checklist', icon: '✅' }
@@ -10673,18 +11121,33 @@ Format as JSON: {"score": 8, "strengths": [...], "improvements": [...], "feedbac
                     filtered = filtered.filter(q => q.difficulty === filterDifficulty);
                 }
                 
+                // Apply priority filter
+                if (filterPriority !== 'all') {
+                    filtered = filtered.filter(q => {
+                        const priority = questionPriorities[q.id] || 'Medium';
+                        return priority === filterPriority;
+                    });
+                }
+                
                 // Apply sorting
                 if (sortBy === 'category') {
                     filtered.sort((a, b) => a.category.localeCompare(b.category));
                 } else if (sortBy === 'difficulty') {
                     const diffOrder = { Easy: 1, Medium: 2, Hard: 3 };
                     filtered.sort((a, b) => (diffOrder[a.difficulty] || 0) - (diffOrder[b.difficulty] || 0));
+                } else if (sortBy === 'priority') {
+                    const priorityOrder = { Critical: 1, High: 2, Medium: 3, Low: 4 };
+                    filtered.sort((a, b) => {
+                        const aPriority = questionPriorities[a.id] || 'Medium';
+                        const bPriority = questionPriorities[b.id] || 'Medium';
+                        return (priorityOrder[aPriority] || 3) - (priorityOrder[bPriority] || 3);
+                    });
                 } else {
                     filtered.sort((a, b) => a.id - b.id);
                 }
                 
                 return filtered;
-            }, [interviewQuestions, searchQuery, filterCategory, filterDifficulty, sortBy]);
+            }, [interviewQuestions, searchQuery, filterCategory, filterDifficulty, filterPriority, sortBy, questionPriorities]);
 
             return (
                 <div className="space-y-8">
@@ -10987,17 +11450,44 @@ Format as JSON: {"score": 8, "strengths": [...], "improvements": [...], "feedbac
                                                     <option value="Hard">Hard</option>
                                                 </select>
                                                 <select
+                                                    value={filterPriority}
+                                                    onChange={(e) => setFilterPriority(e.target.value)}
+                                                    className={`px-4 py-2 rounded-lg border ${isLightMode ? 'border-gray-300 bg-white' : 'border-gray-600 bg-gray-700'} ${isLightMode ? 'text-slate-800' : 'text-white'} focus:outline-none focus:ring-2 focus:ring-blue-500`}
+                                                >
+                                                    <option value="all">All Priorities</option>
+                                                    <option value="Critical">Critical</option>
+                                                    <option value="High">High</option>
+                                                    <option value="Medium">Medium</option>
+                                                    <option value="Low">Low</option>
+                                                </select>
+                                                <select
                                                     value={sortBy}
                                                     onChange={(e) => setSortBy(e.target.value)}
                                                     className={`px-4 py-2 rounded-lg border ${isLightMode ? 'border-gray-300 bg-white' : 'border-gray-600 bg-gray-700'} ${isLightMode ? 'text-slate-800' : 'text-white'} focus:outline-none focus:ring-2 focus:ring-blue-500`}
                                                 >
                                                     <option value="id">Sort by ID</option>
+                                                    <option value="priority">Sort by Priority</option>
                                                     <option value="category">Sort by Category</option>
                                                     <option value="difficulty">Sort by Difficulty</option>
                                                 </select>
                                             </div>
-                                            <div className="text-sm text-gray-500">
-                                                Showing {filteredQuestions.length} of {interviewQuestions.length} questions
+                                            <div className="flex items-center justify-between">
+                                                <div className="text-sm text-gray-500">
+                                                    Showing {filteredQuestions.length} of {interviewQuestions.length} questions
+                                                </div>
+                                                {interviewQuestions.filter(q => (questionPriorities[q.id] || 'Medium') === 'Critical').length > 0 && (
+                                                    <button
+                                                        onClick={() => {
+                                                            setFilterPriority('Critical');
+                                                            setFilterCategory('all');
+                                                            setFilterDifficulty('all');
+                                                            setSearchQuery('');
+                                                        }}
+                                                        className={`text-sm px-3 py-1.5 rounded-lg font-medium ${isLightMode ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-red-900/30 text-red-300 hover:bg-red-900/50'} transition-colors`}
+                                                    >
+                                                        🎯 Start with Critical ({interviewQuestions.filter(q => (questionPriorities[q.id] || 'Medium') === 'Critical').length})
+                                                    </button>
+                                                )}
                                             </div>
                                         </div>
                                         
@@ -11009,7 +11499,15 @@ Format as JSON: {"score": 8, "strengths": [...], "improvements": [...], "feedbac
                                                     return (
                                                         <div 
                                                             key={q.id}
-                                                            className={`${isLightMode ? 'bg-white border-gray-200' : 'bg-gray-800 border-gray-700'} border rounded-xl p-6 hover:shadow-lg transition-all duration-300 ${progress.reviewed ? (isLightMode ? 'border-green-300 bg-green-50/50' : 'border-green-700/50 bg-green-900/20') : ''}`}
+                                                            className={`${isLightMode ? 'bg-white border-gray-200' : 'bg-gray-800 border-gray-700'} border rounded-xl p-6 hover:shadow-lg transition-all duration-300 ${
+                                                                progress.reviewed ? (isLightMode ? 'border-green-300 bg-green-50/50' : 'border-green-700/50 bg-green-900/20') : ''
+                                                            } ${
+                                                                (questionPriorities[q.id] || 'Medium') === 'Critical' 
+                                                                    ? (isLightMode ? 'border-l-4 border-l-red-500' : 'border-l-4 border-l-red-600')
+                                                                    : (questionPriorities[q.id] || 'Medium') === 'High'
+                                                                    ? (isLightMode ? 'border-l-4 border-l-orange-500' : 'border-l-4 border-l-orange-600')
+                                                                    : ''
+                                                            }`}
                                                         >
                                                             <div className="flex items-start justify-between mb-3">
                                                                 <div className="flex items-start gap-3 flex-1">
@@ -11035,7 +11533,16 @@ Format as JSON: {"score": 8, "strengths": [...], "improvements": [...], "feedbac
                                                                         )}
                                                                     </div>
                                                                 </div>
-                                                                <div className="flex gap-2 ml-2">
+                                                                <div className="flex gap-2 ml-2 flex-wrap">
+                                                                    <span className={`px-2 py-1 rounded text-xs font-medium ${
+                                                                        (questionPriorities[q.id] || 'Medium') === 'Critical' ? (isLightMode ? 'bg-red-500 text-white font-bold' : 'bg-red-600 text-white font-bold') :
+                                                                        (questionPriorities[q.id] || 'Medium') === 'High' ? (isLightMode ? 'bg-orange-500 text-white' : 'bg-orange-600 text-white') :
+                                                                        (questionPriorities[q.id] || 'Medium') === 'Low' ? (isLightMode ? 'bg-gray-300 text-gray-700' : 'bg-gray-600 text-gray-300') :
+                                                                        (isLightMode ? 'bg-yellow-200 text-yellow-800' : 'bg-yellow-600/50 text-yellow-200')
+                                                                    }`}>
+                                                                        {(questionPriorities[q.id] || 'Medium') === 'Critical' && '🔥 '}
+                                                                        {questionPriorities[q.id] || 'Medium'}
+                                                                    </span>
                                                                     <span className={`px-2 py-1 rounded text-xs font-medium ${
                                                                         q.category === 'General' ? (isLightMode ? 'bg-blue-100 text-blue-700' : 'bg-blue-900/50 text-blue-300') :
                                                                         q.category === 'Technical' ? (isLightMode ? 'bg-purple-100 text-purple-700' : 'bg-purple-900/50 text-purple-300') :
@@ -11491,6 +11998,264 @@ Best regards,
                                 </div>
                             </div>
                         )}
+
+                        {/* Story Bank Tab */}
+                        {activeTab === 'stories' && (
+                            <div className="space-y-6">
+                                <div className="flex items-center justify-between mb-6">
+                                    <h3 className={`text-xl font-bold ${isLightMode ? 'text-slate-800' : 'text-gray-50'}`}>
+                                        Story Bank
+                                    </h3>
+                                    <button
+                                        onClick={() => {
+                                            // Build story bank from resume
+                                            const stories = buildStoryBankFromResume();
+                                            setUserStories(stories);
+                                            if (currentJob?.jobId) {
+                                                InterviewPrepStorage.saveStoryBank(currentJob.jobId, stories);
+                                            }
+                                            if (window.JobTrackingUtils) {
+                                                window.JobTrackingUtils.showNotification(`Loaded ${stories.length} stories from your resume!`, 'success');
+                                            }
+                                        }}
+                                        className={`text-sm px-4 py-2 rounded-lg font-medium ${isLightMode ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-500 hover:bg-blue-600'} text-white transition-colors`}
+                                    >
+                                        🔄 Refresh from Resume
+                                    </button>
+                                </div>
+
+                                {userStories.length > 0 ? (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        {userStories.map((story) => (
+                                            <div 
+                                                key={story.id}
+                                                className={`${isLightMode ? 'bg-white border-gray-200' : 'bg-gray-800 border-gray-700'} border rounded-xl p-6 hover:shadow-lg transition-all duration-300`}
+                                            >
+                                                <div className="flex items-start justify-between mb-3">
+                                                    <div className="flex-1">
+                                                        <h4 className={`font-semibold ${isLightMode ? 'text-slate-800' : 'text-white'} mb-2`}>
+                                                            {story.title}
+                                                        </h4>
+                                                        {story.company && (
+                                                            <p className={`text-sm ${isLightMode ? 'text-slate-600' : 'text-gray-400'} mb-1`}>
+                                                                {story.company} {story.position ? `• ${story.position}` : ''}
+                                                            </p>
+                                                        )}
+                                                        <span className={`inline-block px-2 py-1 rounded text-xs font-medium ${
+                                                            story.source === 'resume' 
+                                                                ? (isLightMode ? 'bg-blue-100 text-blue-700' : 'bg-blue-900/50 text-blue-300')
+                                                                : (isLightMode ? 'bg-green-100 text-green-700' : 'bg-green-900/50 text-green-300')
+                                                        }`}>
+                                                            {story.source === 'resume' ? '📄 From Resume' : '✍️ Manual'}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                
+                                                {story.description && (
+                                                    <p className={`text-sm ${isLightMode ? 'text-slate-600' : 'text-gray-300'} mb-4 line-clamp-2`}>
+                                                        {story.description}
+                                                    </p>
+                                                )}
+                                                
+                                                {story.starFormat && (
+                                                    <div className={`${isLightMode ? 'bg-blue-50' : 'bg-blue-900/20'} rounded-lg p-4 mb-4`}>
+                                                        <div className="text-xs font-semibold mb-2 text-blue-600">STAR Format:</div>
+                                                        <div className="space-y-1 text-xs">
+                                                            <div><strong>Situation:</strong> {story.starFormat.Situation}</div>
+                                                            <div><strong>Task:</strong> {story.starFormat.Task}</div>
+                                                            <div><strong>Action:</strong> {story.starFormat.Action}</div>
+                                                            <div><strong>Result:</strong> {story.starFormat.Result}</div>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                
+                                                <button
+                                                    onClick={() => {
+                                                        // Use this story for practice
+                                                        if (story.starFormat) {
+                                                            setStarAnswers(story.starFormat);
+                                                            setStarMode(true);
+                                                            setShowPracticeModal(true);
+                                                            // Set a dummy question for practice
+                                                            setSelectedQuestion({ id: 'story', question: 'Tell me about a time when...' });
+                                                        }
+                                                    }}
+                                                    className={`w-full text-sm px-4 py-2 rounded-lg font-medium ${isLightMode ? 'bg-purple-600 hover:bg-purple-700' : 'bg-purple-500 hover:bg-purple-600'} text-white transition-colors`}
+                                                >
+                                                    Practice with STAR →
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="text-center py-12">
+                                        <div className="w-16 h-16 text-blue-400 mx-auto mb-6 text-6xl">📚</div>
+                                        <h2 className={`text-2xl font-bold ${isLightMode ? 'text-slate-800' : 'text-gray-50'} mb-4`}>
+                                            No Stories Yet
+                                        </h2>
+                                        <p className={`${isLightMode ? 'text-slate-600' : 'text-gray-400'} mb-8 max-w-md mx-auto`}>
+                                            {InterviewPrepStorage.getResumeData() 
+                                                ? 'Click "Refresh from Resume" to extract stories from your resume, or add stories manually.'
+                                                : 'Upload your resume first, or add stories manually to prepare for behavioral questions.'}
+                                        </p>
+                                        <button
+                                            onClick={() => {
+                                                const stories = buildStoryBankFromResume();
+                                                if (stories.length > 0) {
+                                                    setUserStories(stories);
+                                                    if (currentJob?.jobId) {
+                                                        InterviewPrepStorage.saveStoryBank(currentJob.jobId, stories);
+                                                    }
+                                                } else {
+                                                    if (window.JobTrackingUtils) {
+                                                        window.JobTrackingUtils.showNotification('No resume data found. Please upload your resume first.', 'error');
+                                                    }
+                                                }
+                                            }}
+                                            className={`px-6 py-3 rounded-lg font-semibold ${isLightMode ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-500 hover:bg-blue-600'} text-white transition-colors`}
+                                        >
+                                            {InterviewPrepStorage.getResumeData() ? 'Refresh from Resume' : 'Go to Resume Studio →'}
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Wellness Tab - Anxiety & Confidence Dashboard */}
+                        {activeTab === 'wellness' && (
+                            <div className="space-y-6">
+                                <h3 className={`text-xl font-bold ${isLightMode ? 'text-slate-800' : 'text-gray-50'} mb-6`}>
+                                    Interview Wellness & Confidence
+                                </h3>
+
+                                {/* Confidence Meter */}
+                                <div className={`${isLightMode ? 'bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200' : 'bg-gradient-to-r from-blue-900/30 to-indigo-900/30 border-blue-700/50'} border rounded-2xl p-6`}>
+                                    <div className="flex items-center justify-between mb-4">
+                                        <h4 className={`text-lg font-semibold ${isLightMode ? 'text-blue-900' : 'text-blue-100'}`}>
+                                            Confidence Level
+                                        </h4>
+                                        <span className={`text-2xl font-bold ${
+                                            confidenceScore >= 80 ? (isLightMode ? 'text-green-600' : 'text-green-400') :
+                                            confidenceScore >= 60 ? (isLightMode ? 'text-blue-600' : 'text-blue-400') :
+                                            confidenceScore >= 40 ? (isLightMode ? 'text-yellow-600' : 'text-yellow-400') :
+                                            (isLightMode ? 'text-red-600' : 'text-red-400')
+                                        }`}>
+                                            {confidenceScore}%
+                                        </span>
+                                    </div>
+                                    <div className={`w-full h-6 rounded-full ${isLightMode ? 'bg-gray-200' : 'bg-gray-700'} overflow-hidden`}>
+                                        <div 
+                                            className={`h-full transition-all duration-500 ${
+                                                confidenceScore >= 80 ? 'bg-gradient-to-r from-green-500 to-green-600' :
+                                                confidenceScore >= 60 ? 'bg-gradient-to-r from-blue-500 to-blue-600' :
+                                                confidenceScore >= 40 ? 'bg-gradient-to-r from-yellow-500 to-yellow-600' :
+                                                'bg-gradient-to-r from-red-500 to-red-600'
+                                            }`}
+                                            style={{ width: `${confidenceScore}%` }}
+                                        ></div>
+                                    </div>
+                                    <p className={`text-sm mt-2 ${isLightMode ? 'text-blue-700' : 'text-blue-300'}`}>
+                                        {confidenceScore >= 80 ? 'Excellent! You\'re well prepared.' :
+                                         confidenceScore >= 60 ? 'Good progress! Keep practicing.' :
+                                         confidenceScore >= 40 ? 'You\'re on the right track. Focus on critical questions.' :
+                                         'Start with critical questions to build confidence.'}
+                                    </p>
+                                </div>
+
+                                {/* Anxiety Assessment */}
+                                <div className={`${isLightMode ? 'bg-white border-gray-200' : 'bg-gray-800 border-gray-700'} border rounded-xl p-6`}>
+                                    <div className="flex items-center justify-between mb-4">
+                                        <h4 className={`text-lg font-semibold ${isLightMode ? 'text-slate-800' : 'text-white'}`}>
+                                            Anxiety Assessment
+                                        </h4>
+                                        {anxietyLevel && (
+                                            <span className={`px-3 py-1 rounded-full text-sm font-semibold ${
+                                                anxietyLevel <= 3 ? (isLightMode ? 'bg-green-100 text-green-700' : 'bg-green-900/50 text-green-300') :
+                                                anxietyLevel <= 6 ? (isLightMode ? 'bg-yellow-100 text-yellow-700' : 'bg-yellow-900/50 text-yellow-300') :
+                                                (isLightMode ? 'bg-red-100 text-red-700' : 'bg-red-900/50 text-red-300')
+                                            }`}>
+                                                Level {anxietyLevel}/10
+                                            </span>
+                                        )}
+                                    </div>
+                                    
+                                    {anxietyLevel === null ? (
+                                        <div>
+                                            <p className={`${isLightMode ? 'text-slate-600' : 'text-gray-400'} mb-4`}>
+                                                Take a quick assessment to identify your specific interview fears and get personalized coping strategies.
+                                            </p>
+                                            <button
+                                                onClick={() => setShowAnxietyAssessment(true)}
+                                                className={`${isLightMode ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-500 hover:bg-blue-600'} text-white px-6 py-2 rounded-lg transition-colors`}
+                                            >
+                                                Start Assessment
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-4">
+                                            <div>
+                                                <p className={`${isLightMode ? 'text-slate-700' : 'text-gray-300'} mb-2`}>
+                                                    Your anxiety level: <strong>{anxietyLevel}/10</strong>
+                                                </p>
+                                                {assessAnxietyLevel()?.fears && assessAnxietyLevel().fears.length > 0 && (
+                                                    <div className={`mt-3 p-4 rounded-lg ${isLightMode ? 'bg-amber-50' : 'bg-amber-900/20'}`}>
+                                                        <p className={`text-sm font-semibold ${isLightMode ? 'text-amber-900' : 'text-amber-100'} mb-2`}>
+                                                            Top Concerns:
+                                                        </p>
+                                                        <ul className="list-disc list-inside space-y-1">
+                                                            {assessAnxietyLevel().fears.map((fear, idx) => (
+                                                                <li key={idx} className={`text-sm ${isLightMode ? 'text-amber-700' : 'text-amber-300'}`}>
+                                                                    {fear}
+                                                                </li>
+                                                            ))}
+                                                        </ul>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <button
+                                                onClick={() => setShowAnxietyAssessment(true)}
+                                                className={`text-sm ${isLightMode ? 'bg-gray-200 hover:bg-gray-300' : 'bg-gray-700 hover:bg-gray-600'} text-gray-700 px-4 py-2 rounded-lg transition-colors`}
+                                            >
+                                                Retake Assessment
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Progress Indicators */}
+                                {currentJob && interviewQuestions.length > 0 && (
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                        <div className={`${isLightMode ? 'bg-green-50 border-green-200' : 'bg-green-900/20 border-green-700/50'} border rounded-xl p-4`}>
+                                            <div className="text-2xl mb-2">🎯</div>
+                                            <div className={`text-xl font-bold ${isLightMode ? 'text-green-900' : 'text-green-100'}`}>
+                                                {interviewQuestions.filter(q => (questionPriorities[q.id] || 'Medium') === 'Critical').filter(q => questionProgress[q.id]?.reviewed).length} / {interviewQuestions.filter(q => (questionPriorities[q.id] || 'Medium') === 'Critical').length}
+                                            </div>
+                                            <div className={`text-xs ${isLightMode ? 'text-green-700' : 'text-green-300'}`}>
+                                                Critical Questions Reviewed
+                                            </div>
+                                        </div>
+                                        <div className={`${isLightMode ? 'bg-purple-50 border-purple-200' : 'bg-purple-900/20 border-purple-700/50'} border rounded-xl p-4`}>
+                                            <div className="text-2xl mb-2">📚</div>
+                                            <div className={`text-xl font-bold ${isLightMode ? 'text-purple-900' : 'text-purple-100'}`}>
+                                                {userStories.length}
+                                            </div>
+                                            <div className={`text-xs ${isLightMode ? 'text-purple-700' : 'text-purple-300'}`}>
+                                                Stories Prepared
+                                            </div>
+                                        </div>
+                                        <div className={`${isLightMode ? 'bg-blue-50 border-blue-200' : 'bg-blue-900/20 border-blue-700/50'} border rounded-xl p-4`}>
+                                            <div className="text-2xl mb-2">💬</div>
+                                            <div className={`text-xl font-bold ${isLightMode ? 'text-blue-900' : 'text-blue-100'}`}>
+                                                {Object.keys(userAnswers).length}
+                                            </div>
+                                            <div className={`text-xs ${isLightMode ? 'text-blue-700' : 'text-blue-300'}`}>
+                                                Answers Saved
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>
 
                     {/* Sample Answer Modal */}
@@ -11554,12 +12319,106 @@ Best regards,
                                         {selectedQuestion.question}
                                     </p>
                                 </div>
-                                <textarea
-                                    value={practiceAnswer}
-                                    onChange={(e) => setPracticeAnswer(e.target.value)}
-                                    placeholder="Write your answer here..."
-                                    className={`w-full h-64 px-4 py-3 rounded-lg border ${isLightMode ? 'border-gray-300 bg-white text-slate-800' : 'border-gray-600 bg-gray-700 text-white'} focus:outline-none focus:ring-2 focus:ring-blue-500`}
-                                />
+
+                                {/* STAR Framework Toggle */}
+                                <div className="mb-4 flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            onClick={() => {
+                                                setStarMode(!starMode);
+                                                if (starMode) {
+                                                    // When disabling STAR mode, combine into answer if all fields filled
+                                                    const allFilled = starAnswers.Situation && starAnswers.Task && starAnswers.Action && starAnswers.Result;
+                                                    if (allFilled) {
+                                                        const combined = `Situation: ${starAnswers.Situation}\n\nTask: ${starAnswers.Task}\n\nAction: ${starAnswers.Action}\n\nResult: ${starAnswers.Result}`;
+                                                        setPracticeAnswer(combined);
+                                                    }
+                                                }
+                                            }}
+                                            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                                                starMode 
+                                                    ? `${isLightMode ? 'bg-blue-600 text-white' : 'bg-blue-500 text-white'}`
+                                                    : `${isLightMode ? 'bg-gray-200 text-gray-700 hover:bg-gray-300' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`
+                                            }`}
+                                        >
+                                            {starMode ? '⭐ STAR Mode Active' : '✨ Use STAR Framework'}
+                                        </button>
+                                        {starMode && (
+                                            <button
+                                                onClick={() => {
+                                                    // View STAR guide
+                                                    if (window.JobTrackingUtils) {
+                                                        window.JobTrackingUtils.showNotification('STAR Method: Situation (context), Task (your role), Action (what you did), Result (outcome with numbers)', 'info');
+                                                    }
+                                                }}
+                                                className={`px-3 py-2 rounded-lg text-xs font-medium ${isLightMode ? 'bg-blue-50 text-blue-600 hover:bg-blue-100' : 'bg-blue-900/30 text-blue-300 hover:bg-blue-900/50'} transition-colors`}
+                                            >
+                                                📖 View Guide
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* STAR Framework Builder */}
+                                {starMode ? (
+                                    <div className="space-y-4">
+                                        {Object.entries({
+                                            Situation: "What was the situation or context? Set the scene.",
+                                            Task: "What was your responsibility or task? What needed to be done?",
+                                            Action: "What specific actions did YOU take? Be detailed and use \"I\" statements.",
+                                            Result: "What was the outcome? Use numbers, percentages, or measurable results!"
+                                        }).map(([key, prompt]) => (
+                                            <div key={key}>
+                                                <label className={`block text-sm font-semibold mb-2 ${isLightMode ? 'text-slate-700' : 'text-gray-300'}`}>
+                                                    {key} <span className="text-xs font-normal text-gray-500">({prompt})</span>
+                                                </label>
+                                                <textarea
+                                                    value={starAnswers[key]}
+                                                    onChange={(e) => setStarAnswers({...starAnswers, [key]: e.target.value})}
+                                                    placeholder={prompt}
+                                                    className={`w-full h-24 px-4 py-2 rounded-lg border ${isLightMode ? 'border-gray-300 bg-white text-slate-800' : 'border-gray-600 bg-gray-700 text-white'} focus:outline-none focus:ring-2 focus:ring-blue-500`}
+                                                />
+                                                {starAnswers[key] && (
+                                                    <div className="text-xs text-gray-500 mt-1">
+                                                        {starAnswers[key].length} characters
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))}
+                                        <button
+                                            onClick={() => {
+                                                const allFilled = starAnswers.Situation && starAnswers.Task && starAnswers.Action && starAnswers.Result;
+                                                if (allFilled) {
+                                                    const combined = `Situation: ${starAnswers.Situation}\n\nTask: ${starAnswers.Task}\n\nAction: ${starAnswers.Action}\n\nResult: ${starAnswers.Result}`;
+                                                    setPracticeAnswer(combined);
+                                                    if (window.JobTrackingUtils) {
+                                                        window.JobTrackingUtils.showNotification('Answer combined! Review and edit if needed.', 'success');
+                                                    }
+                                                } else {
+                                                    if (window.JobTrackingUtils) {
+                                                        window.JobTrackingUtils.showNotification('Please fill in all STAR components before combining.', 'error');
+                                                    }
+                                                }
+                                            }}
+                                            className={`w-full py-2 rounded-lg font-medium transition-colors ${
+                                                starAnswers.Situation && starAnswers.Task && starAnswers.Action && starAnswers.Result
+                                                    ? `${isLightMode ? 'bg-green-600 hover:bg-green-700 text-white' : 'bg-green-500 hover:bg-green-600 text-white'}`
+                                                    : `${isLightMode ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`
+                                            }`}
+                                            disabled={!starAnswers.Situation || !starAnswers.Task || !starAnswers.Action || !starAnswers.Result}
+                                        >
+                                            ✓ Combine into Complete Answer
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <textarea
+                                        value={practiceAnswer}
+                                        onChange={(e) => setPracticeAnswer(e.target.value)}
+                                        placeholder="Write your answer here..."
+                                        className={`w-full h-64 px-4 py-3 rounded-lg border ${isLightMode ? 'border-gray-300 bg-white text-slate-800' : 'border-gray-600 bg-gray-700 text-white'} focus:outline-none focus:ring-2 focus:ring-blue-500`}
+                                    />
+                                )}
+                                
                                 <div className="flex gap-3 mt-4">
                                     <button
                                         onClick={() => {
@@ -11674,6 +12533,111 @@ Best regards,
                                         )}
                                     </div>
                                 ) : null}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Anxiety Assessment Modal */}
+                    {showAnxietyAssessment && (
+                        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[10000] p-4">
+                            <div className={`${isLightMode ? 'bg-white' : 'bg-gray-800'} rounded-2xl p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto`}>
+                                <div className="flex items-center justify-between mb-6">
+                                    <h3 className={`text-xl font-bold ${isLightMode ? 'text-slate-800' : 'text-white'}`}>
+                                        Interview Anxiety Assessment
+                                    </h3>
+                                    <button
+                                        onClick={() => {
+                                            setShowAnxietyAssessment(false);
+                                        }}
+                                        className={`${isLightMode ? 'text-gray-500 hover:text-gray-700' : 'text-gray-400 hover:text-gray-200'}`}
+                                    >
+                                        ✕
+                                    </button>
+                                </div>
+                                
+                                <p className={`text-sm mb-6 ${isLightMode ? 'text-slate-600' : 'text-gray-400'}`}>
+                                    Rate each statement on a scale of 1-5 (1 = Not worried at all, 5 = Very worried)
+                                </p>
+
+                                <div className="space-y-6">
+                                    {[
+                                        { id: 'nervous', question: 'How nervous do you feel about the interview?', fear: 'Being too nervous' },
+                                        { id: 'stumped', question: 'How worried are you about being stumped by questions?', fear: 'Being stumped by questions' },
+                                        { id: 'late', question: 'How concerned are you about being late?', fear: 'Being late' },
+                                        { id: 'underqualified', question: 'Do you feel underqualified for this role?', fear: 'Being underqualified' },
+                                        { id: 'unprepared', question: 'How prepared do you feel?', fear: 'Not being prepared', reverse: true }
+                                    ].map((item) => (
+                                        <div key={item.id} className={`${isLightMode ? 'bg-gray-50' : 'bg-gray-700/50'} rounded-lg p-4`}>
+                                            <p className={`font-semibold mb-3 ${isLightMode ? 'text-slate-800' : 'text-white'}`}>
+                                                {item.question}
+                                            </p>
+                                            <div className="flex gap-2 justify-between">
+                                                {[1, 2, 3, 4, 5].map((value) => (
+                                                    <button
+                                                        key={value}
+                                                        onClick={() => {
+                                                            setAnxietyAssessmentAnswers({
+                                                                ...anxietyAssessmentAnswers,
+                                                                [item.id]: value
+                                                            });
+                                                        }}
+                                                        className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${
+                                                            anxietyAssessmentAnswers[item.id] === value
+                                                                ? `${isLightMode ? 'bg-blue-600 text-white' : 'bg-blue-500 text-white'}`
+                                                                : `${isLightMode ? 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50' : 'bg-gray-600 border-gray-500 text-gray-300 hover:bg-gray-500'} border`
+                                                        }`}
+                                                    >
+                                                        {value}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                <div className="mt-6 flex gap-3">
+                                    <button
+                                        onClick={() => {
+                                            const assessment = assessAnxietyLevel();
+                                            if (assessment) {
+                                                setAnxietyLevel(assessment.level);
+                                                if (currentJob?.jobId) {
+                                                    InterviewPrepStorage.saveAnxietyData(currentJob.jobId, {
+                                                        level: assessment.level,
+                                                        fears: assessment.fears,
+                                                        assessmentAnswers: anxietyAssessmentAnswers,
+                                                        date: new Date().toISOString()
+                                                    });
+                                                }
+                                                setShowAnxietyAssessment(false);
+                                                if (window.JobTrackingUtils) {
+                                                    window.JobTrackingUtils.showNotification(`Assessment complete! Your anxiety level is ${assessment.level}/10.`, 'success');
+                                                }
+                                            } else {
+                                                if (window.JobTrackingUtils) {
+                                                    window.JobTrackingUtils.showNotification('Please answer all questions.', 'error');
+                                                }
+                                            }
+                                        }}
+                                        disabled={Object.keys(anxietyAssessmentAnswers).length < 5}
+                                        className={`flex-1 py-3 rounded-lg font-semibold transition-colors ${
+                                            Object.keys(anxietyAssessmentAnswers).length === 5
+                                                ? `${isLightMode ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-500 hover:bg-blue-600'} text-white`
+                                                : `${isLightMode ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-gray-600 text-gray-400 cursor-not-allowed'}`
+                                        }`}
+                                    >
+                                        Complete Assessment
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            setShowAnxietyAssessment(false);
+                                            setAnxietyAssessmentAnswers({});
+                                        }}
+                                        className={`px-6 py-3 rounded-lg font-medium ${isLightMode ? 'bg-gray-200 hover:bg-gray-300 text-gray-700' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'} transition-colors`}
+                                    >
+                                        Cancel
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     )}
