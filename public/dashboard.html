@@ -45,6 +45,51 @@
             background-color: #4f46e5; /* Use original scrollbar color on hover */
         }
         /* --- End Sidebar Scrollbar --- */
+        
+        /* Smart Resume Studio Styles */
+        /* Custom slider thumb */
+        .slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #4f46e5;
+            cursor: pointer;
+            border-radius: 50%;
+        }
+        .slider::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            background: #4f46e5;
+            cursor: pointer;
+            border-radius: 50%;
+        }
+        /* Styles for Drag and Drop */
+        .resume-content-view.dnd-active .resume-section {
+            cursor: move;
+            outline: 2px dashed #818cf8;
+            transition: outline 0.2s ease-in-out;
+        }
+        .resume-content-view .resume-section.dragging {
+            opacity: 0.4;
+            transform: scale(0.98);
+        }
+        .resume-content-view.dragging-active {
+            cursor: grabbing;
+        }
+        .drag-over-indicator {
+            height: 60px;
+            background-color: rgba(99, 102, 241, 0.1);
+            border: 2px dashed #818cf8;
+            border-radius: 8px;
+            margin: 8px 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            color: #4f46e5;
+            font-weight: 500;
+        }
 
         aside {
             transition: width 0.3s ease-in-out;
@@ -1407,11 +1452,9 @@
                 </div>
             </div>
             
-            <div id="resume-studio-content" class="max-w-7xl mx-auto hidden">
-                <div class="pt-6">
+            <div id="resume-studio-content" class="hidden h-full">
                     <!-- Smart Resume Studio Content -->
-                    <div id="resume-studio-container"></div>
-                </div>
+                <div id="resume-studio-container" class="h-full"></div>
             </div>
             
             <div id="app-tailor-content" class="max-w-7xl mx-auto hidden">
@@ -2080,13 +2123,6 @@
                 link.addEventListener('click', (e) => {
                     e.preventDefault();
                     const linkId = link.dataset.id;
-                    
-                    // Special handling for resume-studio to navigate to external page
-                    if (linkId === 'resume-studio') {
-                        window.parent.postMessage('navigate-to-smart-resume-studio', '*');
-                        return;
-                    }
-                    
                     
                     if (contentSections[linkId]) {
                         setActiveLink(linkId);
@@ -2944,370 +2980,1389 @@
 
     <!-- Smart Resume Studio React Component -->
     <script type="text/babel">
-        const { useState } = React;
+        const { useState, useRef, useEffect } = React;
+        
+        // --- Mock Lucide Icons ---
+        const createIcon = (svgContent) => ({ className }) => (
+            <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className={className}
+                dangerouslySetInnerHTML={{ __html: svgContent }}
+            />
+        );
 
-        const SmartResumeStudio = () => {
-            const [parsedResume, setParsedResume] = useState(null);
-            const [isUploading, setIsUploading] = useState(false);
-            const [uploadProgress, setUploadProgress] = useState(0);
-            const [error, setError] = useState('');
-            const [file, setFile] = useState(null);
-            const [isProcessing, setIsProcessing] = useState(false);
+        const icons = {
+            FileText: createIcon(`<path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" /><polyline points="14 2 14 8 20 8" /><line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" /><line x1="10" y1="9" x2="8" y2="9" />`),
+            Upload: createIcon(`<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />`),
+            Plus: createIcon(`<line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />`),
+            AlertCircle: createIcon(`<circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />`),
+            CheckCircle: createIcon(`<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" />`),
+            RefreshCw: createIcon(`<polyline points="23 4 23 10 17 10" /><polyline points="1 20 1 14 7 14" /><path d="M3.51 9a9 9 0 0 1 14.85-3.36L20.49 9" /><path d="M20.49 15a9 9 0 0 1-14.85 3.36L3.51 15" />`),
+            ArrowRight: createIcon(`<line x1="5" y1="12" x2="19" y2="12" /><polyline points="12 5 19 12 12 19" />`),
+            Star: createIcon(`<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />`),
+            Target: createIcon(`<circle cx="12" cy="12" r="10" /><circle cx="12" cy="12" r="6" /><circle cx="12" cy="12" r="2" />`),
+            Brain: createIcon(`<path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v1.2a1 1 0 0 0 1 1h.3a1 1 0 0 0 .9-.6 2.5 2.5 0 0 1 2.4-1.9 2.5 2.5 0 0 1 2.5 2.5v1.3a1 1 0 0 0 1 1h.1a1 1 0 0 0 1-1V10a2.5 2.5 0 0 1 2.5-2.5 2.5 2.5 0 0 1 0 5A2.5 2.5 0 0 1 20 15v.2a1 1 0 0 0 1 1h.1a1 1 0 0 0 1-1V14a2.5 2.5 0 0 1 2.5-2.5 2.5 2.5 0 0 1 0 5 2.5 2.5 0 0 1-2.5-2.5v-1.3a1 1 0 0 0-1-1h-.3a1 1 0 0 0-.9.6 2.5 2.5 0 0 1-2.4 1.9A2.5 2.5 0 0 1 12 15.5v-1.2a1 1 0 0 0-1-1h-.1a1 1 0 0 0-1 1V16a2.5 2.5 0 0 1-2.5 2.5 2.5 2.5 0 0 1 0-5A2.5 2.5 0 0 1 8 11v-.2a1 1 0 0 0-1-1h-.1a1 1 0 0 0-1 1V12a2.5 2.5 0 0 1-2.5 2.5 2.5 2.5 0 0 1 0-5A2.5 2.5 0 0 1 4 7V5.7a1 1 0 0 0-1-1h-.3a1 1 0 0 0-.9.6 2.5 2.5 0 0 1-2.4 1.9A2.5 2.5 0 0 1 0 4.5 2.5 2.5 0 0 1 2.5 2h.1A2.5 2.5 0 0 1 5 4.5v1.2a1 1 0 0 0 1 1h.3a1 1 0 0 0 .9-.6A2.5 2.5 0 0 1 9.5 4.2V2.5A2.5 2.5 0 0 1 9.5 2z" /><path d="M12 13a2.5 2.5 0 0 0-2.5 2.5v.2a1 1 0 0 1-1 1h-.1a1 1 0 0 1-1-1V16a2.5 2.5 0 0 0-5 0v.2a1 1 0 0 1-1 1h-.1a1 1 0 0 1-1-1V16a2.5 2.5 0 0 0-5 0v.2a1 1 0 0 1-1 1h-.1a1 1 0 0 1-1-1V16a2.5 2.5 0 0 0-2.5-2.5 2.5 2.5 0 0 0 0 5 2.5 2.5 0 0 0 2.5-2.5v-.2a1 1 0 0 1 1-1h.1a1 1 0 0 1 1 1V18a2.5 2.5 0 0 0 5 0v-.2a1 1 0 0 1 1-1h.1a1 1 0 0 1 1 1V18a2.5 2.5 0 0 0 5 0v-.2a1 1 0 0 1 1-1h.1a1 1 0 0 1 1 1V18a2.5 2.5 0 0 0 2.5 2.5 2.5 2.5 0 0 0 0-5 2.5 2.5 0 0 0-2.5 2.5v.2a1 1 0 0 1-1 1h-.1a1 1 0 0 1-1-1V16a2.5 2.5 0 0 0-2.5-2.5z" />`),
+            Shield: createIcon(`<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />`),
+            TrendingUp: createIcon(`<polyline points="23 6 13.5 15.5 8.5 10.5 1 18" /><polyline points="17 6 23 6 23 12" />`),
+            Clock: createIcon(`<circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />`),
+            Sparkles: createIcon(`<path d="m12 3-1.9 1.9-3.2.9 1 3.1-.9 3.2 3.1 1 1.9 1.9 1.9-1.9 3.1-1-.9-3.2 1-3.1-3.2-.9z" /><path d="M5 22s1.5-2 4-2" /><path d="m19 22-4-2" /><path d="M22 5s-2-1.5-2-4" /><path d="m2 5 2-4" />`),
+            Zap: createIcon(`<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />`),
+            Download: createIcon(`<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />`),
+            Save: createIcon(`<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" /><polyline points="17 21 17 13 7 13 7 21" /><polyline points="7 3 7 8 15 8" />`),
+            Eye: createIcon(`<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" />`),
+            RotateCcw: createIcon(`<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" />`),
+            X: createIcon(`<line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />`),
+            List: createIcon(`<line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/>`),
+            ListOrdered: createIcon(`<line x1="10" x2="21" y1="6" y2="6"/><line x1="10" x2="21" y1="12" y2="12"/><line x1="10" x2="21" y1="18" y2="18"/><path d="M4 6h1v4"/><path d="M4 10h2"/><path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1"/>`),
+            Indent: createIcon(`<polyline points="21 12 15 6 21 18 15 12"/><line x1="3" x2="15" y1="6" y2="6"/><line x1="3" x2="15" y1="18" y2="18"/><line x1="3" x2="21" y1="12" y2="12"/>`),
+            Outdent: createIcon(`<polyline points="3 12 9 6 3 18 9 12"/><line x1="21" x2="9" y1="6" y2="6"/><line x1="21" x2="9" y1="18" y2="18"/><line x1="21" x2="3" y1="12" y2="12"/>`),
+            AlignCenter: createIcon(`<line x1="18" x2="6" y1="10" y2="10"/><line x1="21" x2="3" y1="6" y2="6"/><line x1="21" x2="3" y1="14" y2="14"/><line x1="18" x2="6" y1="18" y2="18"/>`),
+            AlignLeft: createIcon(`<line x1="17" x2="3" y1="10" y2="10"/><line x1="21" x2="3" y1="6" y2="6"/><line x1="21" x2="3" y1="14" y2="14"/><line x1="17" x2="3" y1="18" y2="18"/>`),
+            AlignRight: createIcon(`<line x1="21" x2="7" y1="10" y2="10"/><line x1="21" x2="3" y1="6" y2="6"/><line x1="21" x2="3" y1="14" y2="14"/><line x1="21" x2="7" y1="18" y2="18"/>`),
+            Bold: createIcon(`<path d="M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/><path d="M6 12h9a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z"/>`),
+            Italic: createIcon(`<line x1="19" y1="4" x2="10" y2="4"/><line x1="14" y1="20" x2="5" y2="20"/><line x1="15" y1="4" x2="9" y2="20"/>`),
+            Underline: createIcon(`<path d="M6 3v7a6 6 0 0 0 6 6 6 6 0 0 0 6-6V3"/><line x1="4" y1="21" x2="20" y2="21"/>`),
+            Link: createIcon(`<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.72"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.72-1.72"/>`),
+            Phone: createIcon(`<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>`),
+            Mail: createIcon(`<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>`),
+            MapPin: createIcon(`<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>`),
+            Minus: createIcon(`<line x1="5" y1="12" x2="19" y2="12"/>`),
+            Calendar: createIcon(`<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" y2="6"/><line x1="8" y1="2" y2="6"/><line x1="3" y1="10" y2="10"/>`),
+        };
+
+        const { FileText, Upload, Plus, AlertCircle, CheckCircle, RefreshCw, ArrowRight, Star, Target, Brain, Shield, TrendingUp, Clock, Sparkles, Zap, Download, Save, Eye, RotateCcw, X, List, ListOrdered, Indent, Outdent, AlignLeft, AlignCenter, AlignRight, Bold, Italic, Underline, Link, Phone, Mail, MapPin, Minus, Calendar } = icons;
+
+        // --- Mock Custom Hook ---
+        const useTheme = () => {
+            return { theme: 'dark' };
+        };
+
+        // --- Mock Child Components ---
+        // Mock for AICopilot.js
+        const AICopilot = ({ activeResume, selectedText, aiProcessing, onATSOptimization, onEnhanceText, onGapJustification }) => {
+            return (
+                <div className="space-y-4">
+                    <div>
+                        <h4 className="text-sm font-semibold text-slate-800 mb-3">AI Copilot</h4>
+                        {activeResume ? (
+                            <div className="p-3 bg-slate-100 border border-slate-200 rounded-lg text-sm text-slate-600">
+                                <p><span className="font-semibold text-slate-800">ATS Score:</span> {activeResume.atsScore}%</p>
+                                <p className="mt-1">AI suggestions will appear here based on your resume content.</p>
+                            </div>
+                        ) : (
+                            <div className="p-3 bg-slate-100 border border-slate-200 rounded-lg text-sm text-slate-500">
+                                Select a resume to activate AI Copilot.
+                            </div>
+                        )}
+                    </div>
+                    
+                    <div className="space-y-2">
+                        <button
+                            onClick={onATSOptimization}
+                            disabled={!activeResume || aiProcessing}
+                            className="w-full flex items-center gap-3 p-3 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            <Shield className="w-5 h-5 text-blue-500" />
+                            <div>
+                                <p className="text-sm font-medium text-slate-800 text-left">ATS Optimization</p>
+                                <p className="text-xs text-slate-500 text-left">Improve your score against tracking systems.</p>
+                            </div>
+                        </button>
+                        <button
+                            onClick={onEnhanceText}
+                            disabled={!selectedText || aiProcessing}
+                            className="w-full flex items-center gap-3 p-3 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            <Sparkles className="w-5 h-5 text-yellow-500" />
+                            <div>
+                                <p className="text-sm font-medium text-slate-800 text-left">Enhance Selected Text</p>
+                                <p className="text-xs text-slate-500 text-left">Rewrite text for more impact. Select text to enable.</p>
+                            </div>
+                        </button>
+                        <button
+                            onClick={onGapJustification}
+                            disabled={!activeResume || aiProcessing}
+                            className="w-full flex items-center gap-3 p-3 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            <Clock className="w-5 h-5 text-orange-500" />
+                            <div>
+                                <p className="text-sm font-medium text-slate-800 text-left">Gap Justification</p>
+                                <p className="text-xs text-slate-500 text-left">Get help explaining career gaps.</p>
+                            </div>
+                        </button>
+                        {aiProcessing && <p className="text-sm text-center text-indigo-600 animate-pulse">AI is working...</p>}
+                    </div>
+                </div>
+            );
+        };
+
+        // Mock for ResumePreview.js
+        const ResumePreview = ({ content, templateId, colors, formatting, activeSections, onContentChange, editorRef }) => {
+            const pageStyle = {
+                fontFamily: formatting.fontStyle,
+                fontSize: `${formatting.fontSize}pt`,
+                lineHeight: formatting.lineSpacing,
+                padding: `${formatting.topBottomMargin}mm ${formatting.sideMargins}mm`,
+                color: '#333',
+            };
             
-            // Check for light mode
-            const isLightMode = !document.documentElement.classList.contains('dark');
+            const [isDndActive, setIsDndActive] = useState(false);
+            const dndActivationRef = useRef({ count: 0, timestamp: 0 });
 
-            const handleFileChange = (e) => {
-                const selectedFile = e.target.files?.[0];
-                if (selectedFile) {
-                    // Validate file type
-                    if (!['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/msword', 'text/plain'].includes(selectedFile.type)) {
-                        setError('Please select a PDF, DOCX, or TXT file');
-                        return;
-                    }
-                    
-                    // Validate file size (max 5MB)
-                    if (selectedFile.size > 5 * 1024 * 1024) {
-                        setError('File size must be less than 5MB');
-                        return;
-                    }
-                    
-                    setFile(selectedFile);
-                    setError('');
+            // Effect to toggle the dnd-active class for CSS styling
+            useEffect(() => {
+                const editorNode = editorRef.current;
+                if (editorNode) {
+                    editorNode.classList.toggle('dnd-active', isDndActive);
                 }
+            }, [isDndActive]);
+
+            // Effect for Drag and Drop functionality
+            useEffect(() => {
+                const editorNode = editorRef.current;
+                if (!editorNode) return;
+                let draggedElement = null;
+                
+                // --- DND Activation Logic ---
+                const handleContextMenu = (e) => {
+                    e.preventDefault();
+                    const now = Date.now();
+                    if (now - dndActivationRef.current.timestamp > 500) {
+                        dndActivationRef.current.count = 1;
+                    } else {
+                        dndActivationRef.current.count++;
+                    }
+                    dndActivationRef.current.timestamp = now;
+                    if (dndActivationRef.current.count === 2) {
+                        setIsDndActive(true);
+                        dndActivationRef.current.count = 0;
+                    }
+                };
+
+                // Deactivate on a regular left click
+                const handleDeactivationClick = (e) => {
+                    if (isDndActive && e.button !== 2 && !editorNode.classList.contains('dragging-active')) {
+                        setIsDndActive(false);
+                    }
+                };
+
+                // --- Drag and Drop Handlers ---
+                const handleDragStart = (e) => {
+                    if (!isDndActive) {
+                        e.preventDefault();
+                        return;
+                    }
+                    draggedElement = e.target.closest('.resume-section');
+                    if (draggedElement) {
+                        editorNode.classList.add('dragging-active');
+                        setTimeout(() => draggedElement.classList.add('dragging'), 0);
+                        e.dataTransfer.effectAllowed = 'move';
+                        e.dataTransfer.setData('text/plain', 'dragging');
+                    } else {
+                        e.preventDefault();
+                    }
+                };
+
+                const handleDragOver = (e) => {
+                    e.preventDefault();
+                    if (!isDndActive) return;
+                    
+                    const target = e.target.closest('.resume-section');
+                    if (!target || target === draggedElement) return;
+                    const rect = target.getBoundingClientRect();
+                    const isAfter = e.clientY > rect.top + rect.height / 2;
+                    
+                    // Clean up old indicators first
+                    editorNode.querySelectorAll('.drag-over-indicator').forEach(el => el.remove());
+                    
+                    const placeholder = document.createElement('div');
+                    placeholder.className = 'drag-over-indicator';
+                    
+                    const sectionName = draggedElement.dataset.sectionName;
+                    placeholder.textContent = sectionName ? `${sectionName} will be placed here` : 'Drop here';
+                    if (isAfter) {
+                        target.parentNode.insertBefore(placeholder, target.nextSibling);
+                    } else {
+                        target.parentNode.insertBefore(placeholder, target);
+                    }
+                };
+
+                const handleDrop = (e) => {
+                    e.preventDefault();
+                    const placeholder = editorNode.querySelector('.drag-over-indicator');
+                    if (draggedElement && placeholder) {
+                        placeholder.parentNode.insertBefore(draggedElement, placeholder);
+                        onContentChange(editorNode.innerHTML);
+                    }
+                    // Cleanup
+                    if (placeholder) placeholder.remove();
+                    if (draggedElement) draggedElement.classList.remove('dragging');
+                    editorNode.classList.remove('dragging-active');
+                    draggedElement = null;
+                    setIsDndActive(false);
+                };
+                
+                const handleDragEnd = () => {
+                    if (draggedElement) draggedElement.classList.remove('dragging');
+                    editorNode.querySelectorAll('.drag-over-indicator').forEach(el => el.remove());
+                    editorNode.classList.remove('dragging-active');
+                    draggedElement = null;
+                };
+
+                // Make sections draggable
+                const sections = editorNode.querySelectorAll('.resume-section');
+                sections.forEach(section => section.setAttribute('draggable', 'true'));
+                editorNode.addEventListener('contextmenu', handleContextMenu);
+                editorNode.addEventListener('click', handleDeactivationClick);
+                editorNode.addEventListener('dragstart', handleDragStart);
+                editorNode.addEventListener('dragover', handleDragOver);
+                editorNode.addEventListener('drop', handleDrop);
+                editorNode.addEventListener('dragend', handleDragEnd);
+                
+                return () => {
+                    editorNode.removeEventListener('contextmenu', handleContextMenu);
+                    editorNode.removeEventListener('click', handleDeactivationClick);
+                    editorNode.removeEventListener('dragstart', handleDragStart);
+                    editorNode.removeEventListener('dragover', handleDragOver);
+                    editorNode.removeEventListener('drop', handleDrop);
+                    editorNode.removeEventListener('dragend', handleDragEnd);
+                };
+            }, [content, onContentChange, editorRef, isDndActive]);
+
+            // Use useEffect to prevent cursor jumping issues
+            useEffect(() => {
+                if (editorRef.current && editorRef.current.innerHTML !== content) {
+                    editorRef.current.innerHTML = content;
+                }
+            }, [content]);
+
+            return (
+                <div className="w-full bg-transparent p-8">
+                    <div 
+                        ref={editorRef}
+                        contentEditable={true}
+                        suppressContentEditableWarning={true}
+                        onInput={e => onContentChange(e.currentTarget.innerHTML)}
+                        className="w-[210mm] min-h-[297mm] bg-white shadow-2xl mx-auto resume-content-view focus:outline-none focus:ring-2 focus:ring-indigo-400 custom-scrollbar"
+                        style={pageStyle}
+                    >
+                    </div>
+                </div>
+            );
+        };
+
+        // Mock for ResumeListViewer.js
+        const ResumeListViewer = ({ resumes, onSelectResume }) => {
+            return (
+                <div className="p-8 text-slate-800 h-full overflow-y-auto custom-scrollbar">
+                    <h2 className="text-2xl font-bold mb-6 text-slate-900">Resume Library</h2>
+                    {resumes.length > 0 ? (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            {resumes.map(resume => (
+                                <div key={resume.id} className="bg-white/70 backdrop-blur-xl p-6 rounded-lg border border-white/30 hover:border-indigo-300 transition-all shadow-lg">
+                                    <h3 className="font-semibold text-lg text-slate-900">{resume.title}</h3>
+                                    <p className={`text-xs font-medium uppercase mt-1 ${resume.type === 'master' ? 'text-amber-600' : 'text-cyan-600'}`}>{resume.type}</p>
+                                    <p className="text-sm text-slate-600 mt-2">ATS Score: {resume.atsScore}%</p>
+                                    <p className="text-xs text-slate-500 mt-1">Updated: {new Date(resume.updatedAt).toLocaleDateString()}</p>
+                                    <button
+                                        onClick={() => onSelectResume(resume.id)}
+                                        className="mt-4 w-full px-4 py-2 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 transition-colors text-sm"
+                                    >
+                                        Edit this Resume
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="text-center py-16">
+                            <FileText className="w-16 h-16 mx-auto text-slate-400 mb-4" />
+                            <h3 className="text-xl font-semibold text-slate-700">No Resumes Yet</h3>
+                            <p className="text-slate-500 mt-2">Create or import a resume to get started.</p>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        // --- Main App Component ---
+        const SmartResumeStudio = () => {
+            const { theme } = useTheme();
+            const [step, setStep] = useState('selection');
+            const [uploadedFile, setUploadedFile] = useState(null);
+            const [uploadError, setUploadError] = useState('');
+            const [isProcessing, setIsProcessing] = useState(false);
+            const [resumes, setResumes] = useState([]);
+            const [activeResumeId, setActiveResumeId] = useState(null);
+            const [activeResume, setActiveResume] = useState(null);
+            const [editorContent, setEditorContent] = useState('');
+            const [viewMode, setViewMode] = useState('edit');
+            const [isLoading, setIsLoading] = useState(false);
+            const [selectedTemplateId, setSelectedTemplateId] = useState('classic-1');
+            const [selectedColors, setSelectedColors] = useState({
+                primary: '#3B82F6',
+                secondary: '#64748B',
+                accent: '#8B5CF6'
+            });
+            const [formattingSettings, setFormattingSettings] = useState({
+                alignment: 'left',
+                textColor: '#334155',
+                highlightColor: 'transparent',
+                fontStyle: 'Inter',
+                fontSize: 11,
+                headingSize: 14,
+                sectionSpacing: 16,
+                paragraphSpacing: 8,
+                lineSpacing: 1.4,
+                topBottomMargin: 20,
+                sideMargins: 20,
+                paragraphIndent: 0
+            });
+            const [activeSections, setActiveSections] = useState([
+                'Heading',
+                'Profile',
+                'Core Skills',
+                'Experience',
+                'Education'
+            ]);
+            const [undoHistory, setUndoHistory] = useState([]);
+            const [historyPointer, setHistoryPointer] = useState(-1);
+            const [showCreateModal, setShowCreateModal] = useState(false);
+            const [showImportModal, setShowImportModal] = useState(false);
+            const [showExportModal, setShowExportModal] = useState(false);
+            const [newResumeTitle, setNewResumeTitle] = useState('');
+            const [newResumeType, setNewResumeType] = useState('campaign');
+            const [importFile, setImportFile] = useState(null);
+            const [importStatus, setImportStatus] = useState('idle');
+            const [importError, setImportError] = useState('');
+            const [activeTab, setActiveTab] = useState('design');
+            const [templateCategory, setTemplateCategory] = useState('all');
+            const [selectedText, setSelectedText] = useState('');
+            const [aiProcessing, setAiProcessing] = useState(false);
+            const fileInputRef = useRef(null);
+            const editorRef = useRef(null);
+
+            const sectionTemplates = {
+                'Heading': `<div class="resume-section" data-section-name="Heading"><p><b>[YOUR NAME]</b></p><p>[Your Title/Position]</p><p>[Your Email] | [Your Phone] | [Your LinkedIn]</p></div>`,
+                'Profile': `<div class="resume-section" data-section-name="Profile"><p><br></p><p><b>PROFESSIONAL SUMMARY</b></p><p>[Write a compelling summary of your professional background and key achievements]</p></div>`,
+                'Core Skills': `<div class="resume-section" data-section-name="Core Skills"><p><br></p><p><b>CORE SKILLS</b></p><p>• [Skill 1]</p><p>• [Skill 2]</p><p>• [Skill 3]</p></div>`,
+                'Experience': `<div class="resume-section" data-section-name="Experience"><p><br></p><p><b>EXPERIENCE</b></p><p>[Job Title] | [Company Name] | [Start Date - End Date]</p><p>• [Achievement or responsibility]</p><p>• [Achievement or responsibility]</p><p>• [Achievement or responsibility]</p></div>`,
+                'Education': `<div class="resume-section" data-section-name="Education"><p><br></p><p><b>EDUCATION</b></p><p>[Degree] in [Field of Study]</p><p>[University Name] | [Graduation Year]</p></div>`,
+                'Projects': `<div class="resume-section" data-section-name="Projects"><p><br></p><p><b>PROJECTS</b></p><p>[Project Name] | [Link to Project]</p><p>• [Description of the project and your role]</p></div>`,
+                'Certifications': `<div class="resume-section" data-section-name="Certifications"><p><br></p><p><b>CERTIFICATIONS</b></p><p>• [Certification Name] - [Issuing Organization] ([Year])</p></div>`,
+                'Languages': `<div class="resume-section" data-section-name="Languages"><p><br></p><p><b>LANGUAGES</b></p><p>• [Language] (Native/Fluent/Professional/Basic)</p></div>`,
+                'Volunteering': `<div class="resume-section" data-section-name="Volunteering"><p><br></p><p><b>VOLUNTEER EXPERIENCE</b></p><p>[Role] | [Organization] | [Dates]</p><p>• [Description of your contributions and impact.]</p></div>`,
+                'Publications': `<div class="resume-section" data-section-name="Publications"><p><br></p><p><b>PUBLICATIONS</b></p><p>• [Title of Publication], <i>[Journal or Conference Name]</i>, [Year]</p></div>`,
+                'Professional Affiliations': `<div class="resume-section" data-section-name="Professional Affiliations"><p><br></p><p><b>PROFESSIONAL AFFILIATIONS</b></p><p>• [Member/Role], [Organization Name]</p></div>`,
+                'Interests': `<div class="resume-section" data-section-name="Interests"><p><br></p><p><b>INTERESTS</b></p><p>[Interest 1], [Interest 2], [Interest 3]</p></div>`,
+                'Awards & Honors': `<div class="resume-section" data-section-name="Awards & Honors"><p><br></p><p><b>AWARDS & HONORS</b></p><p>• [Award Name] - [Awarding Body] ([Year])</p></div>`,
+                'References': `<div class="resume-section" data-section-name="References"><p><br></p><p><b>REFERENCES</b></p><p>Available upon request.</p></div>`,
+                'Custom Section': `<div class="resume-section" data-section-name="Custom Section"><p><br></p><p><b>[CUSTOM SECTION TITLE]</b></p><p>[Your content here]</p></div>`,
             };
 
-            const handleParseResume = async () => {
-                if (!file) return;
+            const mockUserCV = `JOHN DOE
+Software Engineer
+john.doe@email.com | (555) 123-4567 | LinkedIn: linkedin.com/in/johndoe
 
+PROFESSIONAL SUMMARY
+Experienced software engineer with 5+ years developing scalable web applications using React, Node.js, and cloud technologies. Proven track record of leading cross-functional teams and delivering high-impact solutions.
+
+CORE SKILLS
+• Frontend: React, TypeScript, JavaScript, HTML5, CSS3
+• Backend: Node.js, Python, Express.js, RESTful APIs
+• Databases: PostgreSQL, MongoDB, Redis
+• Cloud: AWS, Docker, Kubernetes
+• Tools: Git, Jenkins, Jira, Agile/Scrum
+
+EXPERIENCE
+Senior Software Engineer | TechCorp Inc. | 2022-Present
+• Led development of microservices architecture serving 100K+ users
+• Implemented CI/CD pipelines reducing deployment time by 60%
+• Mentored 3 junior developers and conducted code reviews
+• Collaborated with product team to define technical requirements
+
+Software Engineer | StartupXYZ | 2020-2022
+• Built responsive web applications using React and Node.js
+• Optimized database queries improving application performance by 40%
+• AWS Certified Solutions Architect
+• Certified Scrum Master (CSM)`;
+
+            const plainTextToHtml = (text) => {
+                if (!text) return '';
+                return text.split('\n').map(line => `<p>${line || '<br>'}</p>`).join('');
+            };
+
+            const handleChooseCV = () => {
+                setStep('upload');
+            };
+
+            const handleStartFromScratch = () => {
+                const initialContent = activeSections
+                    .map(sectionName => sectionTemplates[sectionName] || '')
+                    .join('');
+                const emptyResume = {
+                    id: 'new-cv-' + Date.now(),
+                    title: 'New Resume',
+                    type: 'master',
+                    content: initialContent,
+                    atsScore: 0,
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString()
+                };
+                
+                setResumes([emptyResume]);
+                setActiveResumeId(emptyResume.id);
+                setActiveResume(emptyResume);
+                setEditorContent(initialContent);
+                setUndoHistory([initialContent]);
+                setHistoryPointer(0);
+                setStep('studio');
+            };
+            
+            const processImportedFile = async (file) => {
+                if (!file) {
+                    setImportError('No file selected for processing.');
+                    setImportStatus('error');
+                    return;
+                }
                 setIsProcessing(true);
-                setError('');
-                setUploadProgress(0);
-
+                setImportStatus('processing');
                 try {
-                    // Create form data
-                    const formData = new FormData();
-                    formData.append('file', file);
-
-                    // Get API key
-                    const apiKey = localStorage.getItem('openai_api_key');
-                    if (!apiKey) {
-                        throw new Error('OpenAI API key not found. Please set it in Settings.');
-                    }
-
-                    // Read file as text
-                    const reader = new FileReader();
-                    reader.onload = async (e) => {
-                        try {
-                            const fileContent = e.target?.result;
-                            if (!fileContent) throw new Error('Failed to read file');
-
-                            // Call OpenAI API to parse resume
-                            const response = await fetch('https://api.openai.com/v1/chat/completions', {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    'Authorization': `Bearer ${apiKey}`
-                                },
-                                body: JSON.stringify({
-                                    model: 'gpt-4o-mini',
-                                    messages: [
-                                        {
-                                            role: 'user',
-                                            content: `Extract structured data from this resume text and return valid JSON only. The JSON should include:
-{
-  "personalInfo": {
-    "name": "Full Name",
-    "email": "email@example.com",
-    "phone": "+1234567890",
-    "location": "City, State",
-    "linkedIn": "linkedin.com/in/username",
-    "portfolio": "website.com"
-  },
-  "summary": "Professional summary",
-  "skills": {
-    "technical": ["skill1", "skill2"],
-    "soft": ["communication", "leadership"],
-    "languages": ["English", "Spanish"]
-  },
-  "experience": [{
-    "company": "Company Name",
-    "position": "Job Title",
-    "startDate": "YYYY-MM",
-    "endDate": "YYYY-MM or Present",
-    "description": "Job description",
-    "achievements": ["achievement1", "achievement2"]
-  }],
-  "education": [{
-    "institution": "University Name",
-    "degree": "Degree Type",
-    "field": "Field of Study",
-    "graduationDate": "YYYY-MM"
-  }],
-  "certifications": [{
-    "name": "Certification Name",
-    "issuer": "Issuing Organization",
-    "date": "YYYY-MM",
-    "expiryDate": "YYYY-MM or null"
-  }],
-  "projects": [{
-    "name": "Project Name",
-    "description": "Project description",
-    "technologies": ["tech1", "tech2"],
-    "link": "project-url.com"
-  }]
-}
-
-Resume text:
-${typeof fileContent === 'string' ? fileContent : new TextDecoder().decode(fileContent)}
-
-Return only valid JSON, no additional text:`
-                                        }
-                                    ],
-                                    temperature: 0.3,
-                                    max_tokens: 3000
-                                })
-                            });
-
-                            if (!response.ok) {
-                                const errorData = await response.json();
-                                throw new Error(errorData.error?.message || 'Failed to parse resume');
-                            }
-
-                            const data = await response.json();
-                            const content = data.choices[0]?.message?.content;
-                            
-                            if (!content) {
-                                throw new Error('No response from OpenAI');
-                            }
-
-                            // Extract JSON from response
-                            const jsonMatch = content.match(/\{[\s\S]*\}/);
-                            const parsedData = jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(content);
-
-                            // Save to localStorage
-                            const savedResumes = JSON.parse(localStorage.getItem('parsed_resumes') || '{}');
-                            savedResumes[file.name] = parsedData;
-                            localStorage.setItem('parsed_resumes', JSON.stringify(savedResumes));
-
-                            setParsedResume(parsedData);
-                            setUploadProgress(100);
-                        } catch (err) {
-                            setError(err.message || 'Failed to parse resume');
-                        } finally {
-                            setIsProcessing(false);
-                        }
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                    
+                    const newResume = {
+                        id: Date.now().toString(),
+                        title: file.name.replace(/\.[^/.]+$/, ''),
+                        type: 'master',
+                        content: plainTextToHtml(mockUserCV),
+                        atsScore: 75,
+                        createdAt: new Date().toISOString(),
+                        updatedAt: new Date().toISOString()
                     };
-
-                    reader.onerror = () => {
-                        setError('Failed to read file');
-                        setIsProcessing(false);
-                    };
-
-                    reader.readAsText(file);
-                } catch (err) {
-                    setError(err.message || 'Failed to upload file');
+                    
+                    setResumes(prev => [...prev, newResume]);
+                    setActiveResumeId(newResume.id);
+                    setActiveResume(newResume);
+                    setEditorContent(newResume.content);
+                    setUndoHistory([newResume.content]);
+                    setHistoryPointer(0);
+                    setStep('studio');
+                    setShowImportModal(false);
+                    setImportFile(null);
+                    setImportStatus('idle');
+                } catch (error) {
+                    setUploadError('Failed to process the uploaded file');
+                    setImportError('Failed to process the uploaded file');
+                    setImportStatus('error');
+                } finally {
                     setIsProcessing(false);
                 }
             };
 
-            const handleDownloadJSON = () => {
-                if (!parsedResume) return;
-                
-                const blob = new Blob([JSON.stringify(parsedResume, null, 2)], { type: 'application/json' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = 'resume-data.json';
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
+            const handleResumeSelect = (resumeId) => {
+                const resume = resumes.find(r => r.id === resumeId);
+                if (resume) {
+                    setActiveResumeId(resumeId);
+                    setActiveResume(resume);
+                    setEditorContent(resume.content);
+                    setUndoHistory([resume.content]);
+                    setHistoryPointer(0);
+                    setViewMode('edit');
+                }
             };
 
-            return (
-                <div className="space-y-6">
-                    {/* Upload Section */}
-                    <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-8`}>
-                        <h3 className="text-xl font-bold mb-4 text-slate-900">Upload Your Resume</h3>
-                        <p className="text-slate-600 mb-6">Upload your resume in PDF, DOCX, or TXT format to extract structured data</p>
-                        
-                        <div className="space-y-4">
-                            <label className={`block ${isLightMode ? 'border-gray-300' : 'border-gray-600'} border-2 border-dashed rounded-lg p-8 text-center cursor-pointer hover:border-indigo-500 transition-colors`}>
-                                <input
-                                    type="file"
-                                    onChange={handleFileChange}
-                                    accept=".pdf,.docx,.doc,.txt"
-                                    className="hidden"
-                                />
-                                <svg className="mx-auto h-12 w-12 text-slate-400" stroke="currentColor" fill="none" viewBox="0 0 48 48">
-                                    <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m7-4h.01M20 33l4 4"/>
-                                </svg>
-                                <span className="block mt-2 text-sm font-medium text-slate-700">
-                                    Click to upload or drag and drop
-                                </span>
-                                <span className="block mt-1 text-xs text-slate-500">
-                                    PDF, DOCX, or TXT (MAX. 5MB)
-                                </span>
-                            </label>
+            const handleContentChange = (newContent) => {
+                if (newContent !== editorContent) {
+                    const newHistory = undoHistory.slice(0, historyPointer + 1);
+                    newHistory.push(newContent);
+                    setUndoHistory(newHistory);
+                    setHistoryPointer(newHistory.length - 1);
+                    setEditorContent(newContent);
+                }
+            };
 
-                            {file && (
-                                <div className={`p-4 rounded-lg ${isLightMode ? 'bg-indigo-50' : 'bg-indigo-900/20'}`}>
-                                    <div className="flex items-center justify-between">
-                                        <div className="flex items-center space-x-3">
-                                            <svg className="h-6 w-6 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-                                            </svg>
-                                            <div>
-                                                <p className="text-sm font-medium text-slate-900">{file.name}</p>
-                                                <p className="text-xs text-slate-600">{(file.size / 1024).toFixed(2)} KB</p>
+            const handleUndo = () => {
+                if (historyPointer > 0) {
+                    const newPointer = historyPointer - 1;
+                    setHistoryPointer(newPointer);
+                    setEditorContent(undoHistory[newPointer]);
+                }
+            };
+
+            const handleSave = async () => {
+                if (activeResume) {
+                    setIsLoading(true);
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    
+                    const updatedResumes = resumes.map(r => 
+                        r.id === activeResume.id 
+                            ? { ...r, content: editorContent, updatedAt: new Date().toISOString() }
+                            : r
+                    );
+                    setResumes(updatedResumes);
+                    setActiveResume({ ...activeResume, content: editorContent, updatedAt: new Date().toISOString() });
+                    setIsLoading(false);
+                }
+            };
+
+            const createNewResume = async () => {
+                if (!newResumeTitle.trim()) return;
+                
+                const newResume = {
+                    id: Date.now().toString(),
+                    title: newResumeTitle,
+                    type: newResumeType,
+                    content: newResumeType === 'master' ? 'Start your master resume here.' : (resumes.find(r => r.type === 'master')?.content || 'Start your campaign resume here.'),
+                    atsScore: 0,
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString()
+                };
+                
+                setResumes([...resumes, newResume]);
+                setActiveResumeId(newResume.id);
+                setActiveResume(newResume);
+                setEditorContent(newResume.content);
+                setUndoHistory([newResume.content]);
+                setHistoryPointer(0);
+                setShowCreateModal(false);
+                setNewResumeTitle('');
+                setViewMode('edit');
+                setStep('studio');
+            };
+
+            const handleFileSelectForImportModal = (event) => {
+                const file = event.target.files?.[0];
+                if (file) {
+                    const allowedTypes = [
+                        'application/pdf',
+                        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                        'application/msword',
+                        'text/plain'
+                    ];
+                    
+                    if (!allowedTypes.includes(file.type)) {
+                        setImportError('Please select a valid file type (PDF, DOCX, DOC, or TXT)');
+                        return;
+                    }
+                    
+                    if (file.size > 10 * 1024 * 1024) {
+                        setImportError('File size must be less than 10MB');
+                        return;
+                    }
+                    
+                    setImportFile(file);
+                    setImportError('');
+                }
+            };
+
+            const applyTextColor = (color) => {
+                if (editorRef.current) {
+                    editorRef.current.focus();
+                    document.execCommand('foreColor', false, color);
+                    handleContentChange(editorRef.current.innerHTML);
+                }
+            };
+
+            const applyFormat = (command, value = null) => {
+                if (!editorRef.current) return;
+                
+                const alignmentCommands = {
+                    justifyLeft: 'left',
+                    justifyCenter: 'center',
+                    justifyRight: 'right'
+                };
+                if (command in alignmentCommands) {
+                    const alignment = alignmentCommands[command];
+                    editorRef.current.focus();
+                    const selection = window.getSelection();
+                    if (!selection.rangeCount) return;
+                    const range = selection.getRangeAt(0);
+                    const editorNode = editorRef.current;
+                    
+                    if (!editorNode.contains(range.commonAncestorContainer)) return;
+                    
+                    const paragraphsToAlign = new Set();
+                    const allParagraphs = editorNode.querySelectorAll('p');
+                    allParagraphs.forEach(p => {
+                        if (range.intersectsNode(p)) {
+                            paragraphsToAlign.add(p);
+                        }
+                    });
+                    
+                    if (paragraphsToAlign.size === 0 && range.collapsed) {
+                        let currentNode = range.startContainer;
+                        while (currentNode && currentNode !== editorNode) {
+                            if (currentNode.nodeName === 'P') {
+                                paragraphsToAlign.add(currentNode);
+                                break;
+                            }
+                            currentNode = currentNode.parentNode;
+                        }
+                    }
+                    
+                    paragraphsToAlign.forEach(p => {
+                        p.style.textAlign = alignment;
+                    });
+                } else {
+                    editorRef.current.focus();
+                    document.execCommand(command, false, value);
+                }
+                
+                handleContentChange(editorRef.current.innerHTML);
+            };
+
+            const handleAddSection = (sectionName) => {
+                if (!activeSections.includes(sectionName)) {
+                    setActiveSections([...activeSections, sectionName]);
+                    const sectionContent = sectionTemplates[sectionName];
+                    if (sectionContent) {
+                        const newContent = editorContent + sectionContent;
+                        handleContentChange(newContent);
+                    }
+                }
+            };
+
+            const handleDeleteSection = (sectionName) => {
+                setActiveSections(activeSections.filter(section => section !== sectionName));
+                
+                const tempContainer = document.createElement('div');
+                tempContainer.innerHTML = editorContent;
+                
+                const sectionToRemove = tempContainer.querySelector(`.resume-section[data-section-name="${sectionName}"]`);
+                
+                if (sectionToRemove) {
+                    sectionToRemove.remove();
+                    handleContentChange(tempContainer.innerHTML);
+                }
+            };
+
+            const handleATSOptimization = async () => {
+                setAiProcessing(true);
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                if (activeResume) {
+                    const newScore = Math.min(100, activeResume.atsScore + 10);
+                    const updatedResumes = resumes.map(r => 
+                        r.id === activeResume.id 
+                            ? { ...r, atsScore: newScore }
+                            : r
+                    );
+                    setResumes(updatedResumes);
+                    setActiveResume({ ...activeResume, atsScore: newScore });
+                }
+                setAiProcessing(false);
+            };
+
+            const handleEnhanceText = async () => {
+                setAiProcessing(true);
+                await new Promise(resolve => setTimeout(resolve, 1500));
+                setAiProcessing(false);
+            };
+
+            const handleGapJustification = async () => {
+                setAiProcessing(true);
+                await new Promise(resolve => setTimeout(resolve, 1500));
+                setAiProcessing(false);
+            };
+            
+            const getStatusIcon = () => {
+                switch (importStatus) {
+                    case 'uploading': return <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />;
+                    case 'processing': return <div className="w-6 h-6 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />;
+                    case 'success': return <CheckCircle className="w-6 h-6 text-green-500" />;
+                    case 'error': return <AlertCircle className="w-6 h-6 text-red-500" />;
+                    default: return <FileText className="w-6 h-6 text-blue-500" />;
+                }
+            };
+
+            const getStatusText = () => {
+                switch (importStatus) {
+                    case 'uploading': return 'Uploading file...';
+                    case 'processing': return 'Processing resume content...';
+                    case 'success': return 'Resume imported successfully!';
+                    case 'error': return 'Import failed';
+                    default: return 'Select a file to import';
+                }
+            };
+
+            const colorPalettes = [
+                { name: 'Blue', primary: '#3B82F6', secondary: '#64748B', accent: '#8B5CF6' },
+                { name: 'Green', primary: '#10B981', secondary: '#64748B', accent: '#F59E0B' },
+                { name: 'Purple', primary: '#8B5CF6', secondary: '#64748B', accent: '#EF4444' },
+                { name: 'Orange', primary: '#F97316', secondary: '#64748B', accent: '#06B6D4' },
+                { name: 'Red', primary: '#EF4444', secondary: '#64748B', accent: '#10B981' },
+                { name: 'Teal', primary: '#14B8A6', secondary: '#64748B', accent: '#F59E0B' },
+                { name: 'Indigo', primary: '#6366F1', secondary: '#64748B', accent: '#EC4899' },
+                { name: 'Gray', primary: '#6B7280', secondary: '#9CA3AF', accent: '#3B5CF6' },
+                { name: 'Black', primary: '#000000', secondary: '#475569', accent: '#e2e8f0' },
+                { name: 'White', primary: '#FFFFFF', secondary: '#f1f5f9', accent: '#64748b' }
+            ];
+
+            const templates = [
+                { id: 'classic-1', name: 'Professional Classic', category: 'classic', preview: 'bg-white border-2 border-gray-300', description: 'Traditional professional layout' },
+                { id: 'modern-1', name: 'Tech Modern', category: 'modern', preview: 'bg-gradient-to-br from-indigo-500 to-purple-600', description: 'Technology industry modern' },
+                { id: 'photo-1', name: 'Professional Photo', category: 'photo', preview: 'bg-gradient-to-r from-blue-100 to-blue-200 border-2 border-blue-300', description: 'Photo-centric professional' },
+                { id: 'classic-2', name: 'Executive Classic', category: 'classic', preview: 'bg-gray-50 border-2 border-gray-400', description: 'Executive-level traditional' },
+                { id: 'modern-2', name: 'Creative Modern', category: 'modern', preview: 'bg-gradient-to-br from-pink-500 to-rose-600', description: 'Creative and bold design' },
+                { id: 'photo-2', name: 'Creative Photo', category: 'photo', preview: 'bg-gradient-to-r from-purple-100 to-pink-200 border-2 border-purple-300', description: 'Creative industries focused' },
+            ];
+
+            const availableSections = ['Heading', 'Profile', 'Core Skills', 'Experience', 'Education', 'Projects', 'Certifications', 'Languages', 'Volunteering', 'Publications', 'Professional Affiliations', 'Interests', 'Awards & Honors', 'References', 'Custom Section'];
+
+            const fontStyles = ['Inter', 'Roboto', 'Open Sans', 'Lato', 'Montserrat', 'Poppins', 'Source Sans Pro', 'Century Gothic'];
+
+            const filteredTemplates = templateCategory === 'all' ? templates : templates.filter(t => t.category === templateCategory);
+
+            const updateFormatting = (key, value) => {
+                setFormattingSettings(prev => ({ ...prev, [key]: value }));
+            };
+
+            // Load resumes from localStorage on mount
+            useEffect(() => {
+                const savedResumes = JSON.parse(localStorage.getItem('smart_resume_studio_resumes') || '[]');
+                if (savedResumes.length > 0) {
+                    setResumes(savedResumes);
+                }
+            }, []);
+
+            // Save resumes to localStorage when they change
+            useEffect(() => {
+                if (resumes.length > 0) {
+                    localStorage.setItem('smart_resume_studio_resumes', JSON.stringify(resumes));
+                }
+            }, [resumes]);
+
+            // Track selected text for AI features
+            useEffect(() => {
+                if (editorRef.current) {
+                    const handleSelection = () => {
+                        const selection = window.getSelection();
+                        if (selection && selection.toString().trim()) {
+                            setSelectedText(selection.toString());
+                        }
+                    };
+                    editorRef.current.addEventListener('mouseup', handleSelection);
+                    editorRef.current.addEventListener('keyup', handleSelection);
+                    return () => {
+                        if (editorRef.current) {
+                            editorRef.current.removeEventListener('mouseup', handleSelection);
+                            editorRef.current.removeEventListener('keyup', handleSelection);
+                        }
+                    };
+                }
+            }, [activeResumeId]);
+
+            if (step === 'list' || (step === 'studio' && resumes.length === 0 && !activeResumeId)) {
+                return (
+                    <ResumeListViewer 
+                        resumes={resumes}
+                        onSelectResume={handleResumeSelect}
+                    />
+                );
+            }
+
+            if (step === 'selection') {
+                return (
+                    <div className="h-full flex items-center justify-center p-8 bg-gradient-to-br from-indigo-50 via-white to-purple-50">
+                        <div className="w-full max-w-4xl">
+                            <div className="text-center mb-12">
+                                <h1 className="text-4xl font-bold text-slate-900 mb-4">Smart Resume Studio</h1>
+                                <p className="text-xl text-slate-600">Create professional resumes with AI-powered editing</p>
+                            </div>
+                            
+                            <div className="grid md:grid-cols-2 gap-6">
+                                <button
+                                    onClick={handleChooseCV}
+                                    className="p-8 bg-white/70 backdrop-blur-xl border-2 border-white/30 rounded-2xl hover:border-indigo-400 transition-all shadow-lg hover:shadow-xl text-left group"
+                                >
+                                    <Upload className="w-12 h-12 text-indigo-600 mb-4 group-hover:scale-110 transition-transform" />
+                                    <h3 className="text-2xl font-bold text-slate-900 mb-2">Import Your CV</h3>
+                                    <p className="text-slate-600">Upload your existing resume and start editing</p>
+                                </button>
+                                
+                                <button
+                                    onClick={handleStartFromScratch}
+                                    className="p-8 bg-white/70 backdrop-blur-xl border-2 border-white/30 rounded-2xl hover:border-indigo-400 transition-all shadow-lg hover:shadow-xl text-left group"
+                                >
+                                    <Plus className="w-12 h-12 text-purple-600 mb-4 group-hover:scale-110 transition-transform" />
+                                    <h3 className="text-2xl font-bold text-slate-900 mb-2">Start From Scratch</h3>
+                                    <p className="text-slate-600">Build a new resume with our templates</p>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            if (step === 'upload') {
+                return (
+                    <div className="h-full flex items-center justify-center p-8">
+                        <div className="w-full max-w-2xl bg-white/70 backdrop-blur-xl border border-white/30 rounded-2xl p-8 shadow-xl">
+                            <h2 className="text-2xl font-bold text-slate-900 mb-6">Import Your Resume</h2>
+                            <div className="space-y-6">
+                                <div className="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center">
+                                    <FileText className="w-16 h-16 mx-auto text-gray-400 mb-4" />
+                                    <p className="text-sm text-slate-600 mb-4">Select a file to import</p>
+                                    <button
+                                        onClick={() => fileInputRef.current?.click()}
+                                        className="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium"
+                                    >
+                                        Choose File
+                                    </button>
+                                    <input
+                                        ref={fileInputRef}
+                                        type="file"
+                                        onChange={(e) => {
+                                            const file = e.target.files?.[0];
+                                            if (file) {
+                                                setUploadedFile(file);
+                                                setUploadError('');
+                                            }
+                                        }}
+                                        accept=".pdf,.docx,.doc,.txt"
+                                        className="hidden"
+                                    />
+                                </div>
+                                
+                                {uploadedFile && (
+                                    <div className="p-4 bg-indigo-50 border border-indigo-200 rounded-lg">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-3">
+                                                <FileText className="w-6 h-6 text-indigo-600" />
+                                                <div>
+                                                    <p className="font-medium text-slate-900">{uploadedFile.name}</p>
+                                                    <p className="text-sm text-slate-600">{(uploadedFile.size / 1024).toFixed(2)} KB</p>
+                                                </div>
                                             </div>
+                                            <button
+                                                onClick={() => {
+                                                    setUploadedFile(null);
+                                                    if (fileInputRef.current) fileInputRef.current.value = '';
+                                                }}
+                                                className="text-red-600 hover:text-red-800"
+                                            >
+                                                <X className="w-5 h-5" />
+                                            </button>
                                         </div>
-                                        <button
-                                            onClick={() => setFile(null)}
-                                            className="text-red-600 hover:text-red-800"
-                                        >
-                                            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"/>
-                                            </svg>
-                                        </button>
                                     </div>
-                                </div>
-                            )}
+                                )}
 
-                            {error && (
-                                <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-                                    <p className="text-sm text-red-800">{error}</p>
-                                </div>
-                            )}
-
-                            {isProcessing && (
-                                <div className="space-y-2">
-                                    <div className="w-full bg-gray-200 rounded-full h-2.5">
-                                        <div className="bg-indigo-600 h-2.5 rounded-full" style={{ width: `${uploadProgress}%` }}></div>
+                                {uploadError && (
+                                    <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                                        <p className="text-sm text-red-800">{uploadError}</p>
                                     </div>
-                                    <p className="text-sm text-slate-600 text-center">Processing resume... This may take a moment.</p>
-                                </div>
-                            )}
+                                )}
 
+                                <div className="flex gap-4">
+                                    <button
+                                        onClick={() => setStep('selection')}
+                                        className="flex-1 px-6 py-3 border border-gray-300 text-slate-700 rounded-lg hover:bg-gray-50 transition-colors font-medium"
+                                    >
+                                        Back
+                                    </button>
+                                    <button
+                                        onClick={() => uploadedFile && processImportedFile(uploadedFile)}
+                                        disabled={!uploadedFile || isProcessing}
+                                        className="flex-1 px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                        {isProcessing ? 'Processing...' : 'Import Resume'}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="h-full flex flex-col bg-slate-50">
+                    {/* Top Toolbar */}
+                    <div className="bg-white/70 backdrop-blur-xl border-b border-white/30 px-6 py-4 flex items-center justify-between shadow-sm">
+                        <div className="flex items-center gap-4">
                             <button
-                                onClick={handleParseResume}
-                                disabled={!file || isProcessing}
-                                className={`w-full py-3 px-4 rounded-lg font-medium transition-colors ${
-                                    file && !isProcessing 
-                                        ? 'bg-indigo-600 text-white hover:bg-indigo-700' 
-                                        : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                                }`}
+                                onClick={() => setStep('list')}
+                                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
                             >
-                                {isProcessing ? 'Processing...' : 'Parse Resume'}
+                                <ArrowRight className="w-5 h-5 text-slate-600 rotate-180" />
+                            </button>
+                            <h2 className="text-lg font-semibold text-slate-900">
+                                {activeResume ? activeResume.title : 'New Resume'}
+                            </h2>
+                            {activeResume && (
+                                <span className={`text-xs font-medium px-2 py-1 rounded ${
+                                    activeResume.type === 'master' ? 'bg-amber-100 text-amber-700' : 'bg-cyan-100 text-cyan-700'
+                                }`}>
+                                    {activeResume.type.toUpperCase()}
+                                </span>
+                            )}
+                        </div>
+                        
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={handleUndo}
+                                disabled={historyPointer <= 0}
+                                className="p-2 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
+                                title="Undo"
+                            >
+                                <RotateCcw className="w-5 h-5 text-slate-600" />
+                            </button>
+                            <button
+                                onClick={handleSave}
+                                disabled={isLoading}
+                                className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium text-sm flex items-center gap-2"
+                            >
+                                <Save className="w-4 h-4" />
+                                {isLoading ? 'Saving...' : 'Save'}
+                            </button>
+                            <button
+                                onClick={() => setShowExportModal(true)}
+                                className="px-4 py-2 border border-gray-300 text-slate-700 rounded-lg hover:bg-gray-50 transition-colors font-medium text-sm flex items-center gap-2"
+                            >
+                                <Download className="w-4 h-4" />
+                                Export
                             </button>
                         </div>
                     </div>
 
-                    {/* Parsed Resume Display */}
-                    {parsedResume && (
-                        <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-8`}>
-                            <div className="flex items-center justify-between mb-6">
-                                <h3 className="text-xl font-bold text-slate-900">Parsed Resume Data</h3>
+                    {/* Main Content Area */}
+                    <div className="flex-1 flex overflow-hidden">
+                        {/* Left Sidebar */}
+                        <div className="w-80 bg-white/70 backdrop-blur-xl border-r border-white/30 p-6 overflow-y-auto custom-scrollbar">
+                            <div className="flex gap-2 mb-6 border-b border-gray-200">
                                 <button
-                                    onClick={handleDownloadJSON}
-                                    className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium"
+                                    onClick={() => setActiveTab('design')}
+                                    className={`flex-1 py-2 text-sm font-medium transition-colors ${
+                                        activeTab === 'design' 
+                                            ? 'text-indigo-600 border-b-2 border-indigo-600' 
+                                            : 'text-slate-600 hover:text-slate-900'
+                                    }`}
                                 >
-                                    Download JSON
+                                    Design
+                                </button>
+                                <button
+                                    onClick={() => setActiveTab('sections')}
+                                    className={`flex-1 py-2 text-sm font-medium transition-colors ${
+                                        activeTab === 'sections' 
+                                            ? 'text-indigo-600 border-b-2 border-indigo-600' 
+                                            : 'text-slate-600 hover:text-slate-900'
+                                    }`}
+                                >
+                                    Sections
+                                </button>
+                                <button
+                                    onClick={() => setActiveTab('ai')}
+                                    className={`flex-1 py-2 text-sm font-medium transition-colors ${
+                                        activeTab === 'ai' 
+                                            ? 'text-indigo-600 border-b-2 border-indigo-600' 
+                                            : 'text-slate-600 hover:text-slate-900'
+                                    }`}
+                                >
+                                    AI
                                 </button>
                             </div>
 
-                            <div className="space-y-6">
-                                {/* Personal Info */}
-                                {parsedResume.personalInfo && (
+                            {activeTab === 'design' && (
+                                <div className="space-y-6">
+                                    {/* Template Selection */}
                                     <div>
-                                        <h4 className="text-lg font-semibold text-slate-900 mb-3">Personal Information</h4>
-                                        <div className={`grid grid-cols-2 gap-4 ${isLightMode ? 'bg-gray-50' : 'bg-gray-800/50'} p-4 rounded-lg`}>
-                                            <div>
-                                                <p className="text-sm text-slate-600">Name</p>
-                                                <p className="text-slate-900 font-medium">{parsedResume.personalInfo.name || 'N/A'}</p>
-                                            </div>
-                                            <div>
-                                                <p className="text-sm text-slate-600">Email</p>
-                                                <p className="text-slate-900 font-medium">{parsedResume.personalInfo.email || 'N/A'}</p>
-                                            </div>
-                                            <div>
-                                                <p className="text-sm text-slate-600">Phone</p>
-                                                <p className="text-slate-900 font-medium">{parsedResume.personalInfo.phone || 'N/A'}</p>
-                                            </div>
-                                            <div>
-                                                <p className="text-sm text-slate-600">Location</p>
-                                                <p className="text-slate-900 font-medium">{parsedResume.personalInfo.location || 'N/A'}</p>
-                                            </div>
+                                        <h3 className="text-sm font-semibold text-slate-800 mb-3">Template</h3>
+                                        <div className="flex gap-2 mb-3">
+                                            <button
+                                                onClick={() => setTemplateCategory('all')}
+                                                className={`px-3 py-1 text-xs rounded-lg transition-colors ${
+                                                    templateCategory === 'all' 
+                                                        ? 'bg-indigo-600 text-white' 
+                                                        : 'bg-gray-100 text-slate-600 hover:bg-gray-200'
+                                                }`}
+                                            >
+                                                All
+                                            </button>
+                                            <button
+                                                onClick={() => setTemplateCategory('classic')}
+                                                className={`px-3 py-1 text-xs rounded-lg transition-colors ${
+                                                    templateCategory === 'classic' 
+                                                        ? 'bg-indigo-600 text-white' 
+                                                        : 'bg-gray-100 text-slate-600 hover:bg-gray-200'
+                                                }`}
+                                            >
+                                                Classic
+                                            </button>
+                                            <button
+                                                onClick={() => setTemplateCategory('modern')}
+                                                className={`px-3 py-1 text-xs rounded-lg transition-colors ${
+                                                    templateCategory === 'modern' 
+                                                        ? 'bg-indigo-600 text-white' 
+                                                        : 'bg-gray-100 text-slate-600 hover:bg-gray-200'
+                                                }`}
+                                            >
+                                                Modern
+                                            </button>
+                                            <button
+                                                onClick={() => setTemplateCategory('photo')}
+                                                className={`px-3 py-1 text-xs rounded-lg transition-colors ${
+                                                    templateCategory === 'photo' 
+                                                        ? 'bg-indigo-600 text-white' 
+                                                        : 'bg-gray-100 text-slate-600 hover:bg-gray-200'
+                                                }`}
+                                            >
+                                                Photo
+                                            </button>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            {filteredTemplates.map(template => (
+                                                <button
+                                                    key={template.id}
+                                                    onClick={() => setSelectedTemplateId(template.id)}
+                                                    className={`p-3 border-2 rounded-lg transition-all ${
+                                                        selectedTemplateId === template.id
+                                                            ? 'border-indigo-600 bg-indigo-50'
+                                                            : 'border-gray-200 hover:border-gray-300'
+                                                    }`}
+                                                >
+                                                    <div className={`h-16 ${template.preview} rounded mb-2`}></div>
+                                                    <p className="text-xs font-medium text-slate-800 text-left">{template.name}</p>
+                                                </button>
+                                            ))}
                                         </div>
                                     </div>
-                                )}
 
-                                {/* Skills */}
-                                {parsedResume.skills && (
+                                    {/* Color Palette */}
                                     <div>
-                                        <h4 className="text-lg font-semibold text-slate-900 mb-3">Skills</h4>
-                                        <div className={`${isLightMode ? 'bg-gray-50' : 'bg-gray-800/50'} p-4 rounded-lg`}>
-                                            {parsedResume.skills.technical && parsedResume.skills.technical.length > 0 && (
-                                                <div className="mb-3">
-                                                    <p className="text-sm text-slate-600 mb-2">Technical Skills</p>
-                                                    <div className="flex flex-wrap gap-2">
-                                                        {parsedResume.skills.technical.map((skill, index) => (
-                                                            <span key={index} className="px-3 py-1 bg-indigo-100 text-indigo-800 rounded-full text-sm">
-                                                                {skill}
-                                                            </span>
-                                                        ))}
+                                        <h3 className="text-sm font-semibold text-slate-800 mb-3">Color Palette</h3>
+                                        <div className="grid grid-cols-5 gap-2">
+                                            {colorPalettes.map((palette, idx) => (
+                                                <button
+                                                    key={idx}
+                                                    onClick={() => setSelectedColors(palette)}
+                                                    className="p-2 border-2 rounded-lg hover:border-gray-400 transition-colors"
+                                                    title={palette.name}
+                                                >
+                                                    <div className="flex gap-1">
+                                                        <div className="w-4 h-4 rounded" style={{ backgroundColor: palette.primary }}></div>
+                                                        <div className="w-4 h-4 rounded" style={{ backgroundColor: palette.secondary }}></div>
+                                                        <div className="w-4 h-4 rounded" style={{ backgroundColor: palette.accent }}></div>
                                                     </div>
-                                                </div>
-                                            )}
-                                            {parsedResume.skills.soft && parsedResume.skills.soft.length > 0 && (
-                                                <div>
-                                                    <p className="text-sm text-slate-600 mb-2">Soft Skills</p>
-                                                    <div className="flex flex-wrap gap-2">
-                                                        {parsedResume.skills.soft.map((skill, index) => (
-                                                            <span key={index} className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm">
-                                                                {skill}
-                                                            </span>
-                                                        ))}
-                                                    </div>
-                                                </div>
-                                            )}
+                                                </button>
+                                            ))}
                                         </div>
                                     </div>
-                                )}
 
-                                {/* Experience */}
-                                {parsedResume.experience && parsedResume.experience.length > 0 && (
+                                    {/* Formatting Options */}
                                     <div>
-                                        <h4 className="text-lg font-semibold text-slate-900 mb-3">Work Experience</h4>
+                                        <h3 className="text-sm font-semibold text-slate-800 mb-3">Formatting</h3>
                                         <div className="space-y-4">
-                                            {parsedResume.experience.map((exp, index) => (
-                                                <div key={index} className={`${isLightMode ? 'bg-gray-50' : 'bg-gray-800/50'} p-4 rounded-lg`}>
-                                                    <div className="flex items-start justify-between mb-2">
-                                                        <div>
-                                                            <h5 className="font-semibold text-slate-900">{exp.position}</h5>
-                                                            <p className="text-slate-600">{exp.company}</p>
-                                                        </div>
-                                                        <span className="text-sm text-slate-600">
-                                                            {exp.startDate} - {exp.endDate}
-                                                        </span>
-                                                    </div>
-                                                    <p className="text-sm text-slate-700">{exp.description}</p>
-                                                    {exp.achievements && exp.achievements.length > 0 && (
-                                                        <ul className="mt-2 space-y-1">
-                                                            {exp.achievements.map((achievement, i) => (
-                                                                <li key={i} className="text-sm text-slate-600 flex items-start">
-                                                                    <span className="mr-2">•</span>
-                                                                    <span>{achievement}</span>
-                                                                </li>
-                                                            ))}
-                                                        </ul>
-                                                    )}
+                                            <div>
+                                                <label className="text-xs text-slate-600 mb-1 block">Font Style</label>
+                                                <select
+                                                    value={formattingSettings.fontStyle}
+                                                    onChange={(e) => updateFormatting('fontStyle', e.target.value)}
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                                                >
+                                                    {fontStyles.map(font => (
+                                                        <option key={font} value={font}>{font}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="text-xs text-slate-600 mb-1 block">Font Size: {formattingSettings.fontSize}pt</label>
+                                                <input
+                                                    type="range"
+                                                    min="8"
+                                                    max="16"
+                                                    value={formattingSettings.fontSize}
+                                                    onChange={(e) => updateFormatting('fontSize', parseInt(e.target.value))}
+                                                    className="w-full slider"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="text-xs text-slate-600 mb-1 block">Line Spacing: {formattingSettings.lineSpacing}</label>
+                                                <input
+                                                    type="range"
+                                                    min="1"
+                                                    max="2"
+                                                    step="0.1"
+                                                    value={formattingSettings.lineSpacing}
+                                                    onChange={(e) => updateFormatting('lineSpacing', parseFloat(e.target.value))}
+                                                    className="w-full slider"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {activeTab === 'sections' && (
+                                <div className="space-y-4">
+                                    <div>
+                                        <h3 className="text-sm font-semibold text-slate-800 mb-3">Active Sections</h3>
+                                        <div className="space-y-2">
+                                            {activeSections.map(sectionName => (
+                                                <div key={sectionName} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
+                                                    <span className="text-sm text-slate-700">{sectionName}</span>
+                                                    <button
+                                                        onClick={() => handleDeleteSection(sectionName)}
+                                                        className="text-red-600 hover:text-red-800"
+                                                    >
+                                                        <X className="w-4 h-4" />
+                                                    </button>
                                                 </div>
                                             ))}
                                         </div>
                                     </div>
-                                )}
+                                    
+                                    <div>
+                                        <h3 className="text-sm font-semibold text-slate-800 mb-3">Add Section</h3>
+                                        <div className="space-y-2">
+                                            {availableSections.filter(s => !activeSections.includes(s)).map(sectionName => (
+                                                <button
+                                                    key={sectionName}
+                                                    onClick={() => handleAddSection(sectionName)}
+                                                    className="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-gray-50 rounded-lg transition-colors flex items-center gap-2"
+                                                >
+                                                    <Plus className="w-4 h-4 text-indigo-600" />
+                                                    {sectionName}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {activeTab === 'ai' && (
+                                <AICopilot
+                                    activeResume={activeResume}
+                                    selectedText={selectedText}
+                                    aiProcessing={aiProcessing}
+                                    onATSOptimization={handleATSOptimization}
+                                    onEnhanceText={handleEnhanceText}
+                                    onGapJustification={handleGapJustification}
+                                />
+                            )}
+                        </div>
+
+                        {/* Center Editor */}
+                        <div className="flex-1 overflow-y-auto custom-scrollbar bg-gray-100">
+                            {activeResume ? (
+                                <ResumePreview
+                                    content={editorContent}
+                                    templateId={selectedTemplateId}
+                                    colors={selectedColors}
+                                    formatting={formattingSettings}
+                                    activeSections={activeSections}
+                                    onContentChange={handleContentChange}
+                                    editorRef={editorRef}
+                                />
+                            ) : (
+                                <div className="flex items-center justify-center h-full">
+                                    <div className="text-center">
+                                        <FileText className="w-16 h-16 mx-auto text-gray-400 mb-4" />
+                                        <p className="text-slate-600">No resume selected. Create or import a resume to get started.</p>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Right Sidebar - Formatting Toolbar */}
+                        <div className="w-64 bg-white/70 backdrop-blur-xl border-l border-white/30 p-6 overflow-y-auto custom-scrollbar">
+                            <h3 className="text-sm font-semibold text-slate-800 mb-4">Text Formatting</h3>
+                            <div className="space-y-4">
+                                <div className="flex gap-2 flex-wrap">
+                                    <button
+                                        onClick={() => applyFormat('bold')}
+                                        className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                                        title="Bold"
+                                    >
+                                        <Bold className="w-4 h-4 text-slate-600" />
+                                    </button>
+                                    <button
+                                        onClick={() => applyFormat('italic')}
+                                        className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                                        title="Italic"
+                                    >
+                                        <Italic className="w-4 h-4 text-slate-600" />
+                                    </button>
+                                    <button
+                                        onClick={() => applyFormat('underline')}
+                                        className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                                        title="Underline"
+                                    >
+                                        <Underline className="w-4 h-4 text-slate-600" />
+                                    </button>
+                                </div>
+                                
+                                <div>
+                                    <label className="text-xs text-slate-600 mb-1 block">Text Color</label>
+                                    <div className="flex gap-2">
+                                        <input
+                                            type="color"
+                                            value={formattingSettings.textColor}
+                                            onChange={(e) => {
+                                                updateFormatting('textColor', e.target.value);
+                                                applyTextColor(e.target.value);
+                                            }}
+                                            className="w-full h-10 border border-gray-300 rounded-lg cursor-pointer"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="text-xs text-slate-600 mb-1 block">Alignment</label>
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={() => applyFormat('justifyLeft')}
+                                            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                                            title="Align Left"
+                                        >
+                                            <AlignLeft className="w-4 h-4 text-slate-600" />
+                                        </button>
+                                        <button
+                                            onClick={() => applyFormat('justifyCenter')}
+                                            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                                            title="Align Center"
+                                        >
+                                            <AlignCenter className="w-4 h-4 text-slate-600" />
+                                        </button>
+                                        <button
+                                            onClick={() => applyFormat('justifyRight')}
+                                            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                                            title="Align Right"
+                                        >
+                                            <AlignRight className="w-4 h-4 text-slate-600" />
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="text-xs text-slate-600 mb-1 block">Lists</label>
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={() => applyFormat('insertUnorderedList')}
+                                            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                                            title="Bullet List"
+                                        >
+                                            <List className="w-4 h-4 text-slate-600" />
+                                        </button>
+                                        <button
+                                            onClick={() => applyFormat('insertOrderedList')}
+                                            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                                            title="Numbered List"
+                                        >
+                                            <ListOrdered className="w-4 h-4 text-slate-600" />
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Create Modal */}
+                    {showCreateModal && (
+                        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                            <div className="bg-white rounded-2xl p-8 max-w-md w-full mx-4">
+                                <h3 className="text-2xl font-bold text-slate-900 mb-6">Create New Resume</h3>
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-2">Resume Title</label>
+                                        <input
+                                            type="text"
+                                            value={newResumeTitle}
+                                            onChange={(e) => setNewResumeTitle(e.target.value)}
+                                            placeholder="e.g., Software Engineer Resume"
+                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 mb-2">Resume Type</label>
+                                        <select
+                                            value={newResumeType}
+                                            onChange={(e) => setNewResumeType(e.target.value)}
+                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                        >
+                                            <option value="master">Master Resume</option>
+                                            <option value="campaign">Campaign Resume</option>
+                                        </select>
+                                    </div>
+                                    <div className="flex gap-4 pt-4">
+                                        <button
+                                            onClick={() => {
+                                                setShowCreateModal(false);
+                                                setNewResumeTitle('');
+                                            }}
+                                            className="flex-1 px-6 py-3 border border-gray-300 text-slate-700 rounded-lg hover:bg-gray-50 transition-colors font-medium"
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            onClick={createNewResume}
+                                            className="flex-1 px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium"
+                                        >
+                                            Create
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Export Modal */}
+                    {showExportModal && (
+                        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                            <div className="bg-white rounded-2xl p-8 max-w-md w-full mx-4">
+                                <h3 className="text-2xl font-bold text-slate-900 mb-6">Export Resume</h3>
+                                <div className="space-y-4">
+                                    <button
+                                        onClick={() => {
+                                            const blob = new Blob([editorContent], { type: 'text/html' });
+                                            const url = URL.createObjectURL(blob);
+                                            const a = document.createElement('a');
+                                            a.href = url;
+                                            a.download = `${activeResume?.title || 'resume'}.html`;
+                                            a.click();
+                                            URL.revokeObjectURL(url);
+                                            setShowExportModal(false);
+                                        }}
+                                        className="w-full px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium text-left"
+                                    >
+                                        Export as HTML
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            const printWindow = window.open('', '_blank');
+                                            if (printWindow) {
+                                                printWindow.document.write(`
+                                                    <!DOCTYPE html>
+                                                    <html>
+                                                    <head>
+                                                        <title>${activeResume?.title || 'Resume'}</title>
+                                                        <style>
+                                                            body { font-family: ${formattingSettings.fontStyle}; font-size: ${formattingSettings.fontSize}pt; line-height: ${formattingSettings.lineSpacing}; padding: ${formattingSettings.topBottomMargin}mm ${formattingSettings.sideMargins}mm; }
+                                                        </style>
+                                                    </head>
+                                                    <body>${editorContent}</body>
+                                                    </html>
+                                                `);
+                                                printWindow.document.close();
+                                                printWindow.print();
+                                            }
+                                            setShowExportModal(false);
+                                        }}
+                                        className="w-full px-6 py-3 border border-gray-300 text-slate-700 rounded-lg hover:bg-gray-50 transition-colors font-medium text-left"
+                                    >
+                                        Print / PDF
+                                    </button>
+                                    <button
+                                        onClick={() => setShowExportModal(false)}
+                                        className="w-full px-6 py-3 border border-gray-300 text-slate-700 rounded-lg hover:bg-gray-50 transition-colors font-medium"
+                                    >
+                                        Cancel
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     )}
@@ -3321,11 +4376,26 @@ Return only valid JSON, no additional text:`
             
             if (container) {
                 try {
+                    // Clean up previous root if exists
+                    if (window.smartResumeStudioRoot) {
+                        window.smartResumeStudioRoot.unmount();
+                        window.smartResumeStudioRoot = null;
+                    }
+                    
                     const root = ReactDOM.createRoot(container);
                     root.render(<SmartResumeStudio />);
+                    window.smartResumeStudioRoot = root;
                 } catch (error) {
                     console.error('Error rendering Smart Resume Studio:', error);
                 }
+            }
+        };
+
+        // Cleanup function for Smart Resume Studio
+        window.cleanupSmartResumeStudio = function() {
+            if (window.smartResumeStudioRoot) {
+                window.smartResumeStudioRoot.unmount();
+                window.smartResumeStudioRoot = null;
             }
         };
     </script>
@@ -13557,7 +14627,7 @@ Best regards,
                             title: `Test Document ${i}`,
                             type: 'resume',
                             content: `Test content ${i}`,
-                            status: 'draft',
+                    status: 'draft',
                             atsScore: Math.floor(Math.random() * 100)
                         };
                         const saved = await WorkHistoryStorage.saveDocument(doc);
@@ -13665,11 +14735,11 @@ Best regards,
                     
                     return {
                         title: fileName || 'Resume from Resume Studio',
-                        type: 'resume',
+                    type: 'resume',
                         content: content,
                         jobTitle: jobTitle,
                         company: company,
-                        status: 'completed',
+                    status: 'completed',
                         atsScore: null
                     };
                 } catch (error) {
@@ -14324,17 +15394,17 @@ Best regards,
                         return;
                     }
                     
-                    const blob = new Blob([doc.content], { type: 'text/plain' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
+                const blob = new Blob([doc.content], { type: 'text/plain' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
                     // Sanitize filename
                     const safeFilename = sanitizeFilename(doc.title) || 'document';
                     a.download = `${safeFilename}.txt`;
                     document.body.appendChild(a);
-                    a.click();
+                a.click();
                     document.body.removeChild(a);
-                    URL.revokeObjectURL(url);
+                URL.revokeObjectURL(url);
                 } catch (err) {
                     console.error('Error downloading document:', err);
                     alert('Failed to download document');
@@ -14649,7 +15719,7 @@ Best regards,
                     {/* Documents Grid */}
                     {!isLoading && !error && (
                         <>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                             {paginatedDocuments.length > 0 ? (
                                 paginatedDocuments.map(doc => (
                                 <div key={doc.id} className={`${isLightMode ? 'bg-white/30 backdrop-blur-xl border-white/20' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6 hover:border-indigo-500/50 transition-all duration-300 hover:scale-105`}>
@@ -14726,7 +15796,7 @@ Best regards,
                             <div className="col-span-full text-center py-20">
                                 {documents.length === 0 ? (
                                     <>
-                                        <div className={`w-16 h-16 ${isLightMode ? 'text-gray-500' : 'text-gray-400'} mx-auto mb-4 text-6xl`}>📁</div>
+                                <div className={`w-16 h-16 ${isLightMode ? 'text-gray-500' : 'text-gray-400'} mx-auto mb-4 text-6xl`}>📁</div>
                                         <h3 className={`text-2xl font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-2`}>Welcome to Work History Manager!</h3>
                                         <p className={`${isLightMode ? 'text-gray-600' : 'text-gray-400'} mb-6 max-w-md mx-auto`}>
                                             Track and manage all your resumes, cover letters, and tailored applications in one place. Get started by creating your first document.
@@ -14762,7 +15832,7 @@ Best regards,
                                 )}
                             </div>
                         )}
-                        </div>
+                    </div>
                         
                         {/* Pagination Controls */}
                         {totalPages > 1 && (
@@ -15210,7 +16280,7 @@ Best regards,
         window.addEventListener('beforeunload', () => {
             window.cleanupWorkHistoryManager();
         });
-        
+
         // Render Work History Manager when work-history-content is shown
         window.renderWorkHistoryManager = function() {
             console.log('renderWorkHistoryManager called');
@@ -15229,18 +16299,18 @@ Best regards,
                     window.cleanupWorkHistoryManager();
                 }
                 
-                console.log('Creating React root and rendering Work History Manager...');
+                    console.log('Creating React root and rendering Work History Manager...');
                 window.workHistoryRoot = ReactDOM.createRoot(container);
                 window.workHistoryRoot.render(<WorkHistoryManager />);
-                console.log('Work History Manager rendered successfully');
-            } catch (error) {
-                console.error('Error rendering Work History Manager:', error);
-                container.innerHTML = `
-                    <div class="text-center py-20">
-                        <h2 class="text-2xl font-bold text-slate-800 mb-4">Error loading Work History Manager</h2>
-                        <p class="text-slate-600">${error.message}</p>
-                    </div>
-                `;
+                    console.log('Work History Manager rendered successfully');
+                } catch (error) {
+                    console.error('Error rendering Work History Manager:', error);
+                    container.innerHTML = `
+                        <div class="text-center py-20">
+                            <h2 class="text-2xl font-bold text-slate-800 mb-4">Error loading Work History Manager</h2>
+                            <p class="text-slate-600">${error.message}</p>
+                        </div>
+                    `;
                 window.workHistoryRoot = null;
             }
         };
