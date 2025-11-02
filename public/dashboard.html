@@ -13133,6 +13133,180 @@ Best regards,
         // Initialize storage service
         WorkHistoryStorage.init();
 
+        // Global Event System for Cross-Module Integration
+        const WorkHistoryIntegration = {
+            // Dispatch event when document is created in other modules
+            dispatchDocumentCreated(documentData) {
+                const event = new CustomEvent('workHistory:documentCreated', {
+                    detail: documentData
+                });
+                window.dispatchEvent(event);
+                console.log('Work History: Document created event dispatched', documentData);
+            },
+            
+            // Listen for document creation events
+            onDocumentCreated(callback) {
+                window.addEventListener('workHistory:documentCreated', (event) => {
+                    callback(event.detail);
+                });
+            },
+            
+            // Convert Resume Studio data to Work History document format
+            convertResumeStudioToDocument(resumeData, fileName) {
+                try {
+                    // Extract content as JSON string
+                    const content = JSON.stringify(resumeData, null, 2);
+                    
+                    // Extract job title from experience if available
+                    let jobTitle = '';
+                    if (resumeData.experience && resumeData.experience.length > 0) {
+                        jobTitle = resumeData.experience[0].position || '';
+                    }
+                    
+                    // Extract company from experience if available
+                    let company = '';
+                    if (resumeData.experience && resumeData.experience.length > 0) {
+                        company = resumeData.experience[0].company || '';
+                    }
+                    
+                    return {
+                        title: fileName || 'Resume from Resume Studio',
+                        type: 'resume',
+                        content: content,
+                        jobTitle: jobTitle,
+                        company: company,
+                        status: 'completed',
+                        atsScore: null
+                    };
+                } catch (error) {
+                    console.error('Error converting Resume Studio data:', error);
+                    return null;
+                }
+            },
+            
+            // Convert Application Tailor data to Work History document format
+            convertApplicationTailorToDocument(tailoredData, jobTitle, company) {
+                try {
+                    const content = typeof tailoredData === 'string' 
+                        ? tailoredData 
+                        : JSON.stringify(tailoredData, null, 2);
+                    
+                    return {
+                        title: `Tailored Resume - ${company || 'Application'}`,
+                        type: 'application-tailor',
+                        content: content,
+                        jobTitle: jobTitle || '',
+                        company: company || '',
+                        status: 'completed',
+                        atsScore: null
+                    };
+                } catch (error) {
+                    console.error('Error converting Application Tailor data:', error);
+                    return null;
+                }
+            }
+        };
+
+        // Monitor Resume Studio localStorage changes with duplicate prevention
+        (function() {
+            const processedResumes = new Set(); // Track processed resumes to prevent duplicates
+            let lastResumeCheck = Date.now();
+            
+            const originalSetItem = Storage.prototype.setItem;
+            Storage.prototype.setItem = function(key, value) {
+                originalSetItem.apply(this, arguments);
+                
+                // Listen for resume saves from Resume Studio
+                if (key === 'parsed_resumes') {
+                    // Throttle checks to avoid too many events
+                    const now = Date.now();
+                    if (now - lastResumeCheck < 1000) {
+                        return; // Skip if checked recently
+                    }
+                    lastResumeCheck = now;
+                    
+                    try {
+                        const resumes = JSON.parse(value);
+                        const resumeKeys = Object.keys(resumes);
+                        
+                        // Check for new resumes (ones we haven't processed)
+                        for (const resumeName of resumeKeys) {
+                            if (!processedResumes.has(resumeName)) {
+                                const resume = resumes[resumeName];
+                                
+                                if (resume && resume.personalInfo) {
+                                    // This is a new parsed resume from Resume Studio
+                                    processedResumes.add(resumeName);
+                                    
+                                    const document = WorkHistoryIntegration.convertResumeStudioToDocument(
+                                        resume,
+                                        resumeName
+                                    );
+                                    
+                                    if (document) {
+                                        // Small delay to ensure Resume Studio save is complete
+                                        setTimeout(() => {
+                                            WorkHistoryIntegration.dispatchDocumentCreated(document);
+                                        }, 500);
+                                    }
+                                }
+                            }
+                        }
+                    } catch (error) {
+                        console.error('Error processing resume save event:', error);
+                    }
+                }
+            };
+            
+            // Initialize processed list from existing resumes
+            try {
+                const existingResumes = JSON.parse(localStorage.getItem('parsed_resumes') || '{}');
+                Object.keys(existingResumes).forEach(key => processedResumes.add(key));
+            } catch (error) {
+                console.error('Error initializing processed resumes:', error);
+            }
+        })();
+        
+        // Helper function for Application Tailor to dispatch completion event
+        // Usage: window.dispatchApplicationTailorComplete(tailoredContent, jobTitle, company)
+        window.dispatchApplicationTailorComplete = function(tailoredContent, jobTitle, company) {
+            if (typeof WorkHistoryIntegration !== 'undefined') {
+                const document = WorkHistoryIntegration.convertApplicationTailorToDocument(
+                    tailoredContent,
+                    jobTitle,
+                    company
+                );
+                
+                if (document) {
+                    WorkHistoryIntegration.dispatchDocumentCreated(document);
+                }
+            } else {
+                console.warn('WorkHistoryIntegration not available. Document not added to work history.');
+            }
+        };
+        
+        // Helper function for Cover Letter Generator to dispatch completion event
+        // Usage: window.dispatchCoverLetterComplete(coverLetterContent, jobTitle, company)
+        window.dispatchCoverLetterComplete = function(coverLetterContent, jobTitle, company) {
+            if (typeof WorkHistoryIntegration !== 'undefined') {
+                const document = {
+                    title: `Cover Letter - ${company || 'Application'}`,
+                    type: 'cover-letter',
+                    content: typeof coverLetterContent === 'string' 
+                        ? coverLetterContent 
+                        : JSON.stringify(coverLetterContent, null, 2),
+                    jobTitle: jobTitle || '',
+                    company: company || '',
+                    status: 'completed',
+                    atsScore: null
+                };
+                
+                WorkHistoryIntegration.dispatchDocumentCreated(document);
+            } else {
+                console.warn('WorkHistoryIntegration not available. Document not added to work history.');
+            }
+        };
+
         // Work History Manager React Component
         const WorkHistoryManager = () => {
             const { useState, useEffect, useRef } = React;
@@ -13329,6 +13503,46 @@ Best regards,
                     setIsLoading(false);
                 }
             };
+
+            // Listen for document creation events from other modules
+            useEffect(() => {
+                let isMounted = true;
+                
+                const handleDocumentCreated = async (event) => {
+                    if (!isMounted) return;
+                    
+                    const documentData = event.detail;
+                    
+                    // Check if document already exists (prevent duplicates)
+                    try {
+                        const existingDocs = await WorkHistoryStorage.getAllDocuments();
+                        const duplicate = existingDocs.find(doc => 
+                            doc.title === documentData.title &&
+                            doc.type === documentData.type &&
+                            Math.abs(new Date(doc.createdAt).getTime() - Date.now()) < 5000 // Within 5 seconds
+                        );
+                        
+                        if (!duplicate) {
+                            await WorkHistoryStorage.saveDocument(documentData);
+                            if (isMounted) {
+                                await refreshDocuments();
+                                showToast(`Document "${documentData.title}" added to Work History!`, 'success');
+                            }
+                        }
+                    } catch (error) {
+                        console.error('Error auto-adding document to work history:', error);
+                        // Don't show error toast for auto-adds to avoid spam
+                    }
+                };
+                
+                WorkHistoryIntegration.onDocumentCreated(handleDocumentCreated);
+                
+                return () => {
+                    isMounted = false;
+                    // Note: We don't remove the event listener to allow it to persist
+                    // The event listener will only fire when component is mounted due to isMounted check
+                };
+            }, []);
 
             // Load documents on component mount
             useEffect(() => {
