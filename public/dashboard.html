@@ -13132,6 +13132,500 @@ Best regards,
         
         // Initialize storage service
         WorkHistoryStorage.init();
+        
+        /*
+         * WORK HISTORY MANAGER - TESTING CHECKLIST
+         * ==========================================
+         * 
+         * MANUAL TESTING SCENARIOS:
+         * 
+         * 1. BASIC FUNCTIONALITY TESTS
+         *    □ Component loads without errors
+         *    □ Documents load from storage on mount
+         *    □ Loading skeleton displays during fetch
+         *    □ Empty state shows when no documents exist
+         *    □ Statistics cards display correct counts
+         * 
+         * 2. CREATE DOCUMENT TESTS
+         *    □ "Create New" button opens modal
+         *    □ Can create document with all fields
+         *    □ Can create document with minimal fields (title + type)
+         *    □ Validation prevents empty title
+         *    □ Validation prevents invalid document type
+         *    □ Validation prevents invalid ATS score (< 0 or > 100)
+         *    □ Document appears in list after creation
+         *    □ Toast notification shows on success
+         *    □ Modal closes after successful create
+         * 
+         * 3. VIEW DOCUMENT TESTS
+         *    □ View button opens modal
+         *    □ Document content displays correctly
+         *    □ Document metadata shows (status, type, dates)
+         *    □ Modal closes with X button
+         *    □ Modal closes with Esc key
+         *    □ Modal closes when clicking outside
+         * 
+         * 4. EDIT DOCUMENT TESTS
+         *    □ Edit button opens modal with document data
+         *    □ Can update all fields
+         *    □ Can update individual fields
+         *    □ Validation works on save
+         *    □ Changes persist after save
+         *    □ Document updates in list after save
+         *    □ Toast notification shows on success
+         *    □ Error messages display on validation failure
+         * 
+         * 5. DELETE DOCUMENT TESTS
+         *    □ Delete button shows confirmation
+         *    □ Document removed after confirmation
+         *    □ Document persists if cancel is clicked
+         *    □ List updates immediately after delete
+         *    □ Toast notification shows on success
+         *    □ Statistics update after delete
+         * 
+         * 6. DOWNLOAD DOCUMENT TESTS
+         *    □ Download creates .txt file
+         *    □ Filename is sanitized (special characters removed)
+         *    □ File contains document content
+         *    □ Download works with empty content
+         *    □ Error handling for failed downloads
+         * 
+         * 7. SEARCH & FILTER TESTS
+         *    □ Search finds documents by title
+         *    □ Search finds documents by job title
+         *    □ Search finds documents by company
+         *    □ Search finds documents by content
+         *    □ Search is case-insensitive
+         *    □ Search debounces (waits 300ms)
+         *    □ Tab filters work (All, Resumes, Tailored, Cover Letters)
+         *    □ Status filter works (All, Completed, Drafts)
+         *    □ Sort by date works correctly
+         *    □ Sort by title works correctly
+         *    □ Sort by type works correctly
+         *    □ Combined filters work together
+         *    □ Search result count displays correctly
+         * 
+         * 8. PAGINATION TESTS
+         *    □ Shows 12 documents per page
+         *    □ Next/Previous buttons work
+         *    □ Page numbers display correctly
+         *    □ Pagination resets on search/filter change
+         *    □ Pagination doesn't show for < 12 documents
+         *    □ Current page highlights correctly
+         * 
+         * 9. STORAGE & PERSISTENCE TESTS
+         *    □ Documents persist after page refresh
+         *    □ Documents sync to Supabase (if authenticated)
+         *    □ Falls back to localStorage if Supabase fails
+         *    □ User-specific storage (different users see different documents)
+         *    □ Guest users use localStorage
+         * 
+         * 10. INTEGRATION TESTS
+         *     □ Resume Studio documents auto-appear in Work History
+         *     □ Application Tailor documents can be added (via helper function)
+         *     □ Cover Letter documents can be added (via helper function)
+         *     □ Duplicate prevention works
+         *     □ Toast notifications show on auto-add
+         * 
+         * 11. KEYBOARD SHORTCUTS TESTS
+         *     □ "/" key focuses search input
+         *     □ Esc key closes open modals
+         *     □ Shortcuts don't trigger when typing in inputs
+         * 
+         * 12. ERROR HANDLING TESTS
+         *     □ Network errors show user-friendly message
+         *     □ Invalid data validation errors display
+         *     □ Supabase offline falls back to localStorage
+         *     □ Error state displays correctly
+         *     □ Application doesn't crash on errors
+         * 
+         * 13. MEMORY LEAK TESTS
+         *     □ No console errors when navigating away
+         *     □ React root unmounts correctly
+         *     □ Event listeners cleaned up
+         *     □ No memory leaks after multiple create/edit/delete cycles
+         *     □ Component cleanup on unmount
+         * 
+         * 14. UI/UX TESTS
+         *     □ Loading states show during operations
+         *     □ Empty states are helpful and actionable
+         *     □ Toast notifications auto-dismiss
+         *     □ Modals are accessible (keyboard navigation)
+         *     □ Responsive design works on mobile
+         *     □ Dark mode works correctly
+         *     □ Light mode works correctly
+         * 
+         * 15. CROSS-BROWSER TESTS
+         *     □ Chrome/Edge
+         *     □ Firefox
+         *     □ Safari
+         *     □ Mobile browsers
+         * 
+         * 16. PERFORMANCE TESTS
+         *     □ Loads quickly with 100+ documents
+         *     □ Pagination works smoothly
+         *     □ Search is responsive (debounced)
+         *     □ No lag when filtering
+         *     □ Memory usage is reasonable
+         * 
+         * AUTOMATED TESTING:
+         * 
+         * Run in browser console:
+         * - await WorkHistoryTesting.runHealthChecks()
+         * - await WorkHistoryTesting.performanceTest(50)
+         * - WorkHistoryTesting.validateDocument({ title: 'Test', type: 'resume' })
+         * 
+         * EDGE CASES TO TEST:
+         * - Very long document titles (> 200 chars)
+         * - Special characters in titles
+         * - Empty content documents
+         * - Documents with null/undefined fields
+         * - Rapid create/edit/delete operations
+         * - Network disconnection scenarios
+         * - Supabase authentication expired
+         * - LocalStorage quota exceeded
+         * - Invalid date formats
+         * - Large content (> 50,000 chars)
+         */
+        
+        // Testing & Validation Utilities
+        const WorkHistoryTesting = {
+            // Run comprehensive health checks
+            async runHealthChecks() {
+                const results = {
+                    timestamp: new Date().toISOString(),
+                    checks: {},
+                    passed: 0,
+                    failed: 0,
+                    warnings: 0
+                };
+                
+                // Check 1: Storage Service Initialization
+                results.checks.storageService = this.checkStorageService();
+                if (results.checks.storageService.status === 'pass') results.passed++;
+                else if (results.checks.storageService.status === 'fail') results.failed++;
+                else results.warnings++;
+                
+                // Check 2: Supabase Connection
+                results.checks.supabaseConnection = await this.checkSupabaseConnection();
+                if (results.checks.supabaseConnection.status === 'pass') results.passed++;
+                else if (results.checks.supabaseConnection.status === 'fail') results.failed++;
+                else results.warnings++;
+                
+                // Check 3: LocalStorage Availability
+                results.checks.localStorage = this.checkLocalStorage();
+                if (results.checks.localStorage.status === 'pass') results.passed++;
+                else if (results.checks.localStorage.status === 'fail') results.failed++;
+                else results.warnings++;
+                
+                // Check 4: React Availability
+                results.checks.react = this.checkReact();
+                if (results.checks.react.status === 'pass') results.passed++;
+                else if (results.checks.react.status === 'fail') results.failed++;
+                else results.warnings++;
+                
+                // Check 5: Integration System
+                results.checks.integration = this.checkIntegration();
+                if (results.checks.integration.status === 'pass') results.passed++;
+                else if (results.checks.integration.status === 'fail') results.failed++;
+                else results.warnings++;
+                
+                // Check 6: Data Integrity
+                results.checks.dataIntegrity = await this.checkDataIntegrity();
+                if (results.checks.dataIntegrity.status === 'pass') results.passed++;
+                else if (results.checks.dataIntegrity.status === 'fail') results.failed++;
+                else results.warnings++;
+                
+                return results;
+            },
+            
+            // Check Storage Service
+            checkStorageService() {
+                try {
+                    if (typeof WorkHistoryStorage === 'undefined') {
+                        return { status: 'fail', message: 'WorkHistoryStorage is not defined' };
+                    }
+                    if (typeof WorkHistoryStorage.init !== 'function') {
+                        return { status: 'fail', message: 'WorkHistoryStorage.init is not a function' };
+                    }
+                    if (typeof WorkHistoryStorage.getAllDocuments !== 'function') {
+                        return { status: 'fail', message: 'WorkHistoryStorage.getAllDocuments is not a function' };
+                    }
+                    return { status: 'pass', message: 'Storage service is properly initialized' };
+                } catch (error) {
+                    return { status: 'fail', message: `Storage service check failed: ${error.message}` };
+                }
+            },
+            
+            // Check Supabase Connection
+            async checkSupabaseConnection() {
+                try {
+                    if (!WorkHistoryStorage.supabaseClient) {
+                        return { status: 'warn', message: 'Supabase client not initialized (will use localStorage fallback)' };
+                    }
+                    
+                    const userId = await WorkHistoryStorage.getUserId();
+                    if (userId) {
+                        return { status: 'pass', message: 'Supabase connection successful, user authenticated' };
+                    } else {
+                        return { status: 'warn', message: 'Supabase available but user not authenticated (using localStorage)' };
+                    }
+                } catch (error) {
+                    return { status: 'warn', message: `Supabase check failed: ${error.message} (will use localStorage)` };
+                }
+            },
+            
+            // Check LocalStorage
+            checkLocalStorage() {
+                try {
+                    if (typeof Storage === 'undefined') {
+                        return { status: 'fail', message: 'localStorage is not available' };
+                    }
+                    
+                    const testKey = '__work_history_test__';
+                    localStorage.setItem(testKey, 'test');
+                    const value = localStorage.getItem(testKey);
+                    localStorage.removeItem(testKey);
+                    
+                    if (value !== 'test') {
+                        return { status: 'fail', message: 'localStorage read/write test failed' };
+                    }
+                    
+                    return { status: 'pass', message: 'localStorage is available and functional' };
+                } catch (error) {
+                    return { status: 'fail', message: `localStorage check failed: ${error.message}` };
+                }
+            },
+            
+            // Check React
+            checkReact() {
+                try {
+                    if (typeof React === 'undefined') {
+                        return { status: 'fail', message: 'React is not loaded' };
+                    }
+                    if (typeof ReactDOM === 'undefined') {
+                        return { status: 'fail', message: 'ReactDOM is not loaded' };
+                    }
+                    if (typeof React.useState !== 'function') {
+                        return { status: 'fail', message: 'React hooks are not available' };
+                    }
+                    return { status: 'pass', message: 'React and ReactDOM are properly loaded' };
+                } catch (error) {
+                    return { status: 'fail', message: `React check failed: ${error.message}` };
+                }
+            },
+            
+            // Check Integration System
+            checkIntegration() {
+                try {
+                    if (typeof WorkHistoryIntegration === 'undefined') {
+                        return { status: 'fail', message: 'WorkHistoryIntegration is not defined' };
+                    }
+                    if (typeof WorkHistoryIntegration.dispatchDocumentCreated !== 'function') {
+                        return { status: 'fail', message: 'dispatchDocumentCreated is not a function' };
+                    }
+                    if (typeof WorkHistoryIntegration.onDocumentCreated !== 'function') {
+                        return { status: 'fail', message: 'onDocumentCreated is not a function' };
+                    }
+                    return { status: 'pass', message: 'Integration system is properly initialized' };
+                } catch (error) {
+                    return { status: 'fail', message: `Integration check failed: ${error.message}` };
+                }
+            },
+            
+            // Check Data Integrity
+            async checkDataIntegrity() {
+                try {
+                    const documents = await WorkHistoryStorage.getAllDocuments();
+                    const issues = [];
+                    
+                    for (const doc of documents) {
+                        // Validate document structure
+                        if (!doc.id) issues.push(`Document missing ID: ${doc.title || 'Unknown'}`);
+                        if (!doc.title) issues.push(`Document missing title: ${doc.id}`);
+                        if (!doc.type) issues.push(`Document missing type: ${doc.id}`);
+                        
+                        // Validate type values
+                        const validTypes = ['resume', 'tailored-resume', 'application-tailor', 'cover-letter'];
+                        if (!validTypes.includes(doc.type)) {
+                            issues.push(`Invalid document type: ${doc.type} (${doc.id})`);
+                        }
+                        
+                        // Validate status values
+                        if (doc.status && !['draft', 'completed'].includes(doc.status)) {
+                            issues.push(`Invalid document status: ${doc.status} (${doc.id})`);
+                        }
+                        
+                        // Validate ATS score
+                        if (doc.atsScore !== null && doc.atsScore !== undefined) {
+                            const score = parseInt(doc.atsScore);
+                            if (isNaN(score) || score < 0 || score > 100) {
+                                issues.push(`Invalid ATS score: ${doc.atsScore} (${doc.id})`);
+                            }
+                        }
+                    }
+                    
+                    if (issues.length > 0) {
+                        return { 
+                            status: 'warn', 
+                            message: `Found ${issues.length} data integrity issue(s)`,
+                            details: issues
+                        };
+                    }
+                    
+                    return { 
+                        status: 'pass', 
+                        message: `All ${documents.length} documents passed integrity checks` 
+                    };
+                } catch (error) {
+                    return { status: 'fail', message: `Data integrity check failed: ${error.message}` };
+                }
+            },
+            
+            // Validate document before save
+            validateDocument(doc) {
+                const errors = [];
+                const warnings = [];
+                
+                // Required fields
+                if (!doc.title || typeof doc.title !== 'string' || !doc.title.trim()) {
+                    errors.push('Title is required');
+                } else if (doc.title.length > 200) {
+                    errors.push('Title must be 200 characters or less');
+                }
+                
+                if (!doc.type) {
+                    errors.push('Document type is required');
+                } else {
+                    const validTypes = ['resume', 'tailored-resume', 'application-tailor', 'cover-letter'];
+                    if (!validTypes.includes(doc.type)) {
+                        errors.push(`Invalid document type. Must be one of: ${validTypes.join(', ')}`);
+                    }
+                }
+                
+                // Optional but validated fields
+                if (doc.status && !['draft', 'completed'].includes(doc.status)) {
+                    errors.push('Status must be either "draft" or "completed"');
+                }
+                
+                if (doc.atsScore !== undefined && doc.atsScore !== null) {
+                    const score = parseInt(doc.atsScore);
+                    if (isNaN(score)) {
+                        errors.push('ATS score must be a number');
+                    } else if (score < 0 || score > 100) {
+                        errors.push('ATS score must be between 0 and 100');
+                    }
+                }
+                
+                if (doc.jobTitle && doc.jobTitle.length > 100) {
+                    warnings.push('Job title is longer than recommended (100 chars)');
+                }
+                
+                if (doc.company && doc.company.length > 100) {
+                    warnings.push('Company name is longer than recommended (100 chars)');
+                }
+                
+                if (doc.content && doc.content.length > 50000) {
+                    warnings.push('Content is very long (50,000+ chars), may affect performance');
+                }
+                
+                return {
+                    isValid: errors.length === 0,
+                    errors,
+                    warnings
+                };
+            },
+            
+            // Performance test
+            async performanceTest(docCount = 100) {
+                const startTime = performance.now();
+                const results = {
+                    createTime: 0,
+                    readTime: 0,
+                    updateTime: 0,
+                    deleteTime: 0,
+                    totalTime: 0,
+                    averageTime: 0
+                };
+                
+                try {
+                    // Create test documents
+                    const createStart = performance.now();
+                    const testDocs = [];
+                    for (let i = 0; i < docCount; i++) {
+                        const doc = {
+                            title: `Test Document ${i}`,
+                            type: 'resume',
+                            content: `Test content ${i}`,
+                            status: 'draft',
+                            atsScore: Math.floor(Math.random() * 100)
+                        };
+                        const saved = await WorkHistoryStorage.saveDocument(doc);
+                        testDocs.push(saved);
+                    }
+                    results.createTime = performance.now() - createStart;
+                    
+                    // Read all documents
+                    const readStart = performance.now();
+                    await WorkHistoryStorage.getAllDocuments();
+                    results.readTime = performance.now() - readStart;
+                    
+                    // Update documents
+                    const updateStart = performance.now();
+                    for (let i = 0; i < Math.min(10, testDocs.length); i++) {
+                        await WorkHistoryStorage.updateDocument(testDocs[i].id, { title: `Updated ${i}` });
+                    }
+                    results.updateTime = performance.now() - updateStart;
+                    
+                    // Delete documents
+                    const deleteStart = performance.now();
+                    for (const doc of testDocs) {
+                        await WorkHistoryStorage.deleteDocument(doc.id);
+                    }
+                    results.deleteTime = performance.now() - deleteStart;
+                    
+                    results.totalTime = performance.now() - startTime;
+                    results.averageTime = results.totalTime / docCount;
+                    
+                    return { status: 'pass', results };
+                } catch (error) {
+                    return { status: 'fail', message: `Performance test failed: ${error.message}` };
+                }
+            },
+            
+            // Log test results
+            logResults(results) {
+                console.group('🧪 Work History Manager - Health Check Results');
+                console.log(`Timestamp: ${results.timestamp}`);
+                console.log(`✅ Passed: ${results.passed}`);
+                console.log(`⚠️  Warnings: ${results.warnings}`);
+                console.log(`❌ Failed: ${results.failed}`);
+                
+                Object.entries(results.checks).forEach(([checkName, result]) => {
+                    const icon = result.status === 'pass' ? '✅' : result.status === 'warn' ? '⚠️' : '❌';
+                    console.log(`${icon} ${checkName}: ${result.message}`);
+                    if (result.details) {
+                        console.log('   Details:', result.details);
+                    }
+                });
+                
+                console.groupEnd();
+                return results;
+            }
+        };
+        
+        // Make testing utilities available globally for console access
+        window.WorkHistoryTesting = WorkHistoryTesting;
+        
+        // Auto-run health checks in development (console only)
+        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+            window.addEventListener('load', () => {
+                setTimeout(async () => {
+                    const results = await WorkHistoryTesting.runHealthChecks();
+                    WorkHistoryTesting.logResults(results);
+                }, 2000); // Wait 2 seconds after page load
+            });
+        }
 
         // Global Event System for Cross-Module Integration
         const WorkHistoryIntegration = {
@@ -13409,8 +13903,18 @@ Best regards,
                 return input.replace(/<[^>]*>/g, '').replace(/[<>\"']/g, '').trim();
             };
 
-            // Utility: Validate document data
+            // Utility: Validate document data (uses WorkHistoryTesting for consistency)
             const validateDocument = (doc) => {
+                if (typeof WorkHistoryTesting !== 'undefined' && WorkHistoryTesting.validateDocument) {
+                    const result = WorkHistoryTesting.validateDocument(doc);
+                    // Convert warnings to errors for strict validation
+                    return {
+                        isValid: result.isValid,
+                        errors: [...result.errors, ...result.warnings]
+                    };
+                }
+                
+                // Fallback validation if testing utility not available
                 const errors = [];
                 
                 // Title validation
