@@ -421,6 +421,21 @@
         aside.collapsed .dropdown-container {
             margin-bottom: 0.5rem;
         }
+
+        /* Toast Animation */
+        @keyframes fade-in {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        .animate-fade-in {
+            animation: fade-in 0.3s ease-out;
+        }
         
         /* NEW Settings Modal Styles */
         .settings-tab {
@@ -13128,39 +13143,214 @@ Best regards,
             const [editingDoc, setEditingDoc] = useState(null);
             const [creatingDoc, setCreatingDoc] = useState(false);
             const [saveError, setSaveError] = useState(null);
+            const [currentPage, setCurrentPage] = useState(1);
+            const [toast, setToast] = useState(null);
+            const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+            
+            const DOCUMENTS_PER_PAGE = 12;
             
             // Check for light mode
             const isLightMode = !document.documentElement.classList.contains('dark');
             
+            // Toast notification system
+            const showToast = (message, type = 'success') => {
+                setToast({ message, type });
+                setTimeout(() => setToast(null), 3000);
+            };
+            
+            // Debounce search query
+            useEffect(() => {
+                const timer = setTimeout(() => {
+                    setDebouncedSearchQuery(searchQuery);
+                    setCurrentPage(1); // Reset to first page on search
+                }, 300);
+                
+                return () => clearTimeout(timer);
+            }, [searchQuery]);
+            
+            // Keyboard shortcuts
+            useEffect(() => {
+                const handleKeyDown = (e) => {
+                    // Focus search with /
+                    if (e.key === '/' && !e.ctrlKey && !e.metaKey && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
+                        e.preventDefault();
+                        const searchInput = document.querySelector('input[placeholder*="Search documents"]');
+                        if (searchInput) {
+                            searchInput.focus();
+                        }
+                    }
+                    
+                    // Close modals with Esc
+                    if (e.key === 'Escape') {
+                        if (viewingDoc) {
+                            handleCloseView();
+                        } else if (editingDoc) {
+                            handleCloseEdit();
+                        } else if (creatingDoc) {
+                            handleCloseCreate();
+                        }
+                    }
+                };
+                
+                window.addEventListener('keydown', handleKeyDown);
+                return () => window.removeEventListener('keydown', handleKeyDown);
+            }, [viewingDoc, editingDoc, creatingDoc]);
+            
+            // Utility: Sanitize input to prevent XSS
+            const sanitizeInput = (input) => {
+                if (!input || typeof input !== 'string') return '';
+                const div = document.createElement('div');
+                div.textContent = input;
+                return div.innerHTML.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            };
+
+            // Utility: Sanitize for search (allow basic characters, strip dangerous ones)
+            const sanitizeSearch = (input) => {
+                if (!input || typeof input !== 'string') return '';
+                // Remove HTML tags and script content
+                return input.replace(/<[^>]*>/g, '').replace(/[<>\"']/g, '').trim();
+            };
+
+            // Utility: Validate document data
+            const validateDocument = (doc) => {
+                const errors = [];
+                
+                // Title validation
+                if (!doc.title || typeof doc.title !== 'string' || !doc.title.trim()) {
+                    errors.push('Title is required and cannot be empty');
+                } else if (doc.title.trim().length > 200) {
+                    errors.push('Title must be 200 characters or less');
+                }
+
+                // Type validation
+                const validTypes = ['resume', 'tailored-resume', 'application-tailor', 'cover-letter'];
+                if (!doc.type || !validTypes.includes(doc.type)) {
+                    errors.push(`Document type must be one of: ${validTypes.join(', ')}`);
+                }
+
+                // Status validation
+                if (doc.status && !['draft', 'completed'].includes(doc.status)) {
+                    errors.push('Status must be either "draft" or "completed"');
+                }
+
+                // ATS Score validation
+                if (doc.atsScore !== undefined && doc.atsScore !== null) {
+                    const score = parseInt(doc.atsScore);
+                    if (isNaN(score) || score < 0 || score > 100) {
+                        errors.push('ATS score must be a number between 0 and 100');
+                    }
+                }
+
+                // Content length validation (optional, but warn if too long)
+                if (doc.content && doc.content.length > 50000) {
+                    errors.push('Content is too long. Maximum 50,000 characters allowed.');
+                }
+
+                // Job Title and Company length validation
+                if (doc.jobTitle && doc.jobTitle.length > 100) {
+                    errors.push('Job title must be 100 characters or less');
+                }
+                if (doc.company && doc.company.length > 100) {
+                    errors.push('Company name must be 100 characters or less');
+                }
+
+                return {
+                    isValid: errors.length === 0,
+                    errors
+                };
+            };
+
+            // Utility: Format date safely
+            const formatDateSafe = (dateString) => {
+                if (!dateString) return 'N/A';
+                try {
+                    const date = new Date(dateString);
+                    if (isNaN(date.getTime())) {
+                        return 'Invalid Date';
+                    }
+                    return date.toLocaleDateString();
+                } catch (err) {
+                    console.error('Error formatting date:', err);
+                    return 'Invalid Date';
+                }
+            };
+
             // Refresh documents from storage
             const refreshDocuments = async () => {
                 try {
+                    setIsLoading(true);
                     const loadedDocuments = await WorkHistoryStorage.getAllDocuments();
-                    setDocuments(loadedDocuments);
+                    setDocuments(loadedDocuments || []);
+                    setError(null);
                 } catch (err) {
                     console.error('Error refreshing documents:', err);
+                    const errorMessage = err.message || 'Failed to refresh documents';
+                    setError(errorMessage);
+                    
+                    // Try to load from localStorage as fallback
+                    try {
+                        const userId = await WorkHistoryStorage.getUserId();
+                        const storageKey = WorkHistoryStorage.getLocalStorageKey(userId);
+                        const stored = localStorage.getItem(storageKey);
+                        if (stored) {
+                            const documents = JSON.parse(stored);
+                            setDocuments(documents.map(doc => WorkHistoryStorage.formatDocument(doc)));
+                            setError('Using cached data. Some features may be limited.');
+                        }
+                    } catch (fallbackErr) {
+                        console.error('Error loading from localStorage fallback:', fallbackErr);
+                        setError('Unable to load documents. Please refresh the page.');
+                    }
+                } finally {
+                    setIsLoading(false);
                 }
             };
 
             // Load documents on component mount
             useEffect(() => {
                 let isMounted = true;
+                let abortController = new AbortController();
                 
                 const loadDocuments = async () => {
                     try {
                         setIsLoading(true);
                         setError(null);
                         const loadedDocuments = await WorkHistoryStorage.getAllDocuments();
-                        if (isMounted) {
-                            setDocuments(loadedDocuments);
+                        if (isMounted && !abortController.signal.aborted) {
+                            setDocuments(loadedDocuments || []);
                         }
                     } catch (err) {
                         console.error('Error loading documents:', err);
-                        if (isMounted) {
-                            setError(err.message || 'Failed to load documents');
+                        if (isMounted && !abortController.signal.aborted) {
+                            let errorMessage = 'Failed to load documents';
+                            
+                            if (err.name === 'AbortError') {
+                                // Component unmounted, ignore
+                                return;
+                            } else if (err.message) {
+                                errorMessage = err.message;
+                            } else if (err.name === 'NetworkError' || err.message?.includes('network')) {
+                                errorMessage = 'Network error. Please check your connection.';
+                            }
+                            
+                            setError(errorMessage);
+                            
+                            // Try localStorage fallback
+                            try {
+                                const userId = await WorkHistoryStorage.getUserId();
+                                const storageKey = WorkHistoryStorage.getLocalStorageKey(userId);
+                                const stored = localStorage.getItem(storageKey);
+                                if (stored && isMounted) {
+                                    const documents = JSON.parse(stored);
+                                    setDocuments(documents.map(doc => WorkHistoryStorage.formatDocument(doc)));
+                                    setError('Using cached data. Some features may be limited.');
+                                }
+                            } catch (fallbackErr) {
+                                console.error('Fallback load error:', fallbackErr);
+                            }
                         }
                     } finally {
-                        if (isMounted) {
+                        if (isMounted && !abortController.signal.aborted) {
                             setIsLoading(false);
                         }
                     }
@@ -13171,6 +13361,7 @@ Best regards,
                 // Cleanup function to prevent state updates on unmounted component
                 return () => {
                     isMounted = false;
+                    abortController.abort();
                 };
             }, []);
 
@@ -13236,10 +13427,12 @@ Best regards,
                     (activeTab === 'tailored' && (doc.type === 'tailored-resume' || doc.type === 'application-tailor')) ||
                     (activeTab === 'cover-letters' && doc.type === 'cover-letter');
                 
-                const matchesSearch = searchQuery === '' || 
-                    doc.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                    doc.jobTitle.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                    doc.company.toLowerCase().includes(searchQuery.toLowerCase());
+                const searchLower = debouncedSearchQuery.toLowerCase();
+                const matchesSearch = debouncedSearchQuery === '' || 
+                    (doc.title && doc.title.toLowerCase().includes(searchLower)) ||
+                    (doc.jobTitle && doc.jobTitle.toLowerCase().includes(searchLower)) ||
+                    (doc.company && doc.company.toLowerCase().includes(searchLower)) ||
+                    (doc.content && doc.content.toLowerCase().includes(searchLower));
                 
                 const matchesStatus = filterStatus === 'all' || doc.status === filterStatus;
                 
@@ -13268,60 +13461,117 @@ Best regards,
                 }
             });
 
+            // Pagination calculations
+            const totalPages = Math.ceil(sortedDocuments.length / DOCUMENTS_PER_PAGE);
+            const startIndex = (currentPage - 1) * DOCUMENTS_PER_PAGE;
+            const endIndex = startIndex + DOCUMENTS_PER_PAGE;
+            const paginatedDocuments = sortedDocuments.slice(startIndex, endIndex);
+            
+            // Reset to page 1 if current page is out of bounds
+            useEffect(() => {
+                if (currentPage > totalPages && totalPages > 0) {
+                    setCurrentPage(1);
+                }
+            }, [currentPage, totalPages]);
+
             // Sanitize filename for download
             const sanitizeFilename = (filename) => {
                 return filename.replace(/[^a-z0-9]/gi, '_').toLowerCase();
             };
 
             const handleView = async (doc) => {
+                if (!doc || !doc.id) {
+                    setError('Invalid document selected');
+                    return;
+                }
+
                 try {
+                    setError(null);
                     // Fetch full document from storage
                     const fullDoc = await WorkHistoryStorage.getDocumentById(doc.id);
                     if (fullDoc) {
                         setViewingDoc(fullDoc);
                     } else {
+                        // Fallback to provided doc if not found in storage
                         setViewingDoc(doc);
                     }
                 } catch (err) {
                     console.error('Error loading document:', err);
+                    const errorMessage = err.message || 'Failed to load document';
+                    setError(errorMessage);
+                    // Still show the document if we have it locally
                     setViewingDoc(doc);
                 }
             };
 
             const handleEdit = async (doc) => {
+                if (!doc || !doc.id) {
+                    setSaveError('Invalid document selected');
+                    return;
+                }
+
                 try {
+                    setSaveError(null);
+                    setError(null);
                     // Fetch full document from storage
                     const fullDoc = await WorkHistoryStorage.getDocumentById(doc.id);
                     if (fullDoc) {
                         setEditingDoc({ ...fullDoc });
                     } else {
+                        // Fallback to provided doc if not found in storage
                         setEditingDoc({ ...doc });
                     }
-                    setSaveError(null);
                 } catch (err) {
-                    console.error('Error loading document:', err);
+                    console.error('Error loading document for editing:', err);
+                    const errorMessage = err.message || 'Failed to load document';
+                    setSaveError(errorMessage);
+                    // Still allow editing with provided doc as fallback
                     setEditingDoc({ ...doc });
-                    setSaveError(null);
                 }
             };
 
             const handleSaveEdit = async () => {
-                if (!editingDoc) return;
+                if (!editingDoc) {
+                    setSaveError('No document to save');
+                    return;
+                }
                 
                 try {
                     setSaveError(null);
-                    // Validate required fields
-                    if (!editingDoc.title || !editingDoc.title.trim()) {
-                        setSaveError('Title is required');
+                    
+                    // Sanitize inputs
+                    const sanitizedDoc = {
+                        ...editingDoc,
+                        title: sanitizeSearch(editingDoc.title),
+                        jobTitle: editingDoc.jobTitle ? sanitizeSearch(editingDoc.jobTitle) : '',
+                        company: editingDoc.company ? sanitizeSearch(editingDoc.company) : '',
+                        content: editingDoc.content || ''
+                    };
+
+                    // Validate document
+                    const validation = validateDocument(sanitizedDoc);
+                    if (!validation.isValid) {
+                        setSaveError(validation.errors.join('. '));
                         return;
                     }
                     
-                    await WorkHistoryStorage.saveDocument(editingDoc);
+                    await WorkHistoryStorage.saveDocument(sanitizedDoc);
                     await refreshDocuments();
                     setEditingDoc(null);
+                    showToast('Document saved successfully!', 'success');
                 } catch (err) {
                     console.error('Error saving document:', err);
-                    setSaveError(err.message || 'Failed to save document');
+                    let errorMessage = 'Failed to save document';
+                    
+                    if (err.message) {
+                        errorMessage = err.message;
+                    } else if (err.name === 'NetworkError' || err.message?.includes('network')) {
+                        errorMessage = 'Network error. Please check your connection and try again.';
+                    } else if (err.message?.includes('permission') || err.message?.includes('unauthorized')) {
+                        errorMessage = 'You do not have permission to save this document.';
+                    }
+                    
+                    setSaveError(errorMessage);
                 }
             };
 
@@ -13350,14 +13600,32 @@ Best regards,
             };
 
             const handleDelete = async (doc) => {
-                // Use custom confirmation instead of browser confirm
-                if (window.confirm(`Are you sure you want to delete "${doc.title}"? This action cannot be undone.`)) {
+                if (!doc || !doc.id) {
+                    setError('Invalid document selected');
+                    return;
+                }
+
+                // Use browser confirm (will replace with custom modal in Phase 5)
+                const confirmMessage = `Are you sure you want to delete "${doc.title || 'this document'}"? This action cannot be undone.`;
+                if (window.confirm(confirmMessage)) {
                     try {
+                        setError(null);
                         await WorkHistoryStorage.deleteDocument(doc.id);
                         await refreshDocuments();
+                        showToast('Document deleted successfully!', 'success');
                     } catch (err) {
                         console.error('Error deleting document:', err);
-                        alert('Failed to delete document');
+                        let errorMessage = 'Failed to delete document';
+                        
+                        if (err.message) {
+                            errorMessage = err.message;
+                        } else if (err.name === 'NetworkError' || err.message?.includes('network')) {
+                            errorMessage = 'Network error. Please check your connection and try again.';
+                        } else if (err.message?.includes('permission') || err.message?.includes('unauthorized')) {
+                            errorMessage = 'You do not have permission to delete this document.';
+                        }
+                        
+                        setError(errorMessage);
                     }
                 }
             };
@@ -13368,24 +13636,47 @@ Best regards,
             };
 
             const handleSaveCreate = async (newDoc) => {
+                if (!newDoc) {
+                    setSaveError('No document data provided');
+                    return;
+                }
+
                 try {
                     setSaveError(null);
-                    // Validate required fields
-                    if (!newDoc.title || !newDoc.title.trim()) {
-                        setSaveError('Title is required');
-                        return;
-                    }
-                    if (!newDoc.type) {
-                        setSaveError('Document type is required');
+                    
+                    // Sanitize inputs
+                    const sanitizedDoc = {
+                        ...newDoc,
+                        title: sanitizeSearch(newDoc.title),
+                        jobTitle: newDoc.jobTitle ? sanitizeSearch(newDoc.jobTitle) : '',
+                        company: newDoc.company ? sanitizeSearch(newDoc.company) : '',
+                        content: newDoc.content || ''
+                    };
+
+                    // Validate document
+                    const validation = validateDocument(sanitizedDoc);
+                    if (!validation.isValid) {
+                        setSaveError(validation.errors.join('. '));
                         return;
                     }
                     
-                    await WorkHistoryStorage.saveDocument(newDoc);
+                    await WorkHistoryStorage.saveDocument(sanitizedDoc);
                     await refreshDocuments();
                     setCreatingDoc(false);
+                    showToast('Document created successfully!', 'success');
                 } catch (err) {
                     console.error('Error creating document:', err);
-                    setSaveError(err.message || 'Failed to create document');
+                    let errorMessage = 'Failed to create document';
+                    
+                    if (err.message) {
+                        errorMessage = err.message;
+                    } else if (err.name === 'NetworkError' || err.message?.includes('network')) {
+                        errorMessage = 'Network error. Please check your connection and try again.';
+                    } else if (err.message?.includes('permission') || err.message?.includes('unauthorized')) {
+                        errorMessage = 'You do not have permission to create documents.';
+                    }
+                    
+                    setSaveError(errorMessage);
                 }
             };
 
@@ -13514,9 +13805,13 @@ Best regards,
                                 </div>
                                 <input
                                     type="text"
-                                    placeholder="Search documents..."
+                                    placeholder="Search documents... (Press / to focus)"
                                     value={searchQuery}
-                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    onChange={(e) => {
+                                        const sanitized = sanitizeSearch(e.target.value);
+                                        setSearchQuery(sanitized);
+                                    }}
+                                    maxLength={100}
                                     className={`w-full pl-10 pr-4 py-2 ${isLightMode ? 'bg-white border-gray-300 text-gray-900 placeholder-gray-500' : 'bg-gray-800 border-gray-700 text-gray-50 placeholder-gray-400'} border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500`}
                                 />
                             </div>
@@ -13541,7 +13836,36 @@ Best regards,
                                 <option value="draft">Drafts</option>
                             </select>
                         </div>
+                        
+                        {/* Search Results Count */}
+                        {!isLoading && (
+                            <div className={`mt-4 text-sm ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>
+                                {sortedDocuments.length === 0 ? (
+                                    <span>No documents found</span>
+                                ) : sortedDocuments.length === 1 ? (
+                                    <span>1 document found</span>
+                                ) : (
+                                    <span>
+                                        Showing {startIndex + 1}-{Math.min(endIndex, sortedDocuments.length)} of {sortedDocuments.length} documents
+                                    </span>
+                                )}
+                            </div>
+                        )}
                     </div>
+
+                    {/* Toast Notification */}
+                    {toast && (
+                        <div className={`fixed top-4 right-4 z-50 ${toast.type === 'success' ? 'bg-green-600' : 'bg-red-600'} text-white px-6 py-3 rounded-lg shadow-lg flex items-center gap-3 animate-fade-in`}>
+                            <span className="text-xl">{toast.type === 'success' ? '✓' : '⚠'}</span>
+                            <span>{toast.message}</span>
+                            <button
+                                onClick={() => setToast(null)}
+                                className="ml-2 text-white/80 hover:text-white"
+                            >
+                                ×
+                            </button>
+                        </div>
+                    )}
 
                     {/* Error State */}
                     {error && (
@@ -13582,9 +13906,10 @@ Best regards,
 
                     {/* Documents Grid */}
                     {!isLoading && !error && (
+                        <>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {sortedDocuments.length > 0 ? (
-                                sortedDocuments.map(doc => (
+                            {paginatedDocuments.length > 0 ? (
+                                paginatedDocuments.map(doc => (
                                 <div key={doc.id} className={`${isLightMode ? 'bg-white/30 backdrop-blur-xl border-white/20' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6 hover:border-indigo-500/50 transition-all duration-300 hover:scale-105`}>
                                     <div className="flex items-start justify-between mb-4">
                                         <div className="flex items-center gap-3">
@@ -13619,7 +13944,7 @@ Best regards,
                                         <div className="flex items-center gap-2">
                                             <div className={`w-4 h-4 ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>📅</div>
                                             <span className={`text-sm ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
-                                                Updated: {new Date(doc.updatedAt).toLocaleDateString()}
+                                                Updated: {formatDateSafe(doc.updatedAt)}
                                             </span>
                                         </div>
                                     </div>
@@ -13657,24 +13982,110 @@ Best regards,
                             ))
                         ) : (
                             <div className="col-span-full text-center py-20">
-                                <div className={`w-16 h-16 ${isLightMode ? 'text-gray-500' : 'text-gray-400'} mx-auto mb-4 text-6xl`}>📁</div>
-                                <h3 className={`text-xl font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-2`}>No documents found</h3>
-                                <p className={`${isLightMode ? 'text-gray-500' : 'text-gray-400'} mb-4`}>
-                                    {documents.length === 0 
-                                        ? 'Get started by creating your first document.' 
-                                        : 'Try adjusting your search or filters to find what you\'re looking for.'}
-                                </p>
-                                {documents.length === 0 && (
-                                    <button
-                                        onClick={handleCreate}
-                                        className="px-6 py-3 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors"
-                                    >
-                                        Create Your First Document
-                                    </button>
+                                {documents.length === 0 ? (
+                                    <>
+                                        <div className={`w-16 h-16 ${isLightMode ? 'text-gray-500' : 'text-gray-400'} mx-auto mb-4 text-6xl`}>📁</div>
+                                        <h3 className={`text-2xl font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-2`}>Welcome to Work History Manager!</h3>
+                                        <p className={`${isLightMode ? 'text-gray-600' : 'text-gray-400'} mb-6 max-w-md mx-auto`}>
+                                            Track and manage all your resumes, cover letters, and tailored applications in one place. Get started by creating your first document.
+                                        </p>
+                                        <button
+                                            onClick={handleCreate}
+                                            className="px-6 py-3 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors shadow-lg"
+                                        >
+                                            Create Your First Document
+                                        </button>
+                                        <p className={`${isLightMode ? 'text-gray-500' : 'text-gray-500'} mt-4 text-sm`}>
+                                            Tip: Press <kbd className="px-2 py-1 bg-gray-200 rounded text-xs">/</kbd> to quickly search documents
+                                        </p>
+                                    </>
+                                ) : (
+                                    <>
+                                        <div className={`w-16 h-16 ${isLightMode ? 'text-gray-500' : 'text-gray-400'} mx-auto mb-4 text-6xl`}>🔍</div>
+                                        <h3 className={`text-xl font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-2`}>No documents match your search</h3>
+                                        <p className={`${isLightMode ? 'text-gray-500' : 'text-gray-400'} mb-4`}>
+                                            Try adjusting your search terms or filters to find what you're looking for.
+                                        </p>
+                                        <button
+                                            onClick={() => {
+                                                setSearchQuery('');
+                                                setActiveTab('all');
+                                                setFilterStatus('all');
+                                            }}
+                                            className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-300 transition-colors"
+                                        >
+                                            Clear Filters
+                                        </button>
+                                    </>
                                 )}
                             </div>
                         )}
                         </div>
+                        
+                        {/* Pagination Controls */}
+                        {totalPages > 1 && (
+                            <div className="flex items-center justify-center gap-2 mt-6">
+                                <button
+                                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                                    disabled={currentPage === 1}
+                                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                                        currentPage === 1
+                                            ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                            : isLightMode
+                                                ? 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                                    }`}
+                                >
+                                    Previous
+                                </button>
+                                
+                                <div className="flex gap-1">
+                                    {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                                        let pageNum;
+                                        if (totalPages <= 5) {
+                                            pageNum = i + 1;
+                                        } else if (currentPage <= 3) {
+                                            pageNum = i + 1;
+                                        } else if (currentPage >= totalPages - 2) {
+                                            pageNum = totalPages - 4 + i;
+                                        } else {
+                                            pageNum = currentPage - 2 + i;
+                                        }
+                                        
+                                        return (
+                                            <button
+                                                key={pageNum}
+                                                onClick={() => setCurrentPage(pageNum)}
+                                                className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                                                    currentPage === pageNum
+                                                        ? 'bg-indigo-600 text-white'
+                                                        : isLightMode
+                                                            ? 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                                            : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                                                }`}
+                                            >
+                                                {pageNum}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                                
+                                <button
+                                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                                    disabled={currentPage === totalPages}
+                                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                                        currentPage === totalPages
+                                            ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                            : isLightMode
+                                                ? 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                                    }`}
+                                >
+                                    Next
+                                </button>
+                            </div>
+                        )}
+                        </>
                     )}
 
                     {/* View Document Modal */}
@@ -13744,7 +14155,13 @@ Best regards,
                                         <input
                                             type="text"
                                             value={editingDoc.title || ''}
-                                            onChange={(e) => setEditingDoc({ ...editingDoc, title: e.target.value })}
+                                            onChange={(e) => {
+                                                const value = e.target.value;
+                                                if (value.length <= 200) {
+                                                    setEditingDoc({ ...editingDoc, title: value });
+                                                }
+                                            }}
+                                            maxLength={200}
                                             className={`w-full px-3 py-2 ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500`}
                                         />
                                     </div>
@@ -13756,7 +14173,13 @@ Best regards,
                                             <input
                                                 type="text"
                                                 value={editingDoc.jobTitle || ''}
-                                                onChange={(e) => setEditingDoc({ ...editingDoc, jobTitle: e.target.value })}
+                                                onChange={(e) => {
+                                                    const value = e.target.value;
+                                                    if (value.length <= 100) {
+                                                        setEditingDoc({ ...editingDoc, jobTitle: value });
+                                                    }
+                                                }}
+                                                maxLength={100}
                                                 className={`w-full px-3 py-2 ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500`}
                                             />
                                         </div>
@@ -13767,7 +14190,13 @@ Best regards,
                                             <input
                                                 type="text"
                                                 value={editingDoc.company || ''}
-                                                onChange={(e) => setEditingDoc({ ...editingDoc, company: e.target.value })}
+                                                onChange={(e) => {
+                                                    const value = e.target.value;
+                                                    if (value.length <= 100) {
+                                                        setEditingDoc({ ...editingDoc, company: value });
+                                                    }
+                                                }}
+                                                maxLength={100}
                                                 className={`w-full px-3 py-2 ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500`}
                                             />
                                         </div>
@@ -13806,7 +14235,13 @@ Best regards,
                                         </label>
                                         <textarea
                                             value={editingDoc.content || ''}
-                                            onChange={(e) => setEditingDoc({ ...editingDoc, content: e.target.value })}
+                                            onChange={(e) => {
+                                                const value = e.target.value;
+                                                if (value.length <= 50000) {
+                                                    setEditingDoc({ ...editingDoc, content: value });
+                                                }
+                                            }}
+                                            maxLength={50000}
                                             rows={10}
                                             className={`w-full px-3 py-2 ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500`}
                                         />
@@ -13884,7 +14319,13 @@ Best regards,
                                 <input
                                     type="text"
                                     value={newDoc.title}
-                                    onChange={(e) => setNewDoc({ ...newDoc, title: e.target.value })}
+                                    onChange={(e) => {
+                                        const value = e.target.value;
+                                        if (value.length <= 200) {
+                                            setNewDoc({ ...newDoc, title: value });
+                                        }
+                                    }}
+                                    maxLength={200}
                                     className={`w-full px-3 py-2 ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500`}
                                     placeholder="Enter document title"
                                 />
@@ -13912,7 +14353,13 @@ Best regards,
                                     <input
                                         type="text"
                                         value={newDoc.jobTitle}
-                                        onChange={(e) => setNewDoc({ ...newDoc, jobTitle: e.target.value })}
+                                        onChange={(e) => {
+                                            const value = e.target.value;
+                                            if (value.length <= 100) {
+                                                setNewDoc({ ...newDoc, jobTitle: value });
+                                            }
+                                        }}
+                                        maxLength={100}
                                         className={`w-full px-3 py-2 ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500`}
                                     />
                                 </div>
@@ -13923,7 +14370,13 @@ Best regards,
                                     <input
                                         type="text"
                                         value={newDoc.company}
-                                        onChange={(e) => setNewDoc({ ...newDoc, company: e.target.value })}
+                                        onChange={(e) => {
+                                            const value = e.target.value;
+                                            if (value.length <= 100) {
+                                                setNewDoc({ ...newDoc, company: value });
+                                            }
+                                        }}
+                                        maxLength={100}
                                         className={`w-full px-3 py-2 ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500`}
                                     />
                                 </div>
@@ -13962,7 +14415,13 @@ Best regards,
                                 </label>
                                 <textarea
                                     value={newDoc.content}
-                                    onChange={(e) => setNewDoc({ ...newDoc, content: e.target.value })}
+                                    onChange={(e) => {
+                                        const value = e.target.value;
+                                        if (value.length <= 50000) {
+                                            setNewDoc({ ...newDoc, content: value });
+                                        }
+                                    }}
+                                    maxLength={50000}
                                     rows={10}
                                     className={`w-full px-3 py-2 ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500`}
                                     placeholder="Enter document content..."
