@@ -17,6 +17,10 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     
+    <!-- File Parsing Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+    
     <!-- Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     
@@ -264,13 +268,52 @@
         // File Parsing Utilities
         const FileParserUtils = {
             async extractTextFromPDF(file) {
-                // For now, return placeholder - would need PDF.js for actual parsing
-                return 'PDF parsing requires PDF.js library. Please paste your resume text or use a text file.';
+                try {
+                    // Check if PDF.js is available
+                    if (typeof pdfjsLib === 'undefined') {
+                        throw new Error('PDF.js library not loaded. Please refresh the page.');
+                    }
+
+                    // Set worker source if needed
+                    if (pdfjsLib.GlobalWorkerOptions) {
+                        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+                    }
+
+                    const arrayBuffer = await file.arrayBuffer();
+                    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                    
+                    let fullText = '';
+                    
+                    // Extract text from all pages
+                    for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+                        const page = await pdf.getPage(pageNum);
+                        const textContent = await page.getTextContent();
+                        const pageText = textContent.items.map(item => item.str).join(' ');
+                        fullText += pageText + '\n';
+                    }
+                    
+                    return fullText.trim();
+                } catch (error) {
+                    console.error('Error extracting PDF text:', error);
+                    throw new Error(`Failed to parse PDF: ${error.message}. Please ensure the file is not corrupted or password-protected.`);
+                }
             },
             
             async extractTextFromDOCX(file) {
-                // For now, return placeholder - would need mammoth.js for actual parsing
-                return 'DOCX parsing requires mammoth.js library. Please paste your resume text or use a text file.';
+                try {
+                    // Check if mammoth is available
+                    if (typeof mammoth === 'undefined') {
+                        throw new Error('Mammoth.js library not loaded. Please refresh the page.');
+                    }
+
+                    const arrayBuffer = await file.arrayBuffer();
+                    const result = await mammoth.extractRawText({ arrayBuffer: arrayBuffer });
+                    
+                    return result.value;
+                } catch (error) {
+                    console.error('Error extracting DOCX text:', error);
+                    throw new Error(`Failed to parse DOCX: ${error.message}. Please ensure the file is not corrupted.`);
+                }
             },
             
             async extractTextFromFile(file) {
@@ -287,8 +330,134 @@
                         reader.readAsText(file);
                     });
                 } else {
-                    throw new Error(`Unsupported file type: ${file.type}`);
+                    throw new Error(`Unsupported file type: ${file.type}. Please upload a PDF, DOCX, or TXT file.`);
                 }
+            },
+            
+            // Parse resume text and extract structured data
+            parseResumeText(text) {
+                const lines = text.split('\n').map(line => line.trim()).filter(line => line);
+                const resumeData = createDefaultResume('Imported Resume');
+                
+                let currentSection = null;
+                let currentExperience = null;
+                let currentEducation = null;
+                
+                for (let i = 0; i < lines.length; i++) {
+                    const line = lines[i];
+                    const lowerLine = line.toLowerCase();
+                    
+                    // Detect sections
+                    if (lowerLine.includes('name') && !resumeData.personalInfo.name) {
+                        const nameMatch = line.match(/name[:\s]+(.+)/i);
+                        if (nameMatch) resumeData.personalInfo.name = nameMatch[1].trim();
+                        currentSection = 'personal';
+                    } else if (lowerLine.includes('email') && !resumeData.personalInfo.email) {
+                        const emailMatch = line.match(/email[:\s]+(.+)/i) || line.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
+                        if (emailMatch) resumeData.personalInfo.email = emailMatch[1].trim();
+                    } else if (lowerLine.includes('phone') && !resumeData.personalInfo.phone) {
+                        const phoneMatch = line.match(/phone[:\s]+(.+)/i) || line.match(/([\d\s\+\-\(\)]+)/);
+                        if (phoneMatch) resumeData.personalInfo.phone = phoneMatch[1].trim();
+                    } else if (lowerLine.includes('summary') || lowerLine.includes('objective') || lowerLine.includes('profile')) {
+                        currentSection = 'summary';
+                        resumeData.summary = '';
+                    } else if (lowerLine.includes('experience') || lowerLine.includes('employment') || lowerLine.includes('work history')) {
+                        currentSection = 'experience';
+                        currentExperience = null;
+                    } else if (lowerLine.includes('education')) {
+                        currentSection = 'education';
+                        currentEducation = null;
+                    } else if (lowerLine.includes('skills')) {
+                        currentSection = 'skills';
+                    } else {
+                        // Process content based on current section
+                        if (currentSection === 'summary' && line.length > 10) {
+                            resumeData.summary += (resumeData.summary ? ' ' : '') + line;
+                        } else if (currentSection === 'experience') {
+                            // Try to detect job entries (dates, positions, companies)
+                            const datePattern = /\d{4}|\w+\s+\d{4}|present|current/i;
+                            if (datePattern.test(line) && line.length < 30) {
+                                // Might be a date line, start new experience
+                                if (currentExperience && currentExperience.position) {
+                                    resumeData.experience.push(currentExperience);
+                                }
+                                currentExperience = {
+                                    id: `exp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                                    position: '',
+                                    company: '',
+                                    startDate: '',
+                                    endDate: '',
+                                    description: ''
+                                };
+                                // Try to extract dates
+                                const dates = line.match(/(\w+\s+\d{4}|\d{4})/gi);
+                                if (dates) {
+                                    currentExperience.startDate = dates[0] || '';
+                                    currentExperience.endDate = dates[1] || (lowerLine.includes('present') || lowerLine.includes('current') ? 'Present' : '');
+                                }
+                            } else if (currentExperience && line.length > 5 && !line.includes('•') && !line.includes('-')) {
+                                // Likely position or company
+                                if (!currentExperience.position) {
+                                    currentExperience.position = line;
+                                } else if (!currentExperience.company) {
+                                    currentExperience.company = line;
+                                }
+                            } else if (currentExperience && (line.includes('•') || line.includes('-') || line.includes('·'))) {
+                                // Bullet point for description
+                                const bulletText = line.replace(/^[•\-\·]\s*/, '').trim();
+                                currentExperience.description += (currentExperience.description ? '\n' : '') + bulletText;
+                            }
+                        } else if (currentSection === 'education') {
+                            // Similar logic for education
+                            const datePattern = /\d{4}/;
+                            if (datePattern.test(line) && line.length < 30) {
+                                if (currentEducation && currentEducation.degree) {
+                                    resumeData.education.push(currentEducation);
+                                }
+                                currentEducation = {
+                                    id: `edu-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                                    institution: '',
+                                    degree: '',
+                                    field: '',
+                                    graduationDate: line.match(/\d{4}/)?.[0] || ''
+                                };
+                            } else if (currentEducation && line.length > 3) {
+                                if (!currentEducation.degree) {
+                                    currentEducation.degree = line;
+                                } else if (!currentEducation.institution) {
+                                    currentEducation.institution = line;
+                                } else if (!currentEducation.field && (line.toLowerCase().includes('science') || line.toLowerCase().includes('engineering') || line.toLowerCase().includes('art'))) {
+                                    currentEducation.field = line;
+                                }
+                            }
+                        } else if (currentSection === 'skills') {
+                            // Extract skills (comma-separated or bullet points)
+                            const skills = line.split(/[,;•\-\·]/).map(s => s.trim()).filter(s => s.length > 0);
+                            skills.forEach(skill => {
+                                if (skill.length > 1 && skill.length < 30) {
+                                    const lowerSkill = skill.toLowerCase();
+                                    if (lowerSkill.includes('javascript') || lowerSkill.includes('python') || lowerSkill.includes('java') || 
+                                        lowerSkill.includes('react') || lowerSkill.includes('sql') || lowerSkill.includes('html') ||
+                                        lowerSkill.match(/^[a-z]+$/i)) {
+                                        resumeData.skills.technical.push(skill);
+                                    } else {
+                                        resumeData.skills.soft.push(skill);
+                                    }
+                                }
+                            });
+                        }
+                    }
+                }
+                
+                // Push last experience/education if exists
+                if (currentExperience && currentExperience.position) {
+                    resumeData.experience.push(currentExperience);
+                }
+                if (currentEducation && currentEducation.degree) {
+                    resumeData.education.push(currentEducation);
+                }
+                
+                return resumeData;
             }
         };
 
@@ -749,7 +918,9 @@
             const [showPreview, setShowPreview] = useState(true);
             const [isSaving, setIsSaving] = useState(false);
             const [lastSaved, setLastSaved] = useState(null);
+            const [isExporting, setIsExporting] = useState(false);
             const saveTimeoutRef = useRef(null);
+            const previewRef = useRef(null);
 
             const handleSave = async () => {
                 setIsSaving(true);
@@ -783,7 +954,7 @@
                 
                 saveTimeoutRef.current = setTimeout(() => {
                     handleSave();
-                }, 2000);
+                }, 3000);
 
                 return () => {
                     if (saveTimeoutRef.current) {
@@ -791,6 +962,90 @@
                     }
                 };
             }, [resume]);
+
+            const exportToPDF = async () => {
+                if (!previewRef.current) {
+                    alert('Preview not available. Please enable preview panel.');
+                    return;
+                }
+
+                setIsExporting(true);
+                try {
+                    // Ensure preview is visible
+                    const wasPreviewHidden = !showPreview;
+                    if (wasPreviewHidden) {
+                        setShowPreview(true);
+                        // Wait for DOM update
+                        await new Promise(resolve => setTimeout(resolve, 100));
+                    }
+
+                    // Check if libraries are available
+                    if (typeof window.jspdf === 'undefined' || typeof html2canvas === 'undefined') {
+                        throw new Error('PDF export libraries not loaded. Please refresh the page.');
+                    }
+
+                    const { jsPDF } = window.jspdf;
+                    
+                    // Hide ATS score badge and any non-print elements
+                    const previewElement = previewRef.current;
+                    const atsBadge = previewElement.querySelector('.mb-4.p-2.bg-blue-50');
+                    if (atsBadge) {
+                        atsBadge.style.display = 'none';
+                    }
+
+                    // Capture the preview as canvas
+                    const canvas = await html2canvas(previewElement, {
+                        scale: 2,
+                        useCORS: true,
+                        logging: false,
+                        backgroundColor: '#ffffff'
+                    });
+
+                    // Restore ATS badge
+                    if (atsBadge) {
+                        atsBadge.style.display = '';
+                    }
+
+                    // Calculate dimensions
+                    const imgWidth = 210; // A4 width in mm
+                    const pageHeight = 297; // A4 height in mm
+                    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+                    let heightLeft = imgHeight;
+                    let position = 0;
+
+                    // Create PDF
+                    const pdf = new jsPDF('p', 'mm', 'a4');
+                    const imgData = canvas.toDataURL('image/png');
+
+                    // Add first page
+                    pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+                    heightLeft -= pageHeight;
+
+                    // Add additional pages if needed
+                    while (heightLeft > 0) {
+                        position = heightLeft - imgHeight;
+                        pdf.addPage();
+                        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+                        heightLeft -= pageHeight;
+                    }
+
+                    // Generate filename
+                    const fileName = `${resume.name || 'Resume'}_${new Date().toISOString().split('T')[0]}.pdf`;
+
+                    // Download PDF
+                    pdf.save(fileName);
+
+                    // Restore preview state if it was hidden
+                    if (wasPreviewHidden) {
+                        setShowPreview(false);
+                    }
+                } catch (error) {
+                    console.error('Error exporting PDF:', error);
+                    alert(`Failed to export PDF: ${error.message}`);
+                } finally {
+                    setIsExporting(false);
+                }
+            };
 
             const updateResume = (updates) => {
                 setResume(prev => ({ ...prev, ...updates }));
@@ -932,6 +1187,27 @@
                                         <span className="text-sm text-gray-500">Saved at {lastSaved}</span>
                                     )}
                                     <button
+                                        onClick={exportToPDF}
+                                        disabled={isExporting}
+                                        className="px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors disabled:opacity-50 flex items-center gap-2"
+                                    >
+                                        {isExporting ? (
+                                            <>
+                                                <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                                </svg>
+                                                Exporting...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                                </svg>
+                                                Export PDF
+                                            </>
+                                        )}
+                                    </button>
+                                    <button
                                         onClick={handleSave}
                                         className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
                                     >
@@ -994,7 +1270,7 @@
                         {/* Preview Panel */}
                         {showPreview && (
                             <div className="w-96 bg-gray-100 border-l overflow-y-auto p-6">
-                                <div className="sticky top-6">
+                                <div className="sticky top-6" ref={previewRef}>
                                     <ResumePreview resume={resume} />
                                 </div>
                             </div>
@@ -1542,9 +1818,262 @@
         // ============================================
 
         const ResumeWizard = ({ onComplete, onBack }) => {
+            const [currentStep, setCurrentStep] = useState(1);
+            const [resumeData, setResumeData] = useState(createDefaultResume('My Resume'));
+            const [isGeneratingAI, setIsGeneratingAI] = useState(false);
+            const totalSteps = 7;
+
+            const updateResume = (updates) => {
+                setResumeData(prev => ({ ...prev, ...updates }));
+            };
+
+            const updatePersonalInfo = (field, value) => {
+                setResumeData(prev => ({
+                    ...prev,
+                    personalInfo: { ...prev.personalInfo, [field]: value }
+                }));
+            };
+
+            const addExperience = () => {
+                const newExp = {
+                    id: `exp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                    position: '',
+                    company: '',
+                    startDate: '',
+                    endDate: '',
+                    description: '',
+                    achievements: []
+                };
+                setResumeData(prev => ({
+                    ...prev,
+                    experience: [...prev.experience, newExp]
+                }));
+            };
+
+            const updateExperience = (id, updates) => {
+                setResumeData(prev => ({
+                    ...prev,
+                    experience: prev.experience.map(exp => 
+                        exp.id === id ? { ...exp, ...updates } : exp
+                    )
+                }));
+            };
+
+            const removeExperience = (id) => {
+                setResumeData(prev => ({
+                    ...prev,
+                    experience: prev.experience.filter(exp => exp.id !== id)
+                }));
+            };
+
+            const addEducation = () => {
+                const newEdu = {
+                    id: `edu-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                    institution: '',
+                    degree: '',
+                    field: '',
+                    graduationDate: ''
+                };
+                setResumeData(prev => ({
+                    ...prev,
+                    education: [...prev.education, newEdu]
+                }));
+            };
+
+            const updateEducation = (id, updates) => {
+                setResumeData(prev => ({
+                    ...prev,
+                    education: prev.education.map(edu => 
+                        edu.id === id ? { ...edu, ...updates } : edu
+                    )
+                }));
+            };
+
+            const removeEducation = (id) => {
+                setResumeData(prev => ({
+                    ...prev,
+                    education: prev.education.filter(edu => edu.id !== id)
+                }));
+            };
+
+            const addSkill = (category, skill) => {
+                if (!skill.trim()) return;
+                setResumeData(prev => ({
+                    ...prev,
+                    skills: {
+                        ...prev.skills,
+                        [category]: [...(prev.skills[category] || []), skill.trim()]
+                    }
+                }));
+            };
+
+            const removeSkill = (category, index) => {
+                setResumeData(prev => ({
+                    ...prev,
+                    skills: {
+                        ...prev.skills,
+                        [category]: prev.skills[category].filter((_, i) => i !== index)
+                    }
+                }));
+            };
+
+            const addCertification = () => {
+                const newCert = {
+                    id: `cert-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                    name: '',
+                    issuer: '',
+                    date: '',
+                    expiryDate: '',
+                    credentialId: ''
+                };
+                setResumeData(prev => ({
+                    ...prev,
+                    certifications: [...(prev.certifications || []), newCert]
+                }));
+            };
+
+            const updateCertification = (id, updates) => {
+                setResumeData(prev => ({
+                    ...prev,
+                    certifications: prev.certifications.map(cert => 
+                        cert.id === id ? { ...cert, ...updates } : cert
+                    )
+                }));
+            };
+
+            const removeCertification = (id) => {
+                setResumeData(prev => ({
+                    ...prev,
+                    certifications: prev.certifications.filter(cert => cert.id !== id)
+                }));
+            };
+
+            const addProject = () => {
+                const newProj = {
+                    id: `proj-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                    name: '',
+                    description: '',
+                    technologies: [],
+                    link: '',
+                    date: ''
+                };
+                setResumeData(prev => ({
+                    ...prev,
+                    projects: [...(prev.projects || []), newProj]
+                }));
+            };
+
+            const updateProject = (id, updates) => {
+                setResumeData(prev => ({
+                    ...prev,
+                    projects: prev.projects.map(proj => 
+                        proj.id === id ? { ...proj, ...updates } : proj
+                    )
+                }));
+            };
+
+            const removeProject = (id) => {
+                setResumeData(prev => ({
+                    ...prev,
+                    projects: prev.projects.filter(proj => proj.id !== id)
+                }));
+            };
+
+            const generateAISummary = async () => {
+                setIsGeneratingAI(true);
+                try {
+                    const experienceText = resumeData.experience.map(exp => 
+                        `${exp.position} at ${exp.company}`
+                    ).join(', ');
+                    
+                    const skillsText = [
+                        ...(resumeData.skills?.technical || []),
+                        ...(resumeData.skills?.soft || [])
+                    ].join(', ');
+
+                    const prompt = `Generate a professional resume summary (2-3 sentences) for someone with this experience and skills:\n\nExperience: ${experienceText || 'None specified'}\nSkills: ${skillsText || 'None specified'}\n\nReturn only the summary text, no additional commentary.`;
+
+                    const response = await APIUtils.callOpenAI([
+                        { role: 'user', content: prompt }
+                    ], 'gpt-4o-mini', { maxTokens: 150, temperature: 0.7 });
+
+                    const summary = response.choices[0].message.content.trim();
+                    updateResume({ summary });
+                } catch (error) {
+                    console.error('Error generating AI summary:', error);
+                    alert('Failed to generate summary. Please write it manually or check your API key in Settings.');
+                } finally {
+                    setIsGeneratingAI(false);
+                }
+            };
+
+            const suggestSkills = async (category) => {
+                setIsGeneratingAI(true);
+                try {
+                    const experienceText = resumeData.experience.map(exp => 
+                        `${exp.position}: ${exp.description || ''}`
+                    ).join('\n');
+
+                    const prompt = `Based on this work experience, suggest 5-8 relevant ${category} skills for a resume. Return only a comma-separated list of skills, no numbering or bullets:\n\n${experienceText}`;
+
+                    const response = await APIUtils.callOpenAI([
+                        { role: 'user', content: prompt }
+                    ], 'gpt-4o-mini', { maxTokens: 100, temperature: 0.5 });
+
+                    const skillsText = response.choices[0].message.content.trim();
+                    const skills = skillsText.split(',').map(s => s.trim()).filter(s => s);
+                    
+                    skills.forEach(skill => {
+                        if (!resumeData.skills[category].includes(skill)) {
+                            addSkill(category, skill);
+                        }
+                    });
+                } catch (error) {
+                    console.error('Error suggesting skills:', error);
+                    alert('Failed to suggest skills. Please add them manually or check your API key.');
+                } finally {
+                    setIsGeneratingAI(false);
+                }
+            };
+
+            const handleNext = () => {
+                if (currentStep < totalSteps) {
+                    setCurrentStep(currentStep + 1);
+                } else {
+                    // Save and complete
+                    const savedResume = ResumeStudioStorage.saveResume(resumeData.id, resumeData);
+                    onComplete(savedResume);
+                }
+            };
+
+            const handleBack = () => {
+                if (currentStep > 1) {
+                    setCurrentStep(currentStep - 1);
+                } else {
+                    onBack();
+                }
+            };
+
+            const canProceed = () => {
+                switch(currentStep) {
+                    case 1:
+                        return resumeData.personalInfo.name && resumeData.personalInfo.email;
+                    case 2:
+                        return resumeData.summary.length > 50;
+                    case 3:
+                        return resumeData.experience.length > 0;
+                    case 4:
+                        return resumeData.education.length > 0;
+                    case 5:
+                        return (resumeData.skills?.technical?.length > 0 || resumeData.skills?.soft?.length > 0);
+                    default:
+                        return true;
+                }
+            };
+
             return (
-                <div className="min-h-screen bg-gray-50 p-6">
-                    <div className="max-w-7xl mx-auto">
+                <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 p-6">
+                    <div className="max-w-4xl mx-auto">
                         <button
                             onClick={onBack}
                             className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-6"
@@ -1554,19 +2083,751 @@
                             </svg>
                             Back to Manager
                         </button>
-                        <div className="bg-white rounded-xl p-8 shadow-lg">
-                            <h2 className="text-2xl font-bold mb-4">Start from Scratch Wizard</h2>
-                            <p className="text-gray-600">Wizard implementation coming soon...</p>
+
+                        {/* Progress Indicator */}
+                        <div className="bg-white rounded-xl p-6 shadow-lg mb-6">
+                            <div className="flex items-center justify-between mb-4">
+                                <h2 className="text-2xl font-bold text-gray-900">Guided Resume Builder</h2>
+                                <span className="text-sm text-gray-600">Step {currentStep} of {totalSteps}</span>
+                        </div>
+                            <div className="w-full bg-gray-200 rounded-full h-2">
+                                <div 
+                                    className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                                    style={{ width: `${(currentStep / totalSteps) * 100}%` }}
+                                ></div>
+                            </div>
+                        </div>
+
+                        {/* Step Content */}
+                        <div className="bg-white rounded-xl p-8 shadow-lg mb-6">
+                            {currentStep === 1 && (
+                                <WizardStep1 
+                                    personalInfo={resumeData.personalInfo}
+                                    updatePersonalInfo={updatePersonalInfo}
+                                />
+                            )}
+                            {currentStep === 2 && (
+                                <WizardStep2
+                                    summary={resumeData.summary}
+                                    updateSummary={(summary) => updateResume({ summary })}
+                                    onAIGenerate={generateAISummary}
+                                    isGeneratingAI={isGeneratingAI}
+                                />
+                            )}
+                            {currentStep === 3 && (
+                                <WizardStep3
+                                    experience={resumeData.experience}
+                                    addExperience={addExperience}
+                                    updateExperience={updateExperience}
+                                    removeExperience={removeExperience}
+                                />
+                            )}
+                            {currentStep === 4 && (
+                                <WizardStep4
+                                    education={resumeData.education}
+                                    addEducation={addEducation}
+                                    updateEducation={updateEducation}
+                                    removeEducation={removeEducation}
+                                />
+                            )}
+                            {currentStep === 5 && (
+                                <WizardStep5
+                                    skills={resumeData.skills}
+                                    addSkill={addSkill}
+                                    removeSkill={removeSkill}
+                                    onAISuggest={suggestSkills}
+                                    isGeneratingAI={isGeneratingAI}
+                                />
+                            )}
+                            {currentStep === 6 && (
+                                <WizardStep6
+                                    certifications={resumeData.certifications || []}
+                                    addCertification={addCertification}
+                                    updateCertification={updateCertification}
+                                    removeCertification={removeCertification}
+                                />
+                            )}
+                            {currentStep === 7 && (
+                                <WizardStep7
+                                    projects={resumeData.projects || []}
+                                    addProject={addProject}
+                                    updateProject={updateProject}
+                                    removeProject={removeProject}
+                                />
+                            )}
+                        </div>
+
+                        {/* Navigation */}
+                        <div className="flex justify-between">
+                            <button
+                                onClick={handleBack}
+                                className="px-6 py-3 bg-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-300 transition-colors"
+                            >
+                                {currentStep === 1 ? 'Cancel' : 'Back'}
+                            </button>
+                            <button
+                                onClick={handleNext}
+                                disabled={!canProceed()}
+                                className={`px-6 py-3 rounded-lg font-medium transition-colors ${
+                                    canProceed()
+                                        ? 'bg-blue-600 text-white hover:bg-blue-700'
+                                        : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                }`}
+                            >
+                                {currentStep === totalSteps ? 'Complete' : 'Next'}
+                            </button>
                         </div>
                     </div>
                 </div>
             );
         };
 
+        // Wizard Step Components
+        const WizardStep1 = ({ personalInfo, updatePersonalInfo }) => (
+            <div>
+                <h3 className="text-xl font-bold text-gray-900 mb-6">Personal Information</h3>
+                <div className="space-y-4">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Full Name *</label>
+                        <input
+                            type="text"
+                            value={personalInfo.name || ''}
+                            onChange={(e) => updatePersonalInfo('name', e.target.value)}
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            placeholder="John Doe"
+                        />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
+                            <input
+                                type="email"
+                                value={personalInfo.email || ''}
+                                onChange={(e) => updatePersonalInfo('email', e.target.value)}
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                placeholder="john@example.com"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                            <input
+                                type="tel"
+                                value={personalInfo.phone || ''}
+                                onChange={(e) => updatePersonalInfo('phone', e.target.value)}
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                placeholder="+1 (555) 123-4567"
+                            />
+                        </div>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Location</label>
+                        <input
+                            type="text"
+                            value={personalInfo.location || ''}
+                            onChange={(e) => updatePersonalInfo('location', e.target.value)}
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            placeholder="City, State"
+                        />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">LinkedIn</label>
+                            <input
+                                type="url"
+                                value={personalInfo.linkedIn || ''}
+                                onChange={(e) => updatePersonalInfo('linkedIn', e.target.value)}
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                placeholder="linkedin.com/in/username"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Portfolio/GitHub</label>
+                            <input
+                                type="url"
+                                value={personalInfo.portfolio || ''}
+                                onChange={(e) => updatePersonalInfo('portfolio', e.target.value)}
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                placeholder="github.com/username"
+                            />
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+
+        const WizardStep2 = ({ summary, updateSummary, onAIGenerate, isGeneratingAI }) => (
+            <div>
+                <div className="flex items-center justify-between mb-6">
+                    <h3 className="text-xl font-bold text-gray-900">Professional Summary</h3>
+                    <button
+                        onClick={onAIGenerate}
+                        disabled={isGeneratingAI}
+                        className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 transition-colors disabled:opacity-50"
+                    >
+                        {isGeneratingAI ? 'Generating...' : '✨ AI Generate'}
+                    </button>
+                </div>
+                <textarea
+                    value={summary || ''}
+                    onChange={(e) => updateSummary(e.target.value)}
+                    className="w-full h-48 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                    placeholder="Write a compelling professional summary (at least 50 characters) that highlights your key qualifications, experience, and career objectives..."
+                />
+                <p className="text-sm text-gray-500 mt-2">{summary.length} characters</p>
+            </div>
+        );
+
+        const WizardStep3 = ({ experience, addExperience, updateExperience, removeExperience }) => (
+            <div>
+                <div className="flex items-center justify-between mb-6">
+                    <h3 className="text-xl font-bold text-gray-900">Work Experience</h3>
+                    <button
+                        onClick={addExperience}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors flex items-center gap-2"
+                    >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                        </svg>
+                        Add Experience
+                    </button>
+                </div>
+                <div className="space-y-4">
+                    {experience.map((exp) => (
+                        <div key={exp.id} className="border border-gray-200 rounded-lg p-4">
+                            <div className="grid grid-cols-2 gap-4 mb-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Job Title</label>
+                                    <input
+                                        type="text"
+                                        value={exp.position || ''}
+                                        onChange={(e) => updateExperience(exp.id, { position: e.target.value })}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                        placeholder="Software Engineer"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Company</label>
+                                    <input
+                                        type="text"
+                                        value={exp.company || ''}
+                                        onChange={(e) => updateExperience(exp.id, { company: e.target.value })}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                        placeholder="Tech Corp"
+                                    />
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4 mb-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
+                                    <input
+                                        type="text"
+                                        value={exp.startDate || ''}
+                                        onChange={(e) => updateExperience(exp.id, { startDate: e.target.value })}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                        placeholder="Jan 2020"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">End Date</label>
+                                    <input
+                                        type="text"
+                                        value={exp.endDate || ''}
+                                        onChange={(e) => updateExperience(exp.id, { endDate: e.target.value })}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                        placeholder="Present"
+                                    />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                                <textarea
+                                    value={exp.description || ''}
+                                    onChange={(e) => updateExperience(exp.id, { description: e.target.value })}
+                                    className="w-full h-24 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 resize-none"
+                                    placeholder="Describe your responsibilities and achievements..."
+                                />
+                            </div>
+                            <button
+                                onClick={() => removeExperience(exp.id)}
+                                className="mt-2 text-red-600 hover:text-red-800 text-sm"
+                            >
+                                Remove
+                            </button>
+                        </div>
+                    ))}
+                    {experience.length === 0 && (
+                        <div className="text-center py-8 text-gray-500">
+                            <p>No experience added yet. Click "Add Experience" to get started.</p>
+                        </div>
+                    )}
+                </div>
+            </div>
+        );
+
+        const WizardStep4 = ({ education, addEducation, updateEducation, removeEducation }) => (
+            <div>
+                <div className="flex items-center justify-between mb-6">
+                    <h3 className="text-xl font-bold text-gray-900">Education</h3>
+                    <button
+                        onClick={addEducation}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors flex items-center gap-2"
+                    >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                        </svg>
+                        Add Education
+                    </button>
+                </div>
+                <div className="space-y-4">
+                    {education.map((edu) => (
+                        <div key={edu.id} className="border border-gray-200 rounded-lg p-4">
+                            <div className="grid grid-cols-2 gap-4 mb-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Institution</label>
+                                    <input
+                                        type="text"
+                                        value={edu.institution || ''}
+                                        onChange={(e) => updateEducation(edu.id, { institution: e.target.value })}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                        placeholder="University Name"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Degree</label>
+                                    <input
+                                        type="text"
+                                        value={edu.degree || ''}
+                                        onChange={(e) => updateEducation(edu.id, { degree: e.target.value })}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                        placeholder="Bachelor's Degree"
+                                    />
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Field of Study</label>
+                                    <input
+                                        type="text"
+                                        value={edu.field || ''}
+                                        onChange={(e) => updateEducation(edu.id, { field: e.target.value })}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                        placeholder="Computer Science"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Graduation Date</label>
+                                    <input
+                                        type="text"
+                                        value={edu.graduationDate || ''}
+                                        onChange={(e) => updateEducation(edu.id, { graduationDate: e.target.value })}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                        placeholder="May 2020"
+                                    />
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => removeEducation(edu.id)}
+                                className="mt-2 text-red-600 hover:text-red-800 text-sm"
+                            >
+                                Remove
+                            </button>
+                        </div>
+                    ))}
+                    {education.length === 0 && (
+                        <div className="text-center py-8 text-gray-500">
+                            <p>No education added yet. Click "Add Education" to get started.</p>
+                        </div>
+                    )}
+                </div>
+            </div>
+        );
+
+        const WizardStep5 = ({ skills, addSkill, removeSkill, onAISuggest, isGeneratingAI }) => {
+            const [inputValue, setInputValue] = useState('');
+            const [currentCategory, setCurrentCategory] = useState('technical');
+
+            const handleAdd = () => {
+                if (inputValue.trim()) {
+                    addSkill(currentCategory, inputValue);
+                    setInputValue('');
+                }
+            };
+
+            return (
+                <div>
+                    <h3 className="text-xl font-bold text-gray-900 mb-6">Skills</h3>
+                    <div className="space-y-6">
+                        {['technical', 'soft', 'languages'].map(category => (
+                            <div key={category} className="border border-gray-200 rounded-lg p-4">
+                                <div className="flex items-center justify-between mb-4">
+                                    <h4 className="font-semibold text-gray-900 capitalize">{category} Skills</h4>
+                                    {category === 'technical' && (
+                                        <button
+                                            onClick={() => {
+                                                setCurrentCategory('technical');
+                                                onAISuggest('technical');
+                                            }}
+                                            disabled={isGeneratingAI}
+                                            className="px-3 py-1 bg-purple-600 text-white rounded text-xs font-medium hover:bg-purple-700 disabled:opacity-50"
+                                        >
+                                            {isGeneratingAI ? 'Generating...' : '✨ AI Suggest'}
+                                        </button>
+                                    )}
+                                </div>
+                                <div className="flex flex-wrap gap-2 mb-3">
+                                    {(skills[category] || []).map((skill, index) => (
+                                        <span
+                                            key={index}
+                                            className="inline-flex items-center gap-2 px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm"
+                                        >
+                                            {skill}
+                                            <button
+                                                onClick={() => removeSkill(category, index)}
+                                                className="text-blue-600 hover:text-blue-800"
+                                            >
+                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                                                </svg>
+                                            </button>
+                                        </span>
+                                    ))}
+                                </div>
+                                <div className="flex gap-2">
+                                    <input
+                                        type="text"
+                                        value={currentCategory === category ? inputValue : ''}
+                                        onChange={(e) => {
+                                            setCurrentCategory(category);
+                                            setInputValue(e.target.value);
+                                        }}
+                                        onKeyPress={(e) => e.key === 'Enter' && handleAdd()}
+                                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                        placeholder={`Add ${category} skill...`}
+                                    />
+                                    <button
+                                        onClick={() => {
+                                            setCurrentCategory(category);
+                                            handleAdd();
+                                        }}
+                                        className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700"
+                                    >
+                                        Add
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        };
+
+        const WizardStep6 = ({ certifications, addCertification, updateCertification, removeCertification }) => (
+            <div>
+                <div className="flex items-center justify-between mb-6">
+                    <h3 className="text-xl font-bold text-gray-900">Certifications (Optional)</h3>
+                    <button
+                        onClick={addCertification}
+                        className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+                    >
+                        Add Certification
+                    </button>
+                </div>
+                <div className="space-y-4">
+                    {certifications.map((cert) => (
+                        <div key={cert.id} className="border border-gray-200 rounded-lg p-4">
+                            <div className="grid grid-cols-2 gap-4 mb-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Certification Name</label>
+                                    <input
+                                        type="text"
+                                        value={cert.name || ''}
+                                        onChange={(e) => updateCertification(cert.id, { name: e.target.value })}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                        placeholder="AWS Certified Solutions Architect"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Issuer</label>
+                                    <input
+                                        type="text"
+                                        value={cert.issuer || ''}
+                                        onChange={(e) => updateCertification(cert.id, { issuer: e.target.value })}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                        placeholder="Amazon Web Services"
+                                    />
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-3 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
+                                    <input
+                                        type="text"
+                                        value={cert.date || ''}
+                                        onChange={(e) => updateCertification(cert.id, { date: e.target.value })}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                        placeholder="Jan 2023"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Expiry (Optional)</label>
+                                    <input
+                                        type="text"
+                                        value={cert.expiryDate || ''}
+                                        onChange={(e) => updateCertification(cert.id, { expiryDate: e.target.value })}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                        placeholder="Jan 2026"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Credential ID</label>
+                                    <input
+                                        type="text"
+                                        value={cert.credentialId || ''}
+                                        onChange={(e) => updateCertification(cert.id, { credentialId: e.target.value })}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                        placeholder="ABC123"
+                                    />
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => removeCertification(cert.id)}
+                                className="mt-2 text-red-600 hover:text-red-800 text-sm"
+                            >
+                                Remove
+                            </button>
+                        </div>
+                    ))}
+                    {certifications.length === 0 && (
+                        <div className="text-center py-8 text-gray-500">
+                            <p>No certifications added. This step is optional.</p>
+                        </div>
+                    )}
+                </div>
+            </div>
+        );
+
+        const WizardStep7 = ({ projects, addProject, updateProject, removeProject }) => {
+            const [techInput, setTechInput] = useState('');
+
+            const addTechToProject = (projectId, tech) => {
+                if (!tech.trim()) return;
+                const project = projects.find(p => p.id === projectId);
+                if (project && !project.technologies.includes(tech.trim())) {
+                    updateProject(projectId, {
+                        technologies: [...project.technologies, tech.trim()]
+                    });
+                }
+            };
+
+            const removeTechFromProject = (projectId, techIndex) => {
+                const project = projects.find(p => p.id === projectId);
+                if (project) {
+                    updateProject(projectId, {
+                        technologies: project.technologies.filter((_, i) => i !== techIndex)
+                    });
+                }
+            };
+
+            return (
+                <div>
+                    <div className="flex items-center justify-between mb-6">
+                        <h3 className="text-xl font-bold text-gray-900">Projects (Optional)</h3>
+                        <button
+                            onClick={addProject}
+                            className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors"
+                        >
+                            Add Project
+                        </button>
+                    </div>
+                    <div className="space-y-4">
+                        {projects.map((proj) => (
+                            <div key={proj.id} className="border border-gray-200 rounded-lg p-4">
+                                <div className="grid grid-cols-2 gap-4 mb-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Project Name</label>
+                                        <input
+                                            type="text"
+                                            value={proj.name || ''}
+                                            onChange={(e) => updateProject(proj.id, { name: e.target.value })}
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                            placeholder="E-Commerce Platform"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Date</label>
+                                        <input
+                                            type="text"
+                                            value={proj.date || ''}
+                                            onChange={(e) => updateProject(proj.id, { date: e.target.value })}
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                            placeholder="2023"
+                                        />
+                                    </div>
+                                </div>
+                                <div className="mb-4">
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                                    <textarea
+                                        value={proj.description || ''}
+                                        onChange={(e) => updateProject(proj.id, { description: e.target.value })}
+                                        className="w-full h-24 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 resize-none"
+                                        placeholder="Describe the project and your role..."
+                                    />
+                                </div>
+                                <div className="mb-4">
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Technologies</label>
+                                    <div className="flex flex-wrap gap-2 mb-2">
+                                        {(proj.technologies || []).map((tech, index) => (
+                                            <span
+                                                key={index}
+                                                className="inline-flex items-center gap-1 px-2 py-1 bg-gray-100 text-gray-700 rounded text-sm"
+                                            >
+                                                {tech}
+                                                <button
+                                                    onClick={() => removeTechFromProject(proj.id, index)}
+                                                    className="text-gray-500 hover:text-gray-700"
+                                                >
+                                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                                                    </svg>
+                                                </button>
+                                            </span>
+                                        ))}
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <input
+                                            type="text"
+                                            value={techInput}
+                                            onChange={(e) => setTechInput(e.target.value)}
+                                            onKeyPress={(e) => {
+                                                if (e.key === 'Enter') {
+                                                    addTechToProject(proj.id, techInput);
+                                                    setTechInput('');
+                                                }
+                                            }}
+                                            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                            placeholder="Add technology..."
+                                        />
+                                        <button
+                                            onClick={() => {
+                                                addTechToProject(proj.id, techInput);
+                                                setTechInput('');
+                                            }}
+                                            className="px-4 py-2 bg-gray-600 text-white rounded-lg text-sm"
+                                        >
+                                            Add
+                                        </button>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Link (Optional)</label>
+                                    <input
+                                        type="url"
+                                        value={proj.link || ''}
+                                        onChange={(e) => updateProject(proj.id, { link: e.target.value })}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                                        placeholder="https://..."
+                                    />
+                                </div>
+                                <button
+                                    onClick={() => removeProject(proj.id)}
+                                    className="mt-2 text-red-600 hover:text-red-800 text-sm"
+                                >
+                                    Remove
+                                </button>
+                            </div>
+                        ))}
+                        {projects.length === 0 && (
+                            <div className="text-center py-8 text-gray-500">
+                                <p>No projects added. This step is optional.</p>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
         const ResumeUploader = ({ onComplete, onBack }) => {
+            const [isProcessing, setIsProcessing] = useState(false);
+            const [error, setError] = useState(null);
+            const [uploadProgress, setUploadProgress] = useState(0);
+            const fileInputRef = useRef(null);
+
+            const handleFileSelect = async (event) => {
+                const file = event.target.files[0];
+                if (!file) return;
+
+                // Validate file type
+                const validTypes = [
+                    'application/pdf',
+                    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                    'application/msword',
+                    'text/plain'
+                ];
+
+                if (!validTypes.includes(file.type)) {
+                    setError('Please upload a PDF, DOCX, or TXT file.');
+                    return;
+                }
+
+                // Validate file size (max 10MB)
+                if (file.size > 10 * 1024 * 1024) {
+                    setError('File size must be less than 10MB.');
+                    return;
+                }
+
+                setIsProcessing(true);
+                setError(null);
+                setUploadProgress(0);
+
+                try {
+                    setUploadProgress(25);
+                    // Extract text from file
+                    const text = await FileParserUtils.extractTextFromFile(file);
+                    
+                    setUploadProgress(50);
+                    // Parse text into structured resume data
+                    const resumeData = FileParserUtils.parseResumeText(text);
+                    
+                    setUploadProgress(75);
+                    // Save the resume
+                    const savedResume = ResumeStudioStorage.saveResume(resumeData.id, resumeData);
+                    
+                    setUploadProgress(100);
+                    // Complete the upload
+                    setTimeout(() => {
+                        onComplete(savedResume);
+                    }, 500);
+                } catch (err) {
+                    console.error('Error processing file:', err);
+                    setError(err.message || 'Failed to process file. Please try again.');
+                    setIsProcessing(false);
+                    setUploadProgress(0);
+                }
+            };
+
+            const handleDragOver = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+            };
+
+            const handleDrop = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {
+                    const file = files[0];
+                    // Create a synthetic event for handleFileSelect
+                    const syntheticEvent = {
+                        target: { files: [file] }
+                    };
+                    handleFileSelect(syntheticEvent);
+                }
+            };
+
             return (
                 <div className="min-h-screen bg-gray-50 p-6">
-                    <div className="max-w-7xl mx-auto">
+                    <div className="max-w-4xl mx-auto">
                         <button
                             onClick={onBack}
                             className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-6"
@@ -1576,9 +2837,91 @@
                             </svg>
                             Back to Manager
                         </button>
+
                         <div className="bg-white rounded-xl p-8 shadow-lg">
-                            <h2 className="text-2xl font-bold mb-4">Upload Resume</h2>
-                            <p className="text-gray-600">Uploader implementation coming soon...</p>
+                            <h2 className="text-2xl font-bold text-gray-900 mb-2">Upload Your Resume</h2>
+                            <p className="text-gray-600 mb-6">Import your existing resume from PDF, DOCX, or TXT format</p>
+
+                            {error && (
+                                <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+                                    <div className="flex items-center gap-2 text-red-800">
+                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                        </svg>
+                                        <span className="font-medium">Error: {error}</span>
+                                    </div>
+                                </div>
+                            )}
+
+                            <div
+                                onDragOver={handleDragOver}
+                                onDrop={handleDrop}
+                                className={`border-2 border-dashed rounded-xl p-12 text-center transition-colors ${
+                                    isProcessing 
+                                        ? 'border-blue-300 bg-blue-50' 
+                                        : 'border-gray-300 hover:border-blue-500 hover:bg-blue-50'
+                                }`}
+                            >
+                                {isProcessing ? (
+                                    <div className="space-y-4">
+                                        <div className="flex justify-center">
+                                            <svg className="w-12 h-12 text-blue-600 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                            </svg>
+                                        </div>
+                                        <div>
+                                            <p className="text-lg font-semibold text-gray-900 mb-2">Processing your resume...</p>
+                                            <div className="w-full bg-gray-200 rounded-full h-2 mb-2">
+                                                <div 
+                                                    className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                                                    style={{ width: `${uploadProgress}%` }}
+                                                ></div>
+                                            </div>
+                                            <p className="text-sm text-gray-600">{uploadProgress}% complete</p>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-4">
+                                        <div className="flex justify-center">
+                                            <svg className="w-16 h-16 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                                            </svg>
+                                        </div>
+                                        <div>
+                                            <p className="text-lg font-semibold text-gray-900 mb-2">
+                                                Drag and drop your resume here
+                                            </p>
+                                            <p className="text-gray-600 mb-4">or</p>
+                                            <button
+                                                onClick={() => fileInputRef.current?.click()}
+                                                className="px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
+                                            >
+                                                Browse Files
+                                            </button>
+                                        </div>
+                                        <p className="text-sm text-gray-500">
+                                            Supported formats: PDF, DOCX, TXT (Max 10MB)
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+
+                            <input
+                                ref={fileInputRef}
+                                type="file"
+                                accept=".pdf,.docx,.doc,.txt"
+                                onChange={handleFileSelect}
+                                className="hidden"
+                            />
+
+                            <div className="mt-6 p-4 bg-blue-50 rounded-lg">
+                                <h3 className="font-semibold text-gray-900 mb-2">What happens next?</h3>
+                                <ul className="text-sm text-gray-600 space-y-1">
+                                    <li>• Your resume will be parsed and structured automatically</li>
+                                    <li>• Personal information, experience, and skills will be extracted</li>
+                                    <li>• You can review and edit the imported data before saving</li>
+                                </ul>
+                            </div>
                         </div>
                     </div>
                 </div>

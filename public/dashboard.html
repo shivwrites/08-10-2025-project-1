@@ -3244,6 +3244,23 @@
                 }
             }, [content]);
 
+            // Apply formatting changes to editor
+            useEffect(() => {
+                if (editorRef.current) {
+                    editorRef.current.style.fontFamily = formatting.fontStyle;
+                    editorRef.current.style.fontSize = `${formatting.fontSize}pt`;
+                    editorRef.current.style.lineHeight = formatting.lineSpacing;
+                    editorRef.current.style.padding = `${formatting.topBottomMargin}mm ${formatting.sideMargins}mm`;
+                    editorRef.current.style.color = formatting.textColor;
+                    
+                    // Apply colors to headings
+                    const headings = editorRef.current.querySelectorAll('p > b, p > strong, h1, h2, h3');
+                    headings.forEach(heading => {
+                        heading.style.color = colors.primary;
+                    });
+                }
+            }, [formatting, colors, editorRef]);
+
             return (
                 <div className="w-full bg-transparent p-8">
                     <div 
@@ -3260,10 +3277,28 @@
         };
 
         // Mock for ResumeListViewer.js
-        const ResumeListViewer = ({ resumes, onSelectResume }) => {
+        const ResumeListViewer = ({ resumes, onSelectResume, onCreateNew, onImport }) => {
             return (
                 <div className="p-8 text-slate-800 h-full overflow-y-auto custom-scrollbar">
-                    <h2 className="text-2xl font-bold mb-6 text-slate-900">Resume Library</h2>
+                    <div className="flex items-center justify-between mb-6">
+                        <h2 className="text-2xl font-bold text-slate-900">Resume Library</h2>
+                        <div className="flex gap-3">
+                            <button
+                                onClick={onImport}
+                                className="px-4 py-2 border border-gray-300 text-slate-700 rounded-lg hover:bg-gray-50 transition-colors font-medium text-sm flex items-center gap-2"
+                            >
+                                <Upload className="w-4 h-4" />
+                                Import
+                            </button>
+                            <button
+                                onClick={onCreateNew}
+                                className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium text-sm flex items-center gap-2"
+                            >
+                                <Plus className="w-4 h-4" />
+                                Create New
+                            </button>
+                        </div>
+                    </div>
                     {resumes.length > 0 ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                             {resumes.map(resume => (
@@ -3282,10 +3317,26 @@
                             ))}
                         </div>
                     ) : (
-                        <div className="text-center py-16">
+                        <div className="text-center py-16 bg-white/70 backdrop-blur-xl border border-white/30 rounded-2xl">
                             <FileText className="w-16 h-16 mx-auto text-slate-400 mb-4" />
                             <h3 className="text-xl font-semibold text-slate-700">No Resumes Yet</h3>
-                            <p className="text-slate-500 mt-2">Create or import a resume to get started.</p>
+                            <p className="text-slate-500 mt-2 mb-6">Create or import a resume to get started.</p>
+                            <div className="flex gap-4 justify-center">
+                                <button
+                                    onClick={onImport}
+                                    className="px-6 py-3 border border-gray-300 text-slate-700 rounded-lg hover:bg-gray-50 transition-colors font-medium flex items-center gap-2"
+                                >
+                                    <Upload className="w-5 h-5" />
+                                    Import Resume
+                                </button>
+                                <button
+                                    onClick={onCreateNew}
+                                    className="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium flex items-center gap-2"
+                                >
+                                    <Plus className="w-5 h-5" />
+                                    Create New
+                                </button>
+                            </div>
                         </div>
                     )}
                 </div>
@@ -3346,8 +3397,163 @@
             const [templateCategory, setTemplateCategory] = useState('all');
             const [selectedText, setSelectedText] = useState('');
             const [aiProcessing, setAiProcessing] = useState(false);
+            const [toast, setToast] = useState(null);
+            const [autoSaveEnabled, setAutoSaveEnabled] = useState(true);
+            const autoSaveTimeoutRef = useRef(null);
             const fileInputRef = useRef(null);
             const editorRef = useRef(null);
+            const handleSaveRef = useRef(null);
+            const handleUndoRef = useRef(null);
+
+            // --- Validation Utilities ---
+            const ValidationUtils = {
+                sanitizeInput(input) {
+                    if (typeof input !== 'string') return '';
+                    return input.trim().replace(/[<>]/g, '');
+                },
+                
+                validateResumeTitle(title) {
+                    if (!title || typeof title !== 'string') {
+                        return { valid: false, error: 'Resume title is required' };
+                    }
+                    const trimmed = title.trim();
+                    if (trimmed.length === 0) {
+                        return { valid: false, error: 'Resume title cannot be empty' };
+                    }
+                    if (trimmed.length > 100) {
+                        return { valid: false, error: 'Resume title must be less than 100 characters' };
+                    }
+                    if (!/^[a-zA-Z0-9\s\-_.,()]+$/.test(trimmed)) {
+                        return { valid: false, error: 'Resume title contains invalid characters' };
+                    }
+                    return { valid: true };
+                },
+                
+                validateFile(file) {
+                    if (!file) {
+                        return { valid: false, error: 'No file selected' };
+                    }
+                    
+                    const allowedTypes = [
+                        'application/pdf',
+                        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                        'application/msword',
+                        'text/plain'
+                    ];
+                    
+                    // Also check by extension for better compatibility
+                    const fileName = file.name.toLowerCase();
+                    const validExtensions = ['.pdf', '.docx', '.doc', '.txt'];
+                    const hasValidExtension = validExtensions.some(ext => fileName.endsWith(ext));
+                    
+                    if (!allowedTypes.includes(file.type) && !hasValidExtension) {
+                        return { valid: false, error: 'Please select a valid file type (PDF, DOCX, DOC, or TXT)' };
+                    }
+                    
+                    const maxSize = 10 * 1024 * 1024; // 10MB
+                    if (file.size > maxSize) {
+                        return { valid: false, error: `File size must be less than ${(maxSize / 1024 / 1024).toFixed(0)}MB` };
+                    }
+                    
+                    if (file.size === 0) {
+                        return { valid: false, error: 'File is empty' };
+                    }
+                    
+                    return { valid: true };
+                },
+                
+                validateResumeData(resume) {
+                    if (!resume || typeof resume !== 'object') {
+                        return { valid: false, error: 'Invalid resume data structure' };
+                    }
+                    if (!resume.id || typeof resume.id !== 'string') {
+                        return { valid: false, error: 'Resume must have a valid ID' };
+                    }
+                    if (!resume.title || typeof resume.title !== 'string') {
+                        return { valid: false, error: 'Resume must have a title' };
+                    }
+                    return { valid: true };
+                },
+                
+                validateSectionName(sectionName) {
+                    if (!sectionName || typeof sectionName !== 'string') {
+                        return { valid: false, error: 'Section name is required' };
+                    }
+                    if (sectionName.trim().length === 0) {
+                        return { valid: false, error: 'Section name cannot be empty' };
+                    }
+                    if (sectionName.length > 50) {
+                        return { valid: false, error: 'Section name must be less than 50 characters' };
+                    }
+                    return { valid: true };
+                },
+                
+                sanitizeFileName(fileName) {
+                    return fileName.replace(/[^a-zA-Z0-9.-]/g, '_').substring(0, 255);
+                }
+            };
+
+            // --- Error Handling Utilities ---
+            // Note: These will be updated to use showToast after it's defined below
+            let ErrorHandler = null;
+            
+            // Define showToast first, then create ErrorHandler that uses it
+            const showToast = (message, type = 'success') => {
+                if (!message || typeof message !== 'string') {
+                    console.warn('Invalid toast message:', message);
+                    return;
+                }
+                
+                // Sanitize message to prevent XSS (ValidationUtils will be defined above)
+                let sanitizedMessage = message;
+                if (typeof ValidationUtils !== 'undefined' && ValidationUtils.sanitizeInput) {
+                    sanitizedMessage = ValidationUtils.sanitizeInput(message);
+                } else {
+                    sanitizedMessage = message.trim().replace(/[<>]/g, '');
+                }
+                
+                if (sanitizedMessage.length === 0) {
+                    return;
+                }
+                
+                setToast({ message: sanitizedMessage, type });
+                setTimeout(() => setToast(null), 3000);
+            };
+
+            // Now create ErrorHandler that uses showToast
+            ErrorHandler = {
+                handleStorageError(error, operation) {
+                    console.error(`Storage error during ${operation}:`, error);
+                    const message = error.name === 'QuotaExceededError' 
+                        ? 'Storage quota exceeded. Please free up space or delete old resumes.'
+                        : `Failed to ${operation}. Please try again.`;
+                    showToast(message, 'error');
+                    return message;
+                },
+                
+                handleAPIError(error, operation) {
+                    console.error(`API error during ${operation}:`, error);
+                    let message = `Failed to ${operation}.`;
+                    
+                    if (error.message) {
+                        if (error.message.includes('API key')) {
+                            message = 'OpenAI API key not found. Please set it in Settings.';
+                        } else if (error.message.includes('network') || error.message.includes('fetch')) {
+                            message = 'Network error. Please check your connection.';
+                        } else {
+                            message = error.message;
+                        }
+                    }
+                    
+                    showToast(message, 'error');
+                    return message;
+                },
+                
+                handleFileReadError(error) {
+                    console.error('File read error:', error);
+                    showToast('Failed to read file. The file may be corrupted.', 'error');
+                }
+            };
 
             const sectionTemplates = {
                 'Heading': `<div class="resume-section" data-section-name="Heading"><p><b>[YOUR NAME]</b></p><p>[Your Title/Position]</p><p>[Your Email] | [Your Phone] | [Your LinkedIn]</p></div>`,
@@ -3404,42 +3610,109 @@ Software Engineer | StartupXYZ | 2020-2022
             };
 
             const handleStartFromScratch = () => {
-                const initialContent = activeSections
-                    .map(sectionName => sectionTemplates[sectionName] || '')
-                    .join('');
-                const emptyResume = {
-                    id: 'new-cv-' + Date.now(),
-                    title: 'New Resume',
-                    type: 'master',
-                    content: initialContent,
-                    atsScore: 0,
-                    createdAt: new Date().toISOString(),
-                    updatedAt: new Date().toISOString()
-                };
-                
-                setResumes([emptyResume]);
-                setActiveResumeId(emptyResume.id);
-                setActiveResume(emptyResume);
-                setEditorContent(initialContent);
-                setUndoHistory([initialContent]);
-                setHistoryPointer(0);
-                setStep('studio');
+                try {
+                    // Validate that we have sections to work with
+                    if (!activeSections || activeSections.length === 0) {
+                        showToast('No sections available. Please refresh the page.', 'error');
+                        return;
+                    }
+                    
+                    const initialContent = activeSections
+                        .map(sectionName => {
+                            const template = sectionTemplates[sectionName];
+                            if (!template) {
+                                console.warn(`Missing template for section: ${sectionName}`);
+                                return '';
+                            }
+                            return template;
+                        })
+                        .filter(content => content.length > 0)
+                        .join('');
+                    
+                    if (initialContent.length === 0) {
+                        showToast('Failed to generate initial resume content', 'error');
+                        return;
+                    }
+                    
+                    const emptyResume = {
+                        id: 'new-cv-' + Date.now(),
+                        title: 'New Resume',
+                        type: 'master',
+                        content: initialContent,
+                        atsScore: 0,
+                        createdAt: new Date().toISOString(),
+                        updatedAt: new Date().toISOString()
+                    };
+                    
+                    // Validate the created resume
+                    const validation = ValidationUtils.validateResumeData(emptyResume);
+                    if (!validation.valid) {
+                        showToast(validation.error, 'error');
+                        return;
+                    }
+                    
+                    setResumes([emptyResume]);
+                    setActiveResumeId(emptyResume.id);
+                    setActiveResume(emptyResume);
+                    setEditorContent(initialContent);
+                    setUndoHistory([initialContent]);
+                    setHistoryPointer(0);
+                    setStep('studio');
+                    
+                    // Save to localStorage
+                    try {
+                        localStorage.setItem('smart_resume_studio_resumes', JSON.stringify([emptyResume]));
+                    } catch (storageError) {
+                        ErrorHandler.handleStorageError(storageError, 'create new resume');
+                    }
+                } catch (error) {
+                    console.error('Error starting from scratch:', error);
+                    showToast('An error occurred while creating the resume', 'error');
+                }
             };
             
             const processImportedFile = async (file) => {
                 if (!file) {
                     setImportError('No file selected for processing.');
                     setImportStatus('error');
+                    showToast('Please select a file to import', 'error');
                     return;
                 }
+                
+                // Validate file again before processing
+                const validation = ValidationUtils.validateFile(file);
+                if (!validation.valid) {
+                    setImportError(validation.error);
+                    setImportStatus('error');
+                    showToast(validation.error, 'error');
+                    return;
+                }
+                
                 setIsProcessing(true);
                 setImportStatus('processing');
+                setImportError('');
+                
                 try {
+                    // Simulate file processing delay
                     await new Promise(resolve => setTimeout(resolve, 2000));
+                    
+                    // Sanitize filename for resume title
+                    const sanitizedTitle = ValidationUtils.sanitizeFileName(
+                        file.name.replace(/\.[^/.]+$/, '')
+                    ) || 'Imported Resume';
+                    
+                    // Check for duplicate titles
+                    const duplicateExists = resumes.some(r => 
+                        r.title.trim().toLowerCase() === sanitizedTitle.toLowerCase()
+                    );
+                    
+                    const finalTitle = duplicateExists 
+                        ? `${sanitizedTitle} (${Date.now()})`
+                        : sanitizedTitle;
                     
                     const newResume = {
                         id: Date.now().toString(),
-                        title: file.name.replace(/\.[^/.]+$/, ''),
+                        title: finalTitle,
                         type: 'master',
                         content: plainTextToHtml(mockUserCV),
                         atsScore: 75,
@@ -3447,131 +3720,338 @@ Software Engineer | StartupXYZ | 2020-2022
                         updatedAt: new Date().toISOString()
                     };
                     
-                    setResumes(prev => [...prev, newResume]);
-                    setActiveResumeId(newResume.id);
-                    setActiveResume(newResume);
-                    setEditorContent(newResume.content);
-                    setUndoHistory([newResume.content]);
-                    setHistoryPointer(0);
-                    setStep('studio');
-                    setShowImportModal(false);
-                    setImportFile(null);
-                    setImportStatus('idle');
+                    // Validate the created resume
+                    const resumeValidation = ValidationUtils.validateResumeData(newResume);
+                    if (!resumeValidation.valid) {
+                        throw new Error(resumeValidation.error);
+                    }
+                    
+                    const updatedResumes = [...resumes, newResume];
+                    
+                    // Save to localStorage with error handling
+                    try {
+                        localStorage.setItem('smart_resume_studio_resumes', JSON.stringify(updatedResumes));
+                        setResumes(updatedResumes);
+                        setActiveResumeId(newResume.id);
+                        setActiveResume(newResume);
+                        setEditorContent(newResume.content);
+                        setUndoHistory([newResume.content]);
+                        setHistoryPointer(0);
+                        setStep('studio');
+                        setShowImportModal(false);
+                        setImportFile(null);
+                        setImportStatus('idle');
+                        setUploadError('');
+                        setImportError('');
+                        
+                        // Reset file input
+                        if (fileInputRef.current) {
+                            fileInputRef.current.value = '';
+                        }
+                        
+                        showToast('Resume imported successfully', 'success');
+                    } catch (storageError) {
+                        ErrorHandler.handleStorageError(storageError, 'import resume');
+                        setImportStatus('error');
+                    }
                 } catch (error) {
-                    setUploadError('Failed to process the uploaded file');
-                    setImportError('Failed to process the uploaded file');
+                    console.error('Error processing imported file:', error);
+                    const errorMessage = error.message || 'Failed to process the uploaded file';
+                    setUploadError(errorMessage);
+                    setImportError(errorMessage);
                     setImportStatus('error');
+                    showToast(errorMessage, 'error');
                 } finally {
                     setIsProcessing(false);
                 }
             };
 
             const handleResumeSelect = (resumeId) => {
-                const resume = resumes.find(r => r.id === resumeId);
-                if (resume) {
+                try {
+                    if (!resumeId || typeof resumeId !== 'string') {
+                        showToast('Invalid resume ID', 'error');
+                        return;
+                    }
+                    
+                    const resume = resumes.find(r => r.id === resumeId);
+                    if (!resume) {
+                        showToast('Resume not found', 'error');
+                        return;
+                    }
+                    
+                    // Validate resume data before selecting
+                    const validation = ValidationUtils.validateResumeData(resume);
+                    if (!validation.valid) {
+                        showToast(`Cannot load resume: ${validation.error}`, 'error');
+                        return;
+                    }
+                    
                     setActiveResumeId(resumeId);
                     setActiveResume(resume);
-                    setEditorContent(resume.content);
-                    setUndoHistory([resume.content]);
+                    setEditorContent(resume.content || '');
+                    setUndoHistory([resume.content || '']);
                     setHistoryPointer(0);
                     setViewMode('edit');
+                } catch (error) {
+                    console.error('Error selecting resume:', error);
+                    showToast('An error occurred while loading the resume', 'error');
                 }
             };
 
+
             const handleContentChange = (newContent) => {
-                if (newContent !== editorContent) {
-                    const newHistory = undoHistory.slice(0, historyPointer + 1);
-                    newHistory.push(newContent);
-                    setUndoHistory(newHistory);
-                    setHistoryPointer(newHistory.length - 1);
-                    setEditorContent(newContent);
+                try {
+                    // Validate content
+                    if (typeof newContent !== 'string') {
+                        console.warn('Invalid content type:', typeof newContent);
+                        return;
+                    }
+                    
+                    // Prevent excessively large content (safety check)
+                    if (newContent.length > 1000000) { // 1MB limit
+                        showToast('Content is too large. Please reduce the size.', 'error');
+                        return;
+                    }
+                    
+                    if (newContent !== editorContent) {
+                        const newHistory = undoHistory.slice(0, historyPointer + 1);
+                        
+                        // Limit history size to prevent memory issues
+                        if (newHistory.length > 50) {
+                            newHistory.shift();
+                            setHistoryPointer(newHistory.length - 1);
+                        }
+                        
+                        newHistory.push(newContent);
+                        setUndoHistory(newHistory);
+                        setHistoryPointer(newHistory.length - 1);
+                        setEditorContent(newContent);
+                        
+                        // Auto-save after 2 seconds of inactivity
+                        if (autoSaveEnabled && activeResume) {
+                            if (autoSaveTimeoutRef.current) {
+                                clearTimeout(autoSaveTimeoutRef.current);
+                            }
+                            autoSaveTimeoutRef.current = setTimeout(() => {
+                                if (handleSaveRef.current) {
+                                    handleSaveRef.current(true); // silent save
+                                }
+                            }, 2000);
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error handling content change:', error);
+                    showToast('An error occurred while updating content', 'error');
                 }
             };
 
             const handleUndo = () => {
-                if (historyPointer > 0) {
-                    const newPointer = historyPointer - 1;
-                    setHistoryPointer(newPointer);
-                    setEditorContent(undoHistory[newPointer]);
+                try {
+                    if (historyPointer > 0) {
+                        const newPointer = historyPointer - 1;
+                        if (undoHistory[newPointer]) {
+                            setHistoryPointer(newPointer);
+                            setEditorContent(undoHistory[newPointer]);
+                        } else {
+                            showToast('Cannot undo: History data is invalid', 'error');
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error during undo:', error);
+                    showToast('Failed to undo change', 'error');
                 }
             };
 
-            const handleSave = async () => {
-                if (activeResume) {
+            const handleSave = async (silent = false) => {
+                if (!activeResume) {
+                    showToast('No resume selected', 'error');
+                    return;
+                }
+                
+                try {
                     setIsLoading(true);
-                    await new Promise(resolve => setTimeout(resolve, 1000));
                     
-                    const updatedResumes = resumes.map(r => 
-                        r.id === activeResume.id 
-                            ? { ...r, content: editorContent, updatedAt: new Date().toISOString() }
-                            : r
-                    );
-                    setResumes(updatedResumes);
-                    setActiveResume({ ...activeResume, content: editorContent, updatedAt: new Date().toISOString() });
-                    setIsLoading(false);
-                }
-            };
-
-            const createNewResume = async () => {
-                if (!newResumeTitle.trim()) return;
-                
-                const newResume = {
-                    id: Date.now().toString(),
-                    title: newResumeTitle,
-                    type: newResumeType,
-                    content: newResumeType === 'master' ? 'Start your master resume here.' : (resumes.find(r => r.type === 'master')?.content || 'Start your campaign resume here.'),
-                    atsScore: 0,
-                    createdAt: new Date().toISOString(),
-                    updatedAt: new Date().toISOString()
-                };
-                
-                setResumes([...resumes, newResume]);
-                setActiveResumeId(newResume.id);
-                setActiveResume(newResume);
-                setEditorContent(newResume.content);
-                setUndoHistory([newResume.content]);
-                setHistoryPointer(0);
-                setShowCreateModal(false);
-                setNewResumeTitle('');
-                setViewMode('edit');
-                setStep('studio');
-            };
-
-            const handleFileSelectForImportModal = (event) => {
-                const file = event.target.files?.[0];
-                if (file) {
-                    const allowedTypes = [
-                        'application/pdf',
-                        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                        'application/msword',
-                        'text/plain'
-                    ];
-                    
-                    if (!allowedTypes.includes(file.type)) {
-                        setImportError('Please select a valid file type (PDF, DOCX, DOC, or TXT)');
+                    // Validate resume data before saving
+                    const validation = ValidationUtils.validateResumeData(activeResume);
+                    if (!validation.valid) {
+                        showToast(validation.error, 'error');
+                        setIsLoading(false);
                         return;
                     }
                     
-                    if (file.size > 10 * 1024 * 1024) {
-                        setImportError('File size must be less than 10MB');
+                    // Simulate save delay
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    
+                    const updatedResume = { 
+                        ...activeResume, 
+                        content: editorContent, 
+                        updatedAt: new Date().toISOString() 
+                    };
+                    
+                    const updatedResumes = resumes.map(r => 
+                        r.id === activeResume.id ? updatedResume : r
+                    );
+                    
+                    // Save to localStorage with error handling
+                    try {
+                        localStorage.setItem('smart_resume_studio_resumes', JSON.stringify(updatedResumes));
+                        setResumes(updatedResumes);
+                        setActiveResume(updatedResume);
+                        
+                        if (!silent) {
+                            showToast('Resume saved successfully', 'success');
+                        }
+                    } catch (storageError) {
+                        ErrorHandler.handleStorageError(storageError, 'save resume');
+                    }
+                    
+                    setIsLoading(false);
+                } catch (error) {
+                    console.error('Error saving resume:', error);
+                    setIsLoading(false);
+                    showToast('An unexpected error occurred while saving', 'error');
+                }
+            };
+
+            // Store latest function references in refs for keyboard shortcuts
+            // Update refs on every render to ensure latest functions are available
+            handleSaveRef.current = handleSave;
+            handleUndoRef.current = handleUndo;
+
+            const createNewResume = async () => {
+                try {
+                    // Validate resume title
+                    const titleValidation = ValidationUtils.validateResumeTitle(newResumeTitle);
+                    if (!titleValidation.valid) {
+                        showToast(titleValidation.error, 'error');
+                        return;
+                    }
+                    
+                    // Check for duplicate titles
+                    const sanitizedTitle = ValidationUtils.sanitizeInput(newResumeTitle);
+                    const duplicateExists = resumes.some(r => 
+                        r.title.trim().toLowerCase() === sanitizedTitle.toLowerCase()
+                    );
+                    
+                    if (duplicateExists) {
+                        showToast('A resume with this title already exists', 'error');
+                        return;
+                    }
+                    
+                    const newResume = {
+                        id: Date.now().toString(),
+                        title: sanitizedTitle,
+                        type: newResumeType,
+                        content: newResumeType === 'master' 
+                            ? activeSections.map(sectionName => sectionTemplates[sectionName] || '').join('')
+                            : (resumes.find(r => r.type === 'master')?.content || activeSections.map(sectionName => sectionTemplates[sectionName] || '').join('')),
+                        atsScore: 0,
+                        createdAt: new Date().toISOString(),
+                        updatedAt: new Date().toISOString()
+                    };
+                    
+                    // Validate the created resume
+                    const resumeValidation = ValidationUtils.validateResumeData(newResume);
+                    if (!resumeValidation.valid) {
+                        showToast(resumeValidation.error, 'error');
+                        return;
+                    }
+                    
+                    const updatedResumes = [...resumes, newResume];
+                    
+                    // Save to localStorage with error handling
+                    try {
+                        localStorage.setItem('smart_resume_studio_resumes', JSON.stringify(updatedResumes));
+                        setResumes(updatedResumes);
+                        setActiveResumeId(newResume.id);
+                        setActiveResume(newResume);
+                        setEditorContent(newResume.content);
+                        setUndoHistory([newResume.content]);
+                        setHistoryPointer(0);
+                        setShowCreateModal(false);
+                        setNewResumeTitle('');
+                        setViewMode('edit');
+                        setStep('studio');
+                        showToast(`${newResumeType === 'master' ? 'Master' : 'Campaign'} resume created`, 'success');
+                    } catch (storageError) {
+                        ErrorHandler.handleStorageError(storageError, 'create resume');
+                    }
+                } catch (error) {
+                    console.error('Error creating resume:', error);
+                    showToast('An unexpected error occurred while creating the resume', 'error');
+                }
+            };
+
+            const handleFileSelectForImportModal = (event) => {
+                try {
+                    const file = event.target.files?.[0];
+                    if (!file) {
+                        setImportError('');
+                        return;
+                    }
+                    
+                    // Validate file
+                    const validation = ValidationUtils.validateFile(file);
+                    if (!validation.valid) {
+                        setImportError(validation.error);
+                        setImportFile(null);
+                        // Reset file input
+                        if (event.target) {
+                            event.target.value = '';
+                        }
                         return;
                     }
                     
                     setImportFile(file);
                     setImportError('');
+                } catch (error) {
+                    console.error('Error handling file selection:', error);
+                    setImportError('An error occurred while processing the file');
+                    setImportFile(null);
                 }
             };
 
             const applyTextColor = (color) => {
-                if (editorRef.current) {
+                try {
+                    // Validate color format
+                    if (!color || typeof color !== 'string') {
+                        showToast('Invalid color value', 'error');
+                        return;
+                    }
+                    
+                    // Validate hex color format
+                    if (!/^#[0-9A-Fa-f]{6}$/.test(color)) {
+                        showToast('Please enter a valid color (hex format)', 'error');
+                        return;
+                    }
+                    
+                    if (!editorRef.current) {
+                        showToast('Editor not ready', 'error');
+                        return;
+                    }
+                    
                     editorRef.current.focus();
                     document.execCommand('foreColor', false, color);
                     handleContentChange(editorRef.current.innerHTML);
+                } catch (error) {
+                    console.error('Error applying text color:', error);
+                    showToast('Failed to apply text color', 'error');
                 }
             };
 
             const applyFormat = (command, value = null) => {
-                if (!editorRef.current) return;
+                try {
+                    if (!editorRef.current) {
+                        showToast('Editor not ready', 'error');
+                        return;
+                    }
+                    
+                    // Validate command
+                    const validCommands = ['bold', 'italic', 'underline', 'insertUnorderedList', 'insertOrderedList', 'justifyLeft', 'justifyCenter', 'justifyRight'];
+                    if (!validCommands.includes(command)) {
+                        console.warn('Invalid format command:', command);
+                        return;
+                    }
                 
                 const alignmentCommands = {
                     justifyLeft: 'left',
@@ -3616,59 +4096,166 @@ Software Engineer | StartupXYZ | 2020-2022
                 }
                 
                 handleContentChange(editorRef.current.innerHTML);
+                } catch (error) {
+                    console.error('Error applying format:', error);
+                    showToast('Failed to apply formatting', 'error');
+                }
             };
 
             const handleAddSection = (sectionName) => {
-                if (!activeSections.includes(sectionName)) {
+                try {
+                    // Validate section name
+                    const validation = ValidationUtils.validateSectionName(sectionName);
+                    if (!validation.valid) {
+                        showToast(validation.error, 'error');
+                        return;
+                    }
+                    
+                    // Check if section already exists
+                    if (activeSections.includes(sectionName)) {
+                        showToast('Section already exists', 'error');
+                        return;
+                    }
+                    
+                    // Check if section template exists
+                    if (!sectionTemplates[sectionName]) {
+                        showToast('Invalid section type', 'error');
+                        return;
+                    }
+                    
                     setActiveSections([...activeSections, sectionName]);
                     const sectionContent = sectionTemplates[sectionName];
                     if (sectionContent) {
                         const newContent = editorContent + sectionContent;
                         handleContentChange(newContent);
+                        showToast(`${sectionName} section added`, 'success');
                     }
+                } catch (error) {
+                    console.error('Error adding section:', error);
+                    showToast('An error occurred while adding the section', 'error');
                 }
             };
 
             const handleDeleteSection = (sectionName) => {
-                setActiveSections(activeSections.filter(section => section !== sectionName));
-                
-                const tempContainer = document.createElement('div');
-                tempContainer.innerHTML = editorContent;
-                
-                const sectionToRemove = tempContainer.querySelector(`.resume-section[data-section-name="${sectionName}"]`);
-                
-                if (sectionToRemove) {
-                    sectionToRemove.remove();
-                    handleContentChange(tempContainer.innerHTML);
+                try {
+                    // Validate section name
+                    const validation = ValidationUtils.validateSectionName(sectionName);
+                    if (!validation.valid) {
+                        showToast(validation.error, 'error');
+                        return;
+                    }
+                    
+                    // Check if section exists
+                    if (!activeSections.includes(sectionName)) {
+                        showToast('Section not found', 'error');
+                        return;
+                    }
+                    
+                    // Prevent deleting all sections
+                    if (activeSections.length <= 1) {
+                        showToast('Cannot delete the last section', 'error');
+                        return;
+                    }
+                    
+                    setActiveSections(activeSections.filter(section => section !== sectionName));
+                    
+                    const tempContainer = document.createElement('div');
+                    tempContainer.innerHTML = editorContent;
+                    
+                    const sectionToRemove = tempContainer.querySelector(`.resume-section[data-section-name="${sectionName}"]`);
+                    
+                    if (sectionToRemove) {
+                        sectionToRemove.remove();
+                        handleContentChange(tempContainer.innerHTML);
+                        showToast(`${sectionName} section removed`, 'success');
+                    }
+                } catch (error) {
+                    console.error('Error deleting section:', error);
+                    showToast('An error occurred while removing the section', 'error');
                 }
             };
 
             const handleATSOptimization = async () => {
-                setAiProcessing(true);
-                await new Promise(resolve => setTimeout(resolve, 2000));
-                if (activeResume) {
-                    const newScore = Math.min(100, activeResume.atsScore + 10);
-                    const updatedResumes = resumes.map(r => 
-                        r.id === activeResume.id 
-                            ? { ...r, atsScore: newScore }
-                            : r
-                    );
-                    setResumes(updatedResumes);
-                    setActiveResume({ ...activeResume, atsScore: newScore });
+                if (!activeResume) {
+                    showToast('Please select a resume first', 'error');
+                    return;
                 }
-                setAiProcessing(false);
+                
+                try {
+                    setAiProcessing(true);
+                    showToast('Optimizing resume for ATS...', 'info');
+                    
+                    // Simulate API call - in production, this would call OpenAI API
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                    
+                    if (activeResume) {
+                        const newScore = Math.min(100, activeResume.atsScore + 10);
+                        const updatedResumes = resumes.map(r => 
+                            r.id === activeResume.id 
+                                ? { ...r, atsScore: newScore }
+                                : r
+                        );
+                        
+                        try {
+                            localStorage.setItem('smart_resume_studio_resumes', JSON.stringify(updatedResumes));
+                            setResumes(updatedResumes);
+                            setActiveResume({ ...activeResume, atsScore: newScore });
+                            showToast(`ATS score improved to ${newScore}%`, 'success');
+                        } catch (storageError) {
+                            ErrorHandler.handleStorageError(storageError, 'update ATS score');
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error during ATS optimization:', error);
+                    ErrorHandler.handleAPIError(error, 'optimize resume');
+                } finally {
+                    setAiProcessing(false);
+                }
             };
 
             const handleEnhanceText = async () => {
-                setAiProcessing(true);
-                await new Promise(resolve => setTimeout(resolve, 1500));
-                setAiProcessing(false);
+                if (!selectedText || selectedText.trim().length === 0) {
+                    showToast('Please select some text to enhance', 'error');
+                    return;
+                }
+                
+                try {
+                    setAiProcessing(true);
+                    showToast('Enhancing text with AI...', 'info');
+                    
+                    // Simulate API call - in production, this would call OpenAI API
+                    await new Promise(resolve => setTimeout(resolve, 1500));
+                    
+                    // In production, this would replace the selected text with enhanced version
+                    showToast('Text enhanced successfully', 'success');
+                } catch (error) {
+                    console.error('Error enhancing text:', error);
+                    ErrorHandler.handleAPIError(error, 'enhance text');
+                } finally {
+                    setAiProcessing(false);
+                }
             };
 
             const handleGapJustification = async () => {
-                setAiProcessing(true);
-                await new Promise(resolve => setTimeout(resolve, 1500));
-                setAiProcessing(false);
+                if (!activeResume) {
+                    showToast('Please select a resume first', 'error');
+                    return;
+                }
+                
+                try {
+                    setAiProcessing(true);
+                    showToast('Generating gap justification...', 'info');
+                    
+                    // Simulate API call - in production, this would call OpenAI API
+                    await new Promise(resolve => setTimeout(resolve, 1500));
+                    
+                    showToast('Gap justification suggestions ready', 'success');
+                } catch (error) {
+                    console.error('Error generating gap justification:', error);
+                    ErrorHandler.handleAPIError(error, 'generate gap justification');
+                } finally {
+                    setAiProcessing(false);
+                }
             };
             
             const getStatusIcon = () => {
@@ -3720,21 +4307,139 @@ Software Engineer | StartupXYZ | 2020-2022
             const filteredTemplates = templateCategory === 'all' ? templates : templates.filter(t => t.category === templateCategory);
 
             const updateFormatting = (key, value) => {
-                setFormattingSettings(prev => ({ ...prev, [key]: value }));
+                try {
+                    // Validate formatting key
+                    const validKeys = [
+                        'alignment', 'textColor', 'highlightColor', 'fontStyle', 'fontSize', 
+                        'headingSize', 'sectionSpacing', 'paragraphSpacing', 'lineSpacing', 
+                        'topBottomMargin', 'sideMargins', 'paragraphIndent'
+                    ];
+                    
+                    if (!validKeys.includes(key)) {
+                        console.warn('Invalid formatting key:', key);
+                        return;
+                    }
+                    
+                    // Validate value based on key type
+                    if (key === 'fontSize' || key === 'headingSize') {
+                        const numValue = Number(value);
+                        if (isNaN(numValue) || numValue < 8 || numValue > 24) {
+                            showToast('Font size must be between 8 and 24', 'error');
+                            return;
+                        }
+                        value = numValue;
+                    } else if (key === 'lineSpacing') {
+                        const numValue = Number(value);
+                        if (isNaN(numValue) || numValue < 1 || numValue > 2) {
+                            showToast('Line spacing must be between 1 and 2', 'error');
+                            return;
+                        }
+                        value = numValue;
+                    } else if (key === 'topBottomMargin' || key === 'sideMargins') {
+                        const numValue = Number(value);
+                        if (isNaN(numValue) || numValue < 0 || numValue > 50) {
+                            showToast('Margins must be between 0 and 50mm', 'error');
+                            return;
+                        }
+                        value = numValue;
+                    } else if (key === 'textColor' || key === 'highlightColor') {
+                        if (typeof value !== 'string' || !/^#[0-9A-Fa-f]{6}$|transparent/.test(value)) {
+                            showToast('Invalid color format', 'error');
+                            return;
+                        }
+                    } else if (key === 'fontStyle') {
+                        const validFonts = ['Inter', 'Roboto', 'Open Sans', 'Lato', 'Montserrat', 'Poppins', 'Source Sans Pro', 'Century Gothic'];
+                        if (!validFonts.includes(value)) {
+                            console.warn('Invalid font style:', value);
+                            return;
+                        }
+                    }
+                    
+                    setFormattingSettings(prev => ({ ...prev, [key]: value }));
+                } catch (error) {
+                    console.error('Error updating formatting:', error);
+                    showToast('Failed to update formatting setting', 'error');
+                }
             };
 
             // Load resumes from localStorage on mount
             useEffect(() => {
-                const savedResumes = JSON.parse(localStorage.getItem('smart_resume_studio_resumes') || '[]');
-                if (savedResumes.length > 0) {
-                    setResumes(savedResumes);
+                try {
+                    const savedData = localStorage.getItem('smart_resume_studio_resumes');
+                    if (!savedData) {
+                        return;
+                    }
+                    
+                    const savedResumes = JSON.parse(savedData);
+                    
+                    // Validate loaded data structure
+                    if (!Array.isArray(savedResumes)) {
+                        console.error('Invalid resume data structure in localStorage');
+                        showToast('Failed to load saved resumes. Data may be corrupted.', 'error');
+                        // Clear corrupted data
+                        try {
+                            localStorage.removeItem('smart_resume_studio_resumes');
+                        } catch (e) {
+                            console.error('Failed to clear corrupted data:', e);
+                        }
+                        return;
+                    }
+                    
+                    // Validate each resume before adding
+                    const validResumes = savedResumes.filter(resume => {
+                        const validation = ValidationUtils.validateResumeData(resume);
+                        if (!validation.valid) {
+                            console.warn('Invalid resume data found:', resume, validation.error);
+                            return false;
+                        }
+                        return true;
+                    });
+                    
+                    if (validResumes.length > 0) {
+                        setResumes(validResumes);
+                        // If there's only one resume and no active one, auto-select it
+                        if (validResumes.length === 1 && !activeResumeId) {
+                            const resume = validResumes[0];
+                            setActiveResumeId(resume.id);
+                            setActiveResume(resume);
+                            setEditorContent(resume.content || '');
+                            setUndoHistory([resume.content || '']);
+                            setHistoryPointer(0);
+                            setStep('studio');
+                        } else if (validResumes.length > 1 && !activeResumeId) {
+                            // Multiple resumes - show list view
+                            setStep('list');
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error loading resumes from localStorage:', error);
+                    ErrorHandler.handleStorageError(error, 'load resumes');
                 }
             }, []);
 
             // Save resumes to localStorage when they change
             useEffect(() => {
                 if (resumes.length > 0) {
-                    localStorage.setItem('smart_resume_studio_resumes', JSON.stringify(resumes));
+                    try {
+                        // Validate all resumes before saving
+                        const validResumes = resumes.filter(resume => {
+                            const validation = ValidationUtils.validateResumeData(resume);
+                            if (!validation.valid) {
+                                console.warn('Attempted to save invalid resume:', resume, validation.error);
+                                return false;
+                            }
+                            return true;
+                        });
+                        
+                        if (validResumes.length !== resumes.length) {
+                            console.warn(`Filtered out ${resumes.length - validResumes.length} invalid resumes before saving`);
+                            showToast('Some resumes were not saved due to validation errors', 'error');
+                        }
+                        
+                        localStorage.setItem('smart_resume_studio_resumes', JSON.stringify(validResumes));
+                    } catch (error) {
+                        ErrorHandler.handleStorageError(error, 'save resumes');
+                    }
                 }
             }, [resumes]);
 
@@ -3758,11 +4463,56 @@ Software Engineer | StartupXYZ | 2020-2022
                 }
             }, [activeResumeId]);
 
+            // Keyboard shortcuts
+            useEffect(() => {
+                const handleKeyDown = (e) => {
+                    // Don't intercept if typing in input fields
+                    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || (e.target.isContentEditable && e.target !== editorRef.current)) {
+                        return;
+                    }
+                    
+                    // Ctrl+S or Cmd+S: Save
+                    if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+                        e.preventDefault();
+                        if (activeResume && step === 'studio' && handleSaveRef.current) {
+                            handleSaveRef.current();
+                        }
+                    }
+                    // Ctrl+Z or Cmd+Z: Undo (only if not in input)
+                    if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+                        if (step === 'studio' && document.activeElement === editorRef.current && handleUndoRef.current) {
+                            e.preventDefault();
+                            handleUndoRef.current();
+                        }
+                    }
+                    // Escape: Close modals
+                    if (e.key === 'Escape') {
+                        if (showCreateModal) setShowCreateModal(false);
+                        if (showExportModal) setShowExportModal(false);
+                        if (showImportModal) setShowImportModal(false);
+                    }
+                };
+                
+                window.addEventListener('keydown', handleKeyDown);
+                return () => window.removeEventListener('keydown', handleKeyDown);
+            }, [activeResume, step, showCreateModal, showExportModal, showImportModal]);
+
+            // Cleanup auto-save timeout
+            useEffect(() => {
+                return () => {
+                    if (autoSaveTimeoutRef.current) {
+                        clearTimeout(autoSaveTimeoutRef.current);
+                    }
+                };
+            }, []);
+
             if (step === 'list' || (step === 'studio' && resumes.length === 0 && !activeResumeId)) {
                 return (
                     <ResumeListViewer 
                         resumes={resumes}
                         onSelectResume={handleResumeSelect}
+                        onCreateNew={() => setShowCreateModal(true)}
+                        onImport={() => setStep('upload')}
                     />
                 );
             }
@@ -3795,6 +4545,18 @@ Software Engineer | StartupXYZ | 2020-2022
                                     <p className="text-slate-600">Build a new resume with our templates</p>
                                 </button>
                             </div>
+                            
+                            {resumes.length > 0 && (
+                                <div className="mt-8 text-center">
+                                    <button
+                                        onClick={() => setStep('list')}
+                                        className="inline-flex items-center gap-2 px-6 py-3 bg-white/70 backdrop-blur-xl border-2 border-white/30 text-slate-700 rounded-lg hover:border-indigo-400 hover:text-indigo-600 transition-all font-medium"
+                                    >
+                                        <FileText className="w-5 h-5" />
+                                        View Existing Resumes ({resumes.length})
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     </div>
                 );
@@ -3908,21 +4670,37 @@ Software Engineer | StartupXYZ | 2020-2022
                                 onClick={handleUndo}
                                 disabled={historyPointer <= 0}
                                 className="p-2 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
-                                title="Undo"
+                                title="Undo (Ctrl+Z)"
                             >
                                 <RotateCcw className="w-5 h-5 text-slate-600" />
                             </button>
                             <button
                                 onClick={handleSave}
                                 disabled={isLoading}
-                                className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium text-sm flex items-center gap-2"
+                                className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium text-sm flex items-center gap-2 disabled:opacity-50"
+                                title="Save (Ctrl+S)"
                             >
-                                <Save className="w-4 h-4" />
-                                {isLoading ? 'Saving...' : 'Save'}
+                                {isLoading ? (
+                                    <>
+                                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                        Saving...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Save className="w-4 h-4" />
+                                        Save
+                                    </>
+                                )}
                             </button>
+                            {autoSaveEnabled && (
+                                <span className="text-xs text-slate-500 px-2" title="Auto-save enabled">
+                                    Auto-save
+                                </span>
+                            )}
                             <button
                                 onClick={() => setShowExportModal(true)}
                                 className="px-4 py-2 border border-gray-300 text-slate-700 rounded-lg hover:bg-gray-50 transition-colors font-medium text-sm flex items-center gap-2"
+                                title="Export resume"
                             >
                                 <Download className="w-4 h-4" />
                                 Export
@@ -4268,14 +5046,38 @@ Software Engineer | StartupXYZ | 2020-2022
                                 <h3 className="text-2xl font-bold text-slate-900 mb-6">Create New Resume</h3>
                                 <div className="space-y-4">
                                     <div>
-                                        <label className="block text-sm font-medium text-slate-700 mb-2">Resume Title</label>
+                                        <label className="block text-sm font-medium text-slate-700 mb-2">
+                                            Resume Title
+                                            <span className="text-red-500 ml-1">*</span>
+                                        </label>
                                         <input
                                             type="text"
                                             value={newResumeTitle}
-                                            onChange={(e) => setNewResumeTitle(e.target.value)}
+                                            onChange={(e) => {
+                                                const value = e.target.value;
+                                                // Real-time validation feedback
+                                                if (value.length > 100) {
+                                                    showToast('Title must be less than 100 characters', 'error');
+                                                    return;
+                                                }
+                                                setNewResumeTitle(value);
+                                            }}
                                             placeholder="e.g., Software Engineer Resume"
-                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                            maxLength={100}
+                                            className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${
+                                                newResumeTitle.length > 0 && !ValidationUtils.validateResumeTitle(newResumeTitle).valid
+                                                    ? 'border-red-300 bg-red-50'
+                                                    : 'border-gray-300'
+                                            }`}
                                         />
+                                        {newResumeTitle.length > 0 && !ValidationUtils.validateResumeTitle(newResumeTitle).valid && (
+                                            <p className="mt-1 text-xs text-red-600">
+                                                {ValidationUtils.validateResumeTitle(newResumeTitle).error}
+                                            </p>
+                                        )}
+                                        <p className="mt-1 text-xs text-slate-500">
+                                            {newResumeTitle.length}/100 characters
+                                        </p>
                                     </div>
                                     <div>
                                         <label className="block text-sm font-medium text-slate-700 mb-2">Resume Type</label>
@@ -4318,42 +5120,113 @@ Software Engineer | StartupXYZ | 2020-2022
                                 <div className="space-y-4">
                                     <button
                                         onClick={() => {
-                                            const blob = new Blob([editorContent], { type: 'text/html' });
-                                            const url = URL.createObjectURL(blob);
-                                            const a = document.createElement('a');
-                                            a.href = url;
-                                            a.download = `${activeResume?.title || 'resume'}.html`;
-                                            a.click();
-                                            URL.revokeObjectURL(url);
-                                            setShowExportModal(false);
+                                            try {
+                                                if (!activeResume) {
+                                                    showToast('No resume selected', 'error');
+                                                    return;
+                                                }
+                                                
+                                                if (!editorContent || editorContent.trim().length === 0) {
+                                                    showToast('Resume is empty. Please add some content first.', 'error');
+                                                    return;
+                                                }
+                                                
+                                                const sanitizedTitle = ValidationUtils.sanitizeFileName(
+                                                    activeResume.title || 'resume'
+                                                );
+                                                
+                                                const blob = new Blob([editorContent], { type: 'text/html' });
+                                                const url = URL.createObjectURL(blob);
+                                                const a = document.createElement('a');
+                                                a.href = url;
+                                                a.download = `${sanitizedTitle}.html`;
+                                                document.body.appendChild(a);
+                                                a.click();
+                                                document.body.removeChild(a);
+                                                URL.revokeObjectURL(url);
+                                                setShowExportModal(false);
+                                                showToast('Resume exported as HTML', 'success');
+                                            } catch (error) {
+                                                console.error('Error exporting HTML:', error);
+                                                showToast('Failed to export resume. Please try again.', 'error');
+                                            }
                                         }}
-                                        className="w-full px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium text-left"
+                                        className="w-full px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium text-left flex items-center gap-2"
                                     >
+                                        <Download className="w-5 h-5" />
                                         Export as HTML
                                     </button>
                                     <button
                                         onClick={() => {
-                                            const printWindow = window.open('', '_blank');
-                                            if (printWindow) {
-                                                printWindow.document.write(`
-                                                    <!DOCTYPE html>
-                                                    <html>
-                                                    <head>
-                                                        <title>${activeResume?.title || 'Resume'}</title>
-                                                        <style>
-                                                            body { font-family: ${formattingSettings.fontStyle}; font-size: ${formattingSettings.fontSize}pt; line-height: ${formattingSettings.lineSpacing}; padding: ${formattingSettings.topBottomMargin}mm ${formattingSettings.sideMargins}mm; }
-                                                        </style>
-                                                    </head>
-                                                    <body>${editorContent}</body>
-                                                    </html>
-                                                `);
-                                                printWindow.document.close();
-                                                printWindow.print();
+                                            try {
+                                                if (!activeResume) {
+                                                    showToast('No resume selected', 'error');
+                                                    return;
+                                                }
+                                                
+                                                if (!editorContent || editorContent.trim().length === 0) {
+                                                    showToast('Resume is empty. Please add some content first.', 'error');
+                                                    return;
+                                                }
+                                                
+                                                const sanitizedTitle = ValidationUtils.sanitizeInput(
+                                                    activeResume.title || 'Resume'
+                                                );
+                                                
+                                                // Escape HTML in title for use in document title
+                                                const safeTitle = sanitizedTitle.replace(/"/g, '&quot;');
+                                                
+                                                // Validate formatting settings to prevent injection
+                                                const safeFontStyle = /^[a-zA-Z\s]+$/.test(formattingSettings.fontStyle) 
+                                                    ? formattingSettings.fontStyle 
+                                                    : 'Inter';
+                                                const safeFontSize = Math.max(8, Math.min(16, formattingSettings.fontSize || 11));
+                                                const safeLineSpacing = Math.max(1, Math.min(2, formattingSettings.lineSpacing || 1.4));
+                                                const safeTopMargin = Math.max(0, Math.min(50, formattingSettings.topBottomMargin || 20));
+                                                const safeSideMargin = Math.max(0, Math.min(50, formattingSettings.sideMargins || 20));
+                                                const safeTextColor = /^#[0-9A-Fa-f]{6}$/.test(formattingSettings.textColor)
+                                                    ? formattingSettings.textColor
+                                                    : '#334155';
+                                                
+                                                const printWindow = window.open('', '_blank');
+                                                if (printWindow) {
+                                                    printWindow.document.write(`
+                                                        <!DOCTYPE html>
+                                                        <html>
+                                                        <head>
+                                                            <title>${safeTitle}</title>
+                                                            <style>
+                                                                @media print {
+                                                                    @page { margin: 0; size: A4; }
+                                                                }
+                                                                body { 
+                                                                    font-family: ${safeFontStyle}; 
+                                                                    font-size: ${safeFontSize}pt; 
+                                                                    line-height: ${safeLineSpacing}; 
+                                                                    padding: ${safeTopMargin}mm ${safeSideMargin}mm;
+                                                                    margin: 0;
+                                                                    color: ${safeTextColor};
+                                                                }
+                                                            </style>
+                                                        </head>
+                                                        <body>${editorContent}</body>
+                                                        </html>
+                                                    `);
+                                                    printWindow.document.close();
+                                                    printWindow.print();
+                                                    setShowExportModal(false);
+                                                    showToast('Print dialog opened', 'success');
+                                                } else {
+                                                    showToast('Please allow popups to print', 'error');
+                                                }
+                                            } catch (error) {
+                                                console.error('Error opening print dialog:', error);
+                                                showToast('Failed to open print dialog. Please try again.', 'error');
                                             }
-                                            setShowExportModal(false);
                                         }}
-                                        className="w-full px-6 py-3 border border-gray-300 text-slate-700 rounded-lg hover:bg-gray-50 transition-colors font-medium text-left"
+                                        className="w-full px-6 py-3 border border-gray-300 text-slate-700 rounded-lg hover:bg-gray-50 transition-colors font-medium text-left flex items-center gap-2"
                                     >
+                                        <FileText className="w-5 h-5" />
                                         Print / PDF
                                     </button>
                                     <button
@@ -4366,6 +5239,23 @@ Software Engineer | StartupXYZ | 2020-2022
                             </div>
                         </div>
                     )}
+
+                    {/* Toast Notification */}
+                    {toast && (
+                        <div className={`fixed bottom-6 right-6 z-50 px-6 py-4 rounded-lg shadow-xl transition-all transform ${
+                            toast.type === 'success' 
+                                ? 'bg-green-500 text-white' 
+                                : toast.type === 'error'
+                                ? 'bg-red-500 text-white'
+                                : 'bg-blue-500 text-white'
+                        }`}>
+                            <div className="flex items-center gap-3">
+                                {toast.type === 'success' && <CheckCircle className="w-5 h-5" />}
+                                {toast.type === 'error' && <AlertCircle className="w-5 h-5" />}
+                                <p className="font-medium">{toast.message}</p>
+                            </div>
+                        </div>
+                    )}
                 </div>
             );
         };
@@ -4374,20 +5264,50 @@ Software Engineer | StartupXYZ | 2020-2022
         window.renderSmartResumeStudio = function() {
             const container = document.getElementById('resume-studio-container');
             
-            if (container) {
-                try {
-                    // Clean up previous root if exists
-                    if (window.smartResumeStudioRoot) {
+            if (!container) {
+                console.error('Resume studio container not found');
+                return;
+            }
+            
+            try {
+                // Clean up previous root if exists
+                if (window.smartResumeStudioRoot) {
+                    try {
                         window.smartResumeStudioRoot.unmount();
-                        window.smartResumeStudioRoot = null;
+                    } catch (unmountError) {
+                        console.warn('Error unmounting previous root:', unmountError);
                     }
-                    
-                    const root = ReactDOM.createRoot(container);
-                    root.render(<SmartResumeStudio />);
-                    window.smartResumeStudioRoot = root;
-                } catch (error) {
-                    console.error('Error rendering Smart Resume Studio:', error);
+                    window.smartResumeStudioRoot = null;
                 }
+                
+                // Clear container before rendering
+                container.innerHTML = '';
+                
+                // Verify React is available
+                if (typeof React === 'undefined' || typeof ReactDOM === 'undefined') {
+                    throw new Error('React libraries not loaded. Please refresh the page.');
+                }
+                
+                const root = ReactDOM.createRoot(container);
+                root.render(<SmartResumeStudio />);
+                window.smartResumeStudioRoot = root;
+            } catch (error) {
+                console.error('Error rendering Smart Resume Studio:', error);
+                // Display error message in container
+                container.innerHTML = `
+                    <div class="p-8 text-center">
+                        <div class="bg-red-50 border border-red-200 rounded-lg p-6 max-w-md mx-auto">
+                            <h3 class="text-lg font-semibold text-red-800 mb-2">Error Loading Resume Studio</h3>
+                            <p class="text-sm text-red-600 mb-4">${error.message || 'An unexpected error occurred'}</p>
+                            <button 
+                                onclick="window.location.reload()" 
+                                class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                            >
+                                Reload Page
+                            </button>
+                        </div>
+                    </div>
+                `;
             }
         };
 

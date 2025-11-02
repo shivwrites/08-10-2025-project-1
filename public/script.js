@@ -134,17 +134,76 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const mainPaddingWrapper = document.getElementById('main-padding-wrapper');
+    
+    // Helper function to find currently visible content section
+    const getCurrentContentId = () => {
+        for (const [id, section] of Object.entries(contentSections)) {
+            if (section && !section.classList.contains('hidden')) {
+                return id;
+            }
+        }
+        // Also check for work-history-content directly
+        const workHistoryContent = document.getElementById('work-history-content');
+        if (workHistoryContent && !workHistoryContent.classList.contains('hidden')) {
+            return 'work-history';
+        }
+        return null;
+    };
+    
     const showContent = (contentId) => {
+        // Cleanup React components when navigating away
+        const previousContentId = getCurrentContentId();
+        
+        if (previousContentId && previousContentId !== contentId) {
+            // Cleanup Work History Manager
+            if (previousContentId === 'work-history' && typeof window.cleanupWorkHistoryManager === 'function') {
+                window.cleanupWorkHistoryManager();
+            }
+            // Cleanup Smart Resume Studio
+            if (previousContentId === 'resume-studio' && typeof window.cleanupSmartResumeStudio === 'function') {
+                window.cleanupSmartResumeStudio();
+            }
+        }
+
+        // Hide all content sections
         Object.values(contentSections).forEach(section => {
             if (section) section.classList.add('hidden');
         });
+        
+        // Also hide work-history-content if it exists (not in contentSections)
+        const workHistoryContent = document.getElementById('work-history-content');
+        if (workHistoryContent) {
+            workHistoryContent.classList.add('hidden');
+        }
 
         const activeContent = contentSections[contentId];
         if (activeContent) {
             activeContent.classList.remove('hidden');
-             // If showing the upskilling dash, trigger animation
+            
+            // If showing the upskilling dash, trigger animation
             if (contentId === 'upskilling-dash') {
                 animateSkillProgress(65); // Hardcoded value from PRD
+            }
+            
+            // If showing the resume-studio, trigger rendering
+            if (contentId === 'resume-studio') {
+                setTimeout(() => {
+                    if (typeof window.renderSmartResumeStudio === 'function') {
+                        window.renderSmartResumeStudio();
+                    }
+                }, 100);
+            }
+            
+            // If showing the work-history, show it and trigger rendering
+            if (contentId === 'work-history') {
+                if (workHistoryContent) {
+                    workHistoryContent.classList.remove('hidden');
+                }
+                setTimeout(() => {
+                    if (typeof window.renderWorkHistoryManager === 'function') {
+                        window.renderWorkHistoryManager();
+                    }
+                }, 100);
             }
         }
     };
@@ -272,4 +331,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Initialize shortcuts
     renderShortcuts();
+
+    // Global cleanup on page unload
+    window.addEventListener('beforeunload', () => {
+        if (typeof window.cleanupWorkHistoryManager === 'function') {
+            window.cleanupWorkHistoryManager();
+        }
+        if (typeof window.cleanupSmartResumeStudio === 'function') {
+            window.cleanupSmartResumeStudio();
+        }
+    });
 });
