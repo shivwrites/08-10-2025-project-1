@@ -8,6 +8,7 @@
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
         body {
@@ -12798,90 +12799,367 @@ Best regards,
             }
         };
 
+        // Work History Storage Service
+        const WorkHistoryStorage = {
+            supabaseUrl: 'https://bialelscmftlquykreij.supabase.co',
+            supabaseAnonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJpYWxlbHNjbWZ0bHF1eWtyZWlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk4NzgxMTgsImV4cCI6MjA3NTQ1NDExOH0.wUywvxuTxDlgwVi6y8KaT9E64D4iVRKFFoqUx8wAalI',
+            supabaseClient: null,
+            tableName: 'work_history_documents',
+            
+            // Initialize Supabase client
+            init() {
+                if (typeof supabase !== 'undefined') {
+                    this.supabaseClient = supabase.createClient(this.supabaseUrl, this.supabaseAnonKey);
+                }
+            },
+            
+            // Get current user ID
+            async getUserId() {
+                if (!this.supabaseClient) {
+                    this.init();
+                }
+                if (this.supabaseClient) {
+                    try {
+                        const { data: { user } } = await this.supabaseClient.auth.getUser();
+                        return user ? user.id : null;
+                    } catch (error) {
+                        console.warn('Error getting user from Supabase:', error);
+                        return null;
+                    }
+                }
+                return null;
+            },
+            
+            // Get localStorage key for current user
+            getLocalStorageKey(userId) {
+                return userId ? `work_history_documents_${userId}` : 'work_history_documents_guest';
+            },
+            
+            // Get all documents
+            async getAllDocuments() {
+                try {
+                    const userId = await this.getUserId();
+                    const storageKey = this.getLocalStorageKey(userId);
+                    
+                    // Try Supabase first if user is authenticated
+                    if (userId && this.supabaseClient) {
+                        try {
+                            const { data, error } = await this.supabaseClient
+                                .from(this.tableName)
+                                .select('*')
+                                .eq('user_id', userId)
+                                .order('updated_at', { ascending: false });
+                            
+                            if (error) throw error;
+                            
+                            if (data && data.length > 0) {
+                                // Sync to localStorage as backup
+                                localStorage.setItem(storageKey, JSON.stringify(data));
+                                return data.map(doc => this.formatDocument(doc));
+                            }
+                        } catch (supabaseError) {
+                            console.warn('Supabase fetch failed, falling back to localStorage:', supabaseError);
+                        }
+                    }
+                    
+                    // Fallback to localStorage
+                    const stored = localStorage.getItem(storageKey);
+                    if (stored) {
+                        const documents = JSON.parse(stored);
+                        return documents.map(doc => this.formatDocument(doc));
+                    }
+                    
+                    return [];
+                } catch (error) {
+                    console.error('Error getting documents:', error);
+                    return [];
+                }
+            },
+            
+            // Get document by ID
+            async getDocumentById(id) {
+                try {
+                    const userId = await this.getUserId();
+                    const storageKey = this.getLocalStorageKey(userId);
+                    
+                    // Try Supabase first
+                    if (userId && this.supabaseClient) {
+                        try {
+                            const { data, error } = await this.supabaseClient
+                                .from(this.tableName)
+                                .select('*')
+                                .eq('id', id)
+                                .eq('user_id', userId)
+                                .single();
+                            
+                            if (!error && data) {
+                                return this.formatDocument(data);
+                            }
+                        } catch (supabaseError) {
+                            console.warn('Supabase fetch failed, falling back to localStorage:', supabaseError);
+                        }
+                    }
+                    
+                    // Fallback to localStorage
+                    const stored = localStorage.getItem(storageKey);
+                    if (stored) {
+                        const documents = JSON.parse(stored);
+                        const doc = documents.find(d => d.id === id);
+                        return doc ? this.formatDocument(doc) : null;
+                    }
+                    
+                    return null;
+                } catch (error) {
+                    console.error('Error getting document:', error);
+                    return null;
+                }
+            },
+            
+            // Save document (create or update)
+            async saveDocument(document) {
+                try {
+                    const userId = await this.getUserId();
+                    const storageKey = this.getLocalStorageKey(userId);
+                    
+                    // Validate document
+                    if (!document.title || !document.type) {
+                        throw new Error('Title and type are required');
+                    }
+                    
+                    // Validate type
+                    const validTypes = ['resume', 'tailored-resume', 'application-tailor', 'cover-letter'];
+                    if (!validTypes.includes(document.type)) {
+                        throw new Error('Invalid document type');
+                    }
+                    
+                    // Validate status
+                    if (document.status && !['draft', 'completed'].includes(document.status)) {
+                        throw new Error('Invalid status');
+                    }
+                    
+                    // Validate ATS score
+                    if (document.atsScore !== undefined && document.atsScore !== null) {
+                        const score = parseInt(document.atsScore);
+                        if (isNaN(score) || score < 0 || score > 100) {
+                            throw new Error('ATS score must be between 0 and 100');
+                        }
+                    }
+                    
+                    const now = new Date().toISOString();
+                    const isUpdate = !!document.id;
+                    
+                    const docData = {
+                        title: document.title.trim(),
+                        type: document.type,
+                        content: document.content || '',
+                        job_title: document.jobTitle || '',
+                        company: document.company || '',
+                        status: document.status || 'draft',
+                        ats_score: document.atsScore !== undefined ? parseInt(document.atsScore) : null,
+                        updated_at: now
+                    };
+                    
+                    // Try Supabase first if user is authenticated
+                    if (userId && this.supabaseClient && isUpdate) {
+                        try {
+                            const { data, error } = await this.supabaseClient
+                                .from(this.tableName)
+                                .update({
+                                    ...docData,
+                                    user_id: userId
+                                })
+                                .eq('id', document.id)
+                                .eq('user_id', userId)
+                                .select()
+                                .single();
+                            
+                            if (error) throw error;
+                            
+                            // Sync to localStorage
+                            const stored = localStorage.getItem(storageKey);
+                            const documents = stored ? JSON.parse(stored) : [];
+                            const index = documents.findIndex(d => d.id === document.id);
+                            if (index >= 0) {
+                                documents[index] = { ...data, ...docData, id: data.id };
+                            } else {
+                                documents.push({ ...data, ...docData, id: data.id });
+                            }
+                            localStorage.setItem(storageKey, JSON.stringify(documents));
+                            
+                            return this.formatDocument(data);
+                        } catch (supabaseError) {
+                            console.warn('Supabase update failed, using localStorage:', supabaseError);
+                        }
+                    } else if (userId && this.supabaseClient && !isUpdate) {
+                        try {
+                            const { data, error } = await this.supabaseClient
+                                .from(this.tableName)
+                                .insert({
+                                    ...docData,
+                                    user_id: userId
+                                })
+                                .select()
+                                .single();
+                            
+                            if (error) throw error;
+                            
+                            // Sync to localStorage
+                            const stored = localStorage.getItem(storageKey);
+                            const documents = stored ? JSON.parse(stored) : [];
+                            documents.push({ ...data, ...docData, id: data.id });
+                            localStorage.setItem(storageKey, JSON.stringify(documents));
+                            
+                            return this.formatDocument(data);
+                        } catch (supabaseError) {
+                            console.warn('Supabase insert failed, using localStorage:', supabaseError);
+                        }
+                    }
+                    
+                    // Fallback to localStorage
+                    const stored = localStorage.getItem(storageKey);
+                    const documents = stored ? JSON.parse(stored) : [];
+                    
+                    if (isUpdate) {
+                        const index = documents.findIndex(d => d.id === document.id);
+                        if (index >= 0) {
+                            documents[index] = { ...documents[index], ...docData, id: document.id };
+                        } else {
+                            documents.push({ ...docData, id: document.id, created_at: now });
+                        }
+                    } else {
+                        const newId = `doc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                        documents.push({ ...docData, id: newId, created_at: now });
+                    }
+                    
+                    localStorage.setItem(storageKey, JSON.stringify(documents));
+                    return isUpdate ? 
+                        documents.find(d => d.id === document.id) : 
+                        documents[documents.length - 1];
+                } catch (error) {
+                    console.error('Error saving document:', error);
+                    throw error;
+                }
+            },
+            
+            // Update document
+            async updateDocument(id, updates) {
+                try {
+                    const userId = await this.getUserId();
+                    const doc = await this.getDocumentById(id);
+                    if (!doc) {
+                        throw new Error('Document not found');
+                    }
+                    return await this.saveDocument({ ...doc, ...updates, id });
+                } catch (error) {
+                    console.error('Error updating document:', error);
+                    throw error;
+                }
+            },
+            
+            // Delete document
+            async deleteDocument(id) {
+                try {
+                    const userId = await this.getUserId();
+                    const storageKey = this.getLocalStorageKey(userId);
+                    
+                    // Try Supabase first if user is authenticated
+                    if (userId && this.supabaseClient) {
+                        try {
+                            const { error } = await this.supabaseClient
+                                .from(this.tableName)
+                                .delete()
+                                .eq('id', id)
+                                .eq('user_id', userId);
+                            
+                            if (error) throw error;
+                        } catch (supabaseError) {
+                            console.warn('Supabase delete failed, using localStorage:', supabaseError);
+                        }
+                    }
+                    
+                    // Always update localStorage
+                    const stored = localStorage.getItem(storageKey);
+                    if (stored) {
+                        const documents = JSON.parse(stored);
+                        const filtered = documents.filter(d => d.id !== id);
+                        localStorage.setItem(storageKey, JSON.stringify(filtered));
+                        return true;
+                    }
+                    
+                    return false;
+                } catch (error) {
+                    console.error('Error deleting document:', error);
+                    throw error;
+                }
+            },
+            
+            // Format document from database to component format
+            formatDocument(dbDoc) {
+                return {
+                    id: dbDoc.id,
+                    title: dbDoc.title,
+                    type: dbDoc.type,
+                    content: dbDoc.content || '',
+                    createdAt: dbDoc.created_at || dbDoc.createdAt,
+                    updatedAt: dbDoc.updated_at || dbDoc.updatedAt,
+                    jobTitle: dbDoc.job_title || dbDoc.jobTitle || '',
+                    company: dbDoc.company || '',
+                    status: dbDoc.status || 'draft',
+                    atsScore: dbDoc.ats_score !== null && dbDoc.ats_score !== undefined ? dbDoc.ats_score : dbDoc.atsScore
+                };
+            }
+        };
+        
+        // Initialize storage service
+        WorkHistoryStorage.init();
+
         // Work History Manager React Component
         const WorkHistoryManager = () => {
+            const { useState, useEffect } = React;
+            
             const [activeTab, setActiveTab] = useState('all');
             const [searchQuery, setSearchQuery] = useState('');
             const [sortBy, setSortBy] = useState('date');
             const [filterStatus, setFilterStatus] = useState('all');
+            const [documents, setDocuments] = useState([]);
+            const [isLoading, setIsLoading] = useState(true);
+            const [error, setError] = useState(null);
             
             // Check for light mode
             const isLightMode = !document.documentElement.classList.contains('dark');
 
-            const mockDocuments = [
-                {
-                    id: 1,
-                    title: 'Senior Software Engineer Resume',
-                    type: 'resume',
-                    content: 'Professional resume for senior software engineer position...',
-                    createdAt: '2024-01-15',
-                    updatedAt: '2024-01-20',
-                    jobTitle: 'Senior Software Engineer',
-                    company: 'Tech Corp',
-                    status: 'completed',
-                    atsScore: 95
-                },
-                {
-                    id: 2,
-                    title: 'Marketing Manager Cover Letter',
-                    type: 'cover-letter',
-                    content: 'Cover letter for marketing manager position...',
-                    createdAt: '2024-01-18',
-                    updatedAt: '2024-01-18',
-                    jobTitle: 'Marketing Manager',
-                    company: 'Creative Agency',
-                    status: 'completed',
-                    atsScore: 88
-                },
-                {
-                    id: 3,
-                    title: 'Tailored Resume - Google',
-                    type: 'tailored-resume',
-                    content: 'Tailored resume for Google software engineer position...',
-                    createdAt: '2024-01-22',
-                    updatedAt: '2024-01-22',
-                    jobTitle: 'Software Engineer',
-                    company: 'Google',
-                    status: 'completed',
-                    atsScore: 92
-                },
-                {
-                    id: 4,
-                    title: 'Application Tailor - Microsoft',
-                    type: 'application-tailor',
-                    content: 'Application tailored for Microsoft product manager role...',
-                    createdAt: '2024-01-25',
-                    updatedAt: '2024-01-25',
-                    jobTitle: 'Product Manager',
-                    company: 'Microsoft',
-                    status: 'draft',
-                    atsScore: 76
-                },
-                {
-                    id: 5,
-                    title: 'Data Scientist Resume',
-                    type: 'resume',
-                    content: 'Resume for data scientist position...',
-                    createdAt: '2024-01-28',
-                    updatedAt: '2024-01-28',
-                    jobTitle: 'Data Scientist',
-                    company: 'AI Startup',
-                    status: 'completed',
-                    atsScore: 89
-                },
-                {
-                    id: 6,
-                    title: 'Cover Letter - Amazon',
-                    type: 'cover-letter',
-                    content: 'Cover letter for Amazon solutions architect role...',
-                    createdAt: '2024-01-30',
-                    updatedAt: '2024-01-30',
-                    jobTitle: 'Solutions Architect',
-                    company: 'Amazon',
-                    status: 'draft',
-                    atsScore: 82
-                }
-            ];
+            // Load documents on component mount
+            useEffect(() => {
+                let isMounted = true;
+                
+                const loadDocuments = async () => {
+                    try {
+                        setIsLoading(true);
+                        setError(null);
+                        const loadedDocuments = await WorkHistoryStorage.getAllDocuments();
+                        if (isMounted) {
+                            setDocuments(loadedDocuments);
+                        }
+                    } catch (err) {
+                        console.error('Error loading documents:', err);
+                        if (isMounted) {
+                            setError(err.message || 'Failed to load documents');
+                        }
+                    } finally {
+                        if (isMounted) {
+                            setIsLoading(false);
+                        }
+                    }
+                };
+                
+                loadDocuments();
+                
+                // Cleanup function to prevent state updates on unmounted component
+                return () => {
+                    isMounted = false;
+                };
+            }, []);
+
 
             const getTypeIcon = (type) => {
                 switch (type) {
@@ -12938,7 +13216,7 @@ Best regards,
                 }
             };
 
-            const filteredDocuments = mockDocuments.filter(doc => {
+            const filteredDocuments = documents.filter(doc => {
                 const matchesTab = activeTab === 'all' || 
                     (activeTab === 'resumes' && doc.type === 'resume') ||
                     (activeTab === 'tailored' && (doc.type === 'tailored-resume' || doc.type === 'application-tailor')) ||
@@ -12954,6 +13232,13 @@ Best regards,
                 return matchesTab && matchesSearch && matchesStatus;
             });
 
+            // Helper function to validate and parse date
+            const parseDate = (dateString) => {
+                if (!dateString) return new Date(0);
+                const date = new Date(dateString);
+                return isNaN(date.getTime()) ? new Date(0) : date;
+            };
+
             const sortedDocuments = [...filteredDocuments].sort((a, b) => {
                 switch (sortBy) {
                     case 'title':
@@ -12962,7 +13247,10 @@ Best regards,
                         return a.type.localeCompare(b.type);
                     case 'date':
                     default:
-                        return new Date(b.updatedAt) - new Date(a.updatedAt);
+                        // Fixed: Use getTime() for proper date comparison
+                        const dateA = parseDate(a.updatedAt);
+                        const dateB = parseDate(b.updatedAt);
+                        return dateB.getTime() - dateA.getTime();
                 }
             });
 
@@ -12991,10 +13279,10 @@ Best regards,
             };
 
             const getStats = () => {
-                const resumes = mockDocuments.filter(doc => doc.type === 'resume').length;
-                const tailored = mockDocuments.filter(doc => doc.type === 'tailored-resume' || doc.type === 'application-tailor').length;
-                const coverLetters = mockDocuments.filter(doc => doc.type === 'cover-letter').length;
-                const drafts = mockDocuments.filter(doc => doc.status === 'draft').length;
+                const resumes = documents.filter(doc => doc.type === 'resume').length;
+                const tailored = documents.filter(doc => doc.type === 'tailored-resume' || doc.type === 'application-tailor').length;
+                const coverLetters = documents.filter(doc => doc.type === 'cover-letter').length;
+                const drafts = documents.filter(doc => doc.status === 'draft').length;
                 
                 return { resumes, tailored, coverLetters, drafts };
             };
@@ -13118,10 +13406,48 @@ Best regards,
                         </div>
                     </div>
 
+                    {/* Error State */}
+                    {error && (
+                        <div className={`${isLightMode ? 'bg-red-50 border-red-200' : 'bg-red-900/20 border-red-800/50'} border rounded-2xl p-6`}>
+                            <div className="flex items-center gap-3">
+                                <div className="text-2xl">⚠️</div>
+                                <div>
+                                    <h3 className={`text-lg font-semibold ${isLightMode ? 'text-red-900' : 'text-red-400'} mb-1`}>Error Loading Documents</h3>
+                                    <p className={`text-sm ${isLightMode ? 'text-red-700' : 'text-red-300'}`}>{error}</p>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Loading State */}
+                    {isLoading && !error && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            {[1, 2, 3].map(i => (
+                                <div key={i} className={`${isLightMode ? 'bg-white/30 backdrop-blur-xl border-white/20' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6 animate-pulse`}>
+                                    <div className="flex items-start justify-between mb-4">
+                                        <div className="flex items-center gap-3">
+                                            <div className={`w-10 h-10 rounded-lg ${isLightMode ? 'bg-gray-200' : 'bg-gray-700'}`}></div>
+                                            <div className="flex-1">
+                                                <div className={`h-4 w-32 ${isLightMode ? 'bg-gray-200' : 'bg-gray-700'} rounded mb-2`}></div>
+                                                <div className={`h-3 w-20 ${isLightMode ? 'bg-gray-200' : 'bg-gray-700'} rounded`}></div>
+                                            </div>
+                                        </div>
+                                        <div className={`h-6 w-16 ${isLightMode ? 'bg-gray-200' : 'bg-gray-700'} rounded-full`}></div>
+                                    </div>
+                                    <div className="space-y-3">
+                                        <div className={`h-3 w-full ${isLightMode ? 'bg-gray-200' : 'bg-gray-700'} rounded`}></div>
+                                        <div className={`h-3 w-3/4 ${isLightMode ? 'bg-gray-200' : 'bg-gray-700'} rounded`}></div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
                     {/* Documents Grid */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {sortedDocuments.length > 0 ? (
-                            sortedDocuments.map(doc => (
+                    {!isLoading && !error && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            {sortedDocuments.length > 0 ? (
+                                sortedDocuments.map(doc => (
                                 <div key={doc.id} className={`${isLightMode ? 'bg-white/30 backdrop-blur-xl border-white/20' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6 hover:border-indigo-500/50 transition-all duration-300 hover:scale-105`}>
                                     <div className="flex items-start justify-between mb-4">
                                         <div className="flex items-center gap-3">
@@ -13199,7 +13525,8 @@ Best regards,
                                 <p className={isLightMode ? 'text-gray-500' : 'text-gray-400'}>Try adjusting your search or filters to find what you're looking for.</p>
                             </div>
                         )}
-                    </div>
+                        </div>
+                    )}
                 </div>
             );
         };

@@ -88,9 +88,6 @@ function App() {
       } else if (event.data === 'navigate-to-dashboard') {
         setCurrentPage('dashboard');
         localStorage.setItem('currentPage', 'dashboard');
-      } else if (event.data === 'navigate-to-smart-resume-studio') {
-        setCurrentPage('smart-resume-studio');
-        localStorage.setItem('currentPage', 'smart-resume-studio');
       } else if (event.data && event.data.type === 'dashboard-page-change') {
         // Handle dashboard internal page changes
         const dashboardPage = event.data.page;
@@ -236,24 +233,6 @@ function App() {
       </div>
     );
   }
-
-  if (currentPage === 'smart-resume-studio') {
-    return (
-      <div style={{ width: '100%', height: '100vh', overflow: 'hidden' }}>
-        <iframe
-          src="/smart-resume-studio.html"
-          style={{
-            width: '100%',
-            height: '100%',
-            border: 'none',
-            display: 'block'
-          }}
-          title="Smart Resume Studio"
-        />
-      </div>
-    );
-  }
-
 
   return (
     <div style={{ width: '100%', height: '100vh', overflow: 'hidden' }}>
