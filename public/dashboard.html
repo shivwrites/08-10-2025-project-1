@@ -1928,6 +1928,11 @@
 
             const mainPaddingWrapper = document.getElementById('main-padding-wrapper');
             const showContent = (contentId) => {
+                // Cleanup Work History Manager when navigating away
+                if (contentId !== 'work-history' && window.cleanupWorkHistoryManager) {
+                    window.cleanupWorkHistoryManager();
+                }
+                
                 Object.values(contentSections).forEach(section => {
                     if (section) section.classList.add('hidden');
                 });
@@ -13130,7 +13135,7 @@ Best regards,
 
         // Work History Manager React Component
         const WorkHistoryManager = () => {
-            const { useState, useEffect } = React;
+            const { useState, useEffect, useRef } = React;
             
             const [activeTab, setActiveTab] = useState('all');
             const [searchQuery, setSearchQuery] = useState('');
@@ -13152,11 +13157,30 @@ Best regards,
             // Check for light mode
             const isLightMode = !document.documentElement.classList.contains('dark');
             
-            // Toast notification system
+            // Toast notification system with cleanup
+            const toastTimeoutRef = React.useRef(null);
+            
             const showToast = (message, type = 'success') => {
+                // Clear existing timeout
+                if (toastTimeoutRef.current) {
+                    clearTimeout(toastTimeoutRef.current);
+                }
+                
                 setToast({ message, type });
-                setTimeout(() => setToast(null), 3000);
+                toastTimeoutRef.current = setTimeout(() => {
+                    setToast(null);
+                    toastTimeoutRef.current = null;
+                }, 3000);
             };
+            
+            // Cleanup toast timeout on unmount
+            useEffect(() => {
+                return () => {
+                    if (toastTimeoutRef.current) {
+                        clearTimeout(toastTimeoutRef.current);
+                    }
+                };
+            }, []);
             
             // Debounce search query
             useEffect(() => {
@@ -14447,29 +14471,59 @@ Best regards,
             );
         };
 
+        // Global storage for React root to prevent memory leaks
+        window.workHistoryRoot = null;
+        
+        // Cleanup function for Work History Manager
+        window.cleanupWorkHistoryManager = function() {
+            if (window.workHistoryRoot) {
+                try {
+                    window.workHistoryRoot.unmount();
+                    window.workHistoryRoot = null;
+                    console.log('Work History Manager cleaned up successfully');
+                } catch (error) {
+                    console.error('Error cleaning up Work History Manager:', error);
+                    window.workHistoryRoot = null;
+                }
+            }
+        };
+        
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            window.cleanupWorkHistoryManager();
+        });
+        
         // Render Work History Manager when work-history-content is shown
         window.renderWorkHistoryManager = function() {
             console.log('renderWorkHistoryManager called');
             const container = document.getElementById('work-history-container');
             console.log('Container found:', container);
             
-            if (container) {
-                try {
-                    console.log('Creating React root and rendering Work History Manager...');
-                    const root = ReactDOM.createRoot(container);
-                    root.render(<WorkHistoryManager />);
-                    console.log('Work History Manager rendered successfully');
-                } catch (error) {
-                    console.error('Error rendering Work History Manager:', error);
-                    container.innerHTML = `
-                        <div class="text-center py-20">
-                            <h2 class="text-2xl font-bold text-slate-800 mb-4">Error loading Work History Manager</h2>
-                            <p class="text-slate-600">${error.message}</p>
-                        </div>
-                    `;
-                }
-            } else {
+            if (!container) {
                 console.error('work-history-container not found');
+                return;
+            }
+            
+            try {
+                // Cleanup existing root if any
+                if (window.workHistoryRoot) {
+                    console.log('Cleaning up existing Work History Manager root...');
+                    window.cleanupWorkHistoryManager();
+                }
+                
+                console.log('Creating React root and rendering Work History Manager...');
+                window.workHistoryRoot = ReactDOM.createRoot(container);
+                window.workHistoryRoot.render(<WorkHistoryManager />);
+                console.log('Work History Manager rendered successfully');
+            } catch (error) {
+                console.error('Error rendering Work History Manager:', error);
+                container.innerHTML = `
+                    <div class="text-center py-20">
+                        <h2 class="text-2xl font-bold text-slate-800 mb-4">Error loading Work History Manager</h2>
+                        <p class="text-slate-600">${error.message}</p>
+                    </div>
+                `;
+                window.workHistoryRoot = null;
             }
         };
 
