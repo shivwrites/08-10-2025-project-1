@@ -1452,9 +1452,11 @@
                 </div>
             </div>
             
-            <div id="resume-studio-content" class="hidden h-full">
+            <div id="resume-studio-content" class="max-w-7xl mx-auto hidden">
                     <!-- Smart Resume Studio Content -->
-                <div id="resume-studio-container" class="h-full"></div>
+                <div class="pt-6 pb-6">
+                    <div id="resume-studio-container"></div>
+                </div>
             </div>
             
             <div id="app-tailor-content" class="max-w-7xl mx-auto hidden">
@@ -4643,9 +4645,9 @@ Software Engineer | StartupXYZ | 2020-2022
             }
 
             return (
-                <div className="h-full flex flex-col bg-slate-50">
+                <div className="flex flex-col bg-slate-50">
                     {/* Top Toolbar */}
-                    <div className="bg-white/70 backdrop-blur-xl border-b border-white/30 px-6 py-4 flex items-center justify-between shadow-sm">
+                    <div className="bg-white/70 backdrop-blur-xl border-b border-white/30 px-6 py-4 flex items-center justify-between shadow-sm flex-shrink-0">
                         <div className="flex items-center gap-4">
                             <button
                                 onClick={() => setStep('list')}
@@ -4709,9 +4711,9 @@ Software Engineer | StartupXYZ | 2020-2022
                     </div>
 
                     {/* Main Content Area */}
-                    <div className="flex-1 flex overflow-hidden">
+                    <div className="flex-1 flex overflow-hidden min-h-0">
                         {/* Left Sidebar */}
-                        <div className="w-80 bg-white/70 backdrop-blur-xl border-r border-white/30 p-6 overflow-y-auto custom-scrollbar">
+                        <div className="w-80 bg-white/70 backdrop-blur-xl border-r border-white/30 p-6 overflow-y-auto custom-scrollbar flex-shrink-0">
                             <div className="grid grid-cols-2 gap-3 mb-6">
                                 <button
                                     onClick={() => setActiveTab('design')}
