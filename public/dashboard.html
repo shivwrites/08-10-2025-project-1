@@ -17883,10 +17883,23 @@ Best regards,
             const [activeGenerator, setActiveGenerator] = useState(null);
             const [selectedTopic, setSelectedTopic] = useState(null);
             const [generatedContent, setGeneratedContent] = useState(null);
-            const [isGenerating, setIsGenerating] = useState(false);
             const [contentType, setContentType] = useState('post');
             const [tone, setTone] = useState('professional');
             const [selectedPlatforms, setSelectedPlatforms] = useState([]);
+            const [contentHistory, setContentHistory] = useState([]);
+            const [error, setError] = useState(null);
+            const [isLoading, setIsLoading] = useState(false);
+            const [formData, setFormData] = useState({});
+            
+            // Calendar & Post Queue state
+            const [scheduledPosts, setScheduledPosts] = useState([]);
+            const [selectedDate, setSelectedDate] = useState(new Date());
+            const [calendarView, setCalendarView] = useState('month'); // 'month', 'week', 'day'
+            const [selectedPost, setSelectedPost] = useState(null);
+            const [timezone, setTimezone] = useState(Intl.DateTimeFormat().resolvedOptions().timeZone);
+            const [showScheduleModal, setShowScheduleModal] = useState(false);
+            const [scheduleModalContent, setScheduleModalContent] = useState(null);
+            const [queueFilters, setQueueFilters] = useState({ status: 'all', platform: 'all', search: '' });
             
             // Check for light mode
             const isLightMode = !document.documentElement.classList.contains('dark');
@@ -18023,23 +18036,2143 @@ Best regards,
                 return 'text-red-400';
             };
 
-            const handleGenerateContent = (suggestion) => {
-                setIsGenerating(true);
-                setSelectedTopic(suggestion);
-                
-                // Simulate content generation
-                setTimeout(() => {
-                    setGeneratedContent({
-                        title: suggestion.topic,
-                        content: `Here's a thought-provoking perspective on ${suggestion.topic.toLowerCase()}. ${suggestion.angle}...`,
-                        platforms: suggestion.platforms
+            // OpenAI API helper function for content generation
+            const callOpenAIForContent = async (prompt, options = {}) => {
+                try {
+                    const apiKey = window.getOpenAIKey ? window.getOpenAIKey() : null;
+                    if (!apiKey) {
+                        throw new Error('OpenAI API key not found. Please set it in Settings > Integrations.');
+                    }
+
+                    const {
+                        model = 'gpt-4o-mini',
+                        temperature = 0.7,
+                        maxTokens = 2000,
+                        contentType = 'post'
+                    } = options;
+
+                    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${apiKey}`
+                        },
+                        body: JSON.stringify({
+                            model,
+                            messages: [
+                                {
+                                    role: 'user',
+                                    content: prompt
+                                }
+                            ],
+                            temperature,
+                            max_tokens: maxTokens
+                        })
                     });
-                    setIsGenerating(false);
-                }, 2000);
+
+                    if (!response.ok) {
+                        const errorData = await response.json().catch(() => ({ error: { message: 'Unknown error' } }));
+                        throw new Error(errorData.error?.message || `API error: ${response.status}`);
+                    }
+
+                    const data = await response.json();
+                    const content = data.choices[0]?.message?.content;
+                    
+                    if (!content) {
+                        throw new Error('No response from OpenAI');
+                    }
+
+                    return content.trim();
+                } catch (error) {
+                    console.error('Error calling OpenAI API:', error);
+                    throw error;
+                }
+            };
+
+            // Content storage utilities
+            const CONTENT_STORAGE_KEY = 'content_engine_generated_content';
+
+            const saveContentToHistory = (contentData) => {
+                try {
+                    const history = loadContentHistory();
+                    const newContent = {
+                        id: Date.now(),
+                        type: contentData.type,
+                        title: contentData.title || 'Untitled Content',
+                        content: contentData.content,
+                        metadata: {
+                            topic: contentData.metadata?.topic || '',
+                            platforms: contentData.metadata?.platforms || [],
+                            tone: contentData.metadata?.tone || 'professional',
+                            timestamp: Date.now()
+                        }
+                    };
+                    history.unshift(newContent);
+                    // Keep only last 100 items
+                    const limitedHistory = history.slice(0, 100);
+                    localStorage.setItem(CONTENT_STORAGE_KEY, JSON.stringify(limitedHistory));
+                    setContentHistory(limitedHistory);
+                    return newContent;
+                } catch (error) {
+                    console.error('Error saving content:', error);
+                    if (error.name === 'QuotaExceededError') {
+                        throw new Error('Storage quota exceeded. Please delete some old content.');
+                    }
+                    throw error;
+                }
+            };
+
+            const loadContentHistory = () => {
+                try {
+                    const stored = localStorage.getItem(CONTENT_STORAGE_KEY);
+                    return stored ? JSON.parse(stored) : [];
+                } catch (error) {
+                    console.error('Error loading content history:', error);
+                    return [];
+                }
+            };
+
+            const deleteContentFromHistory = (id) => {
+                try {
+                    const history = loadContentHistory();
+                    const filtered = history.filter(item => item.id !== id);
+                    localStorage.setItem(CONTENT_STORAGE_KEY, JSON.stringify(filtered));
+                    setContentHistory(filtered);
+                } catch (error) {
+                    console.error('Error deleting content:', error);
+                    throw error;
+                }
+            };
+
+            // Load content history on mount
+            React.useEffect(() => {
+                const history = loadContentHistory();
+                setContentHistory(history);
+            }, []);
+
+            // Scheduling storage utilities
+            const SCHEDULED_POSTS_STORAGE_KEY = 'content_engine_scheduled_posts';
+
+            const saveScheduledPost = (postData) => {
+                try {
+                    const posts = loadScheduledPosts();
+                    const newPost = {
+                        id: postData.id || Date.now(),
+                        content: postData.content,
+                        title: postData.title || postData.content.substring(0, 50) + '...',
+                        platform: postData.platform,
+                        scheduledDate: postData.scheduledDate,
+                        status: postData.status || 'draft',
+                        contentType: postData.contentType || 'post',
+                        metadata: {
+                            originalContentId: postData.metadata?.originalContentId || null,
+                            tone: postData.metadata?.tone || 'professional',
+                            visibility: postData.metadata?.visibility || 'PUBLIC',
+                            retryCount: postData.metadata?.retryCount || 0,
+                            errorMessage: postData.metadata?.errorMessage || null,
+                            publishedAt: postData.metadata?.publishedAt || null,
+                            createdAt: postData.metadata?.createdAt || new Date().toISOString()
+                        }
+                    };
+                    posts.push(newPost);
+                    // Sort by scheduled date
+                    posts.sort((a, b) => new Date(a.scheduledDate) - new Date(b.scheduledDate));
+                    localStorage.setItem(SCHEDULED_POSTS_STORAGE_KEY, JSON.stringify(posts));
+                    setScheduledPosts(posts);
+                    return newPost;
+                } catch (error) {
+                    console.error('Error saving scheduled post:', error);
+                    if (error.name === 'QuotaExceededError') {
+                        throw new Error('Storage quota exceeded. Please delete some old posts.');
+                    }
+                    throw error;
+                }
+            };
+
+            const loadScheduledPosts = () => {
+                try {
+                    const stored = localStorage.getItem(SCHEDULED_POSTS_STORAGE_KEY);
+                    return stored ? JSON.parse(stored) : [];
+                } catch (error) {
+                    console.error('Error loading scheduled posts:', error);
+                    return [];
+                }
+            };
+
+            const deleteScheduledPost = (id) => {
+                try {
+                    const posts = loadScheduledPosts();
+                    const filtered = posts.filter(post => post.id !== id);
+                    localStorage.setItem(SCHEDULED_POSTS_STORAGE_KEY, JSON.stringify(filtered));
+                    setScheduledPosts(filtered);
+                } catch (error) {
+                    console.error('Error deleting scheduled post:', error);
+                    throw error;
+                }
+            };
+
+            const updateScheduledPost = (id, updates) => {
+                try {
+                    const posts = loadScheduledPosts();
+                    const index = posts.findIndex(post => post.id === id);
+                    if (index === -1) {
+                        throw new Error('Post not found');
+                    }
+                    posts[index] = { ...posts[index], ...updates };
+                    if (updates.metadata) {
+                        posts[index].metadata = { ...posts[index].metadata, ...updates.metadata };
+                    }
+                    // Re-sort by scheduled date
+                    posts.sort((a, b) => new Date(a.scheduledDate) - new Date(b.scheduledDate));
+                    localStorage.setItem(SCHEDULED_POSTS_STORAGE_KEY, JSON.stringify(posts));
+                    setScheduledPosts(posts);
+                    return posts[index];
+                } catch (error) {
+                    console.error('Error updating scheduled post:', error);
+                    throw error;
+                }
+            };
+
+            // Load scheduled posts on mount
+            React.useEffect(() => {
+                const posts = loadScheduledPosts();
+                setScheduledPosts(posts);
+            }, []);
+
+            const handleGenerateContent = (suggestion) => {
+                // Navigate to generator tab and pre-fill form
+                setActiveTab('generator');
+                setActiveGenerator('post-generator'); // Default to post generator
+                setSelectedTopic(suggestion);
+                setFormData({
+                    topic: suggestion.topic,
+                    angle: suggestion.angle,
+                    platforms: suggestion.platforms,
+                    contentType: suggestion.contentType,
+                    tone: 'professional'
+                });
+                setSelectedPlatforms(suggestion.platforms);
+                setContentType(suggestion.contentType.toLowerCase().includes('post') ? 'post' : 'article');
             };
 
             const handleGeneratorSelect = (generator) => {
                 setActiveGenerator(generator);
+                setGeneratedContent(null);
+                setError(null);
+                setFormData({});
+            };
+
+            // Content generation functions for each generator type
+            const generatePost = async (formData) => {
+                const { topic, targetAudience = 'professionals', tone, platforms = [], contentLength = 'medium' } = formData;
+                
+                if (!topic || topic.trim() === '') {
+                    throw new Error('Topic is required');
+                }
+
+                const lengthGuide = {
+                    short: '200-300 words',
+                    medium: '400-600 words',
+                    long: '800-1000 words'
+                };
+
+                const platformConstraints = platforms.length > 0 
+                    ? `Optimized for: ${platforms.join(', ')}. ` 
+                    : '';
+
+                const prompt = `Create a professional ${tone} social media post about "${topic}".
+
+${platformConstraints}Target audience: ${targetAudience}.
+
+Length: ${lengthGuide[contentLength] || lengthGuide.medium}.
+
+Requirements:
+- Engaging and thought-provoking
+- Professional ${tone} tone
+- Include a clear value proposition
+- Use appropriate formatting (hashtags, line breaks)
+- Make it shareable and actionable
+
+Generate only the post content, no additional commentary:`;
+
+                return await callOpenAIForContent(prompt, {
+                    temperature: 0.7,
+                    maxTokens: contentLength === 'long' ? 3000 : contentLength === 'short' ? 1000 : 2000
+                });
+            };
+
+            const generateComment = async (formData) => {
+                const { originalPost, context = '', tone } = formData;
+                
+                if (!originalPost || originalPost.trim() === '') {
+                    throw new Error('Original post text is required');
+                }
+
+                const prompt = `Generate a thoughtful, professional ${tone} comment responding to this social media post:
+
+"${originalPost}"
+
+${context ? `Context: ${context}` : ''}
+
+Requirements:
+- Be respectful and professional
+- Add value to the conversation
+- ${tone === 'conversational' ? 'Engage naturally' : 'Maintain professional tone'}
+- Keep it concise (50-150 words)
+- Show thoughtfulness and expertise
+
+Generate 3 different comment variations, numbered 1, 2, and 3. Each should have a slightly different angle or perspective:`;
+
+                return await callOpenAIForContent(prompt, {
+                    temperature: 0.8,
+                    maxTokens: 800
+                });
+            };
+
+            const generateCarousel = async (formData) => {
+                const { topic, numberOfSlides = 5, platform = 'LinkedIn' } = formData;
+                
+                if (!topic || topic.trim() === '') {
+                    throw new Error('Topic is required');
+                }
+
+                if (numberOfSlides < 3 || numberOfSlides > 10) {
+                    throw new Error('Number of slides must be between 3 and 10');
+                }
+
+                const prompt = `Create a ${numberOfSlides}-slide carousel content series about "${topic}" for ${platform}.
+
+Format each slide as:
+Slide 1: [Title/Headline]
+Slide 2: [Content]
+...
+Slide ${numberOfSlides}: [Conclusion/Call to Action]
+
+Requirements:
+- Each slide should be concise (1-2 sentences or bullet points)
+- Progressive narrative that builds on each slide
+- Engaging and informative
+- Include a strong hook in slide 1
+- End with a clear call to action
+- Make it visually structured (suitable for carousel format)
+
+Generate the carousel content with clear slide numbering:`;
+
+                return await callOpenAIForContent(prompt, {
+                    temperature: 0.7,
+                    maxTokens: 2500
+                });
+            };
+
+            const generateRepurposedContent = async (formData) => {
+                const { originalContent, targetFormat, targetPlatform = 'LinkedIn' } = formData;
+                
+                if (!originalContent || originalContent.trim() === '') {
+                    throw new Error('Original content is required');
+                }
+
+                const formatGuidelines = {
+                    post: 'a concise social media post (200-400 words)',
+                    carousel: 'a 5-slide carousel format',
+                    thread: 'a Twitter/X thread format with numbered tweets',
+                    article: 'an article format (500-800 words)'
+                };
+
+                const prompt = `Repurpose this content into ${formatGuidelines[targetFormat] || 'a new format'} for ${targetPlatform}:
+
+Original Content:
+"${originalContent}"
+
+Requirements:
+- Maintain the core message and value
+- Adapt to ${targetFormat} format
+- Optimize for ${targetPlatform} audience
+- Make it fresh and engaging
+- Preserve key insights and information
+- Use appropriate formatting for the platform
+
+Generate the repurposed content:`;
+
+                return await callOpenAIForContent(prompt, {
+                    temperature: 0.7,
+                    maxTokens: targetFormat === 'article' ? 3000 : 2000
+                });
+            };
+
+            // Utility functions for content actions
+            const copyToClipboard = async (text) => {
+                try {
+                    await navigator.clipboard.writeText(text);
+                    return true;
+                } catch (error) {
+                    // Fallback for older browsers
+                    const textArea = document.createElement('textarea');
+                    textArea.value = text;
+                    textArea.style.position = 'fixed';
+                    textArea.style.opacity = '0';
+                    document.body.appendChild(textArea);
+                    textArea.select();
+                    try {
+                        document.execCommand('copy');
+                        document.body.removeChild(textArea);
+                        return true;
+                    } catch (err) {
+                        document.body.removeChild(textArea);
+                        throw new Error('Failed to copy to clipboard');
+                    }
+                }
+            };
+
+            const exportAsTextFile = (content, filename) => {
+                const blob = new Blob([content], { type: 'text/plain' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename || 'content.txt';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            };
+
+            const getWordCount = (text) => {
+                return text.trim().split(/\s+/).filter(word => word.length > 0).length;
+            };
+
+            const getCharacterCount = (text) => {
+                return text.length;
+            };
+
+            // Calendar utility functions
+            const getDaysInMonth = (date) => {
+                return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+            };
+
+            const getFirstDayOfMonth = (date) => {
+                return new Date(date.getFullYear(), date.getMonth(), 1).getDay();
+            };
+
+            const formatDate = (date, format = 'short') => {
+                const d = new Date(date);
+                if (format === 'short') {
+                    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                }
+                return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+            };
+
+            const formatDateTime = (date) => {
+                const d = new Date(date);
+                return d.toLocaleString('en-US', { 
+                    month: 'short', 
+                    day: 'numeric', 
+                    year: 'numeric',
+                    hour: 'numeric',
+                    minute: '2-digit',
+                    hour12: true
+                });
+            };
+
+            const getPostsForDate = (date) => {
+                const dateStr = date.toISOString().split('T')[0];
+                return scheduledPosts.filter(post => {
+                    const postDate = new Date(post.scheduledDate).toISOString().split('T')[0];
+                    return postDate === dateStr;
+                });
+            };
+
+            const getPlatformColor = (platform) => {
+                const colors = {
+                    'LinkedIn': 'blue',
+                    'Twitter': 'cyan',
+                    'Facebook': 'indigo',
+                    'Instagram': 'pink',
+                    'Medium': 'green'
+                };
+                return colors[platform] || 'gray';
+            };
+
+            const getStatusColor = (status) => {
+                const colors = {
+                    'draft': 'gray',
+                    'scheduled': 'yellow',
+                    'published': 'green',
+                    'failed': 'red',
+                    'publishing': 'blue'
+                };
+                return colors[status] || 'gray';
+            };
+
+            // LinkedIn publishing function
+            const publishLinkedInPost = async (post) => {
+                if (!window.LinkedInService) {
+                    throw new Error('LinkedIn service not available');
+                }
+                
+                const profile = window.LinkedInService.getCachedProfile();
+                if (!profile || !profile.id) {
+                    throw new Error('LinkedIn not connected. Please connect your LinkedIn account first.');
+                }
+                
+                try {
+                    await window.LinkedInService.sharePost(post.content, {
+                        visibility: post.metadata.visibility || 'PUBLIC'
+                    });
+                    return { success: true };
+                } catch (error) {
+                    console.error('Error publishing LinkedIn post:', error);
+                    throw error;
+                }
+            };
+
+            // Automation system - check for posts to publish
+            React.useEffect(() => {
+                const checkAndPublishPosts = async () => {
+                    const posts = loadScheduledPosts();
+                    const now = new Date();
+                    const postsToPublish = posts.filter(post => 
+                        post.status === 'scheduled' && 
+                        new Date(post.scheduledDate) <= now &&
+                        post.platform === 'LinkedIn' // Only LinkedIn for now
+                    );
+                    
+                    for (const post of postsToPublish) {
+                        try {
+                            // Update status to publishing
+                            updateScheduledPost(post.id, { 
+                                status: 'publishing'
+                            });
+                            
+                            await publishLinkedInPost(post);
+                            
+                            // Update status to published
+                            updateScheduledPost(post.id, {
+                                status: 'published',
+                                metadata: {
+                                    ...post.metadata,
+                                    publishedAt: new Date().toISOString()
+                                }
+                            });
+                            
+                            // Show notification
+                            console.log('Post published successfully:', post.title);
+                        } catch (error) {
+                            // Update status to failed
+                            updateScheduledPost(post.id, {
+                                status: 'failed',
+                                metadata: {
+                                    ...post.metadata,
+                                    retryCount: (post.metadata.retryCount || 0) + 1,
+                                    errorMessage: error.message || 'Failed to publish post'
+                                }
+                            });
+                            
+                            // Show notification
+                            console.error('Failed to publish post:', error.message);
+                        }
+                    }
+                };
+                
+                // Check every minute
+                const interval = setInterval(checkAndPublishPosts, 60000);
+                
+                // Also check immediately
+                checkAndPublishPosts();
+                
+                return () => clearInterval(interval);
+            }, []);
+
+            // Handler to open schedule modal with content
+            const handleScheduleContent = (content) => {
+                setScheduleModalContent(content);
+                setShowScheduleModal(true);
+            };
+
+            // Generator Component: Post Generator
+            const PostGeneratorComponent = ({
+                isLightMode, formData, setFormData, generatedContent, setGeneratedContent,
+                isLoading, setIsLoading, error, setError, generatePost,
+                tone, setTone, selectedPlatforms, setSelectedPlatforms, contentType, setContentType,
+                copyToClipboard, exportAsTextFile, getWordCount, getCharacterCount, saveContentToHistory,
+                handleScheduleContent
+            }) => {
+                const [localFormData, setLocalFormData] = React.useState({
+                    topic: formData.topic || '',
+                    targetAudience: formData.targetAudience || 'professionals',
+                    contentLength: formData.contentLength || 'medium'
+                });
+
+                React.useEffect(() => {
+                    if (formData.topic) {
+                        setLocalFormData(prev => ({ ...prev, topic: formData.topic }));
+                    }
+                }, [formData.topic]);
+
+                const platforms = ['LinkedIn', 'Twitter', 'Facebook', 'Instagram', 'Medium'];
+                const tones = ['professional', 'conversational', 'friendly', 'authoritative', 'inspiring'];
+                const contentLengths = ['short', 'medium', 'long'];
+
+                const handleGenerate = async () => {
+                    setError(null);
+                    if (!localFormData.topic || localFormData.topic.trim() === '') {
+                        setError('Topic is required');
+                        return;
+                    }
+
+                    setIsLoading(true);
+                    try {
+                        const fullFormData = {
+                            ...localFormData,
+                            tone,
+                            platforms: selectedPlatforms
+                        };
+                        const content = await generatePost(fullFormData);
+                        const contentObj = {
+                            title: localFormData.topic,
+                            content: content,
+                            type: 'post-generator',
+                            metadata: {
+                                topic: localFormData.topic,
+                                platforms: selectedPlatforms,
+                                tone: tone,
+                                timestamp: Date.now()
+                            }
+                        };
+                        setGeneratedContent(contentObj);
+                        setFormData(fullFormData);
+                    } catch (err) {
+                        setError(err.message || 'Failed to generate content. Please try again.');
+                    } finally {
+                        setIsLoading(false);
+                    }
+                };
+
+                const handleSave = () => {
+                    if (!generatedContent) return;
+                    try {
+                        saveContentToHistory(generatedContent);
+                        alert('Content saved to history!');
+                    } catch (err) {
+                        setError(err.message);
+                    }
+                };
+
+                const handleCopy = async () => {
+                    if (!generatedContent?.content) return;
+                    try {
+                        await copyToClipboard(generatedContent.content);
+                        alert('Content copied to clipboard!');
+                    } catch (err) {
+                        setError('Failed to copy to clipboard');
+                    }
+                };
+
+                const handleExport = () => {
+                    if (!generatedContent?.content) return;
+                    const filename = `post-${localFormData.topic.replace(/\s+/g, '-').toLowerCase()}-${Date.now()}.txt`;
+                    exportAsTextFile(generatedContent.content, filename);
+                };
+
+                return (
+                    <div className="space-y-6">
+                        {/* Form */}
+                        <div className={`${isLightMode ? 'bg-white/30 border-white/20' : 'bg-gray-800 border-gray-700'} border rounded-xl p-6`}>
+                            <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-4`}>Create Your Post</h3>
+                            
+                            <div className="space-y-4">
+                                <div>
+                                    <label className={`block text-sm font-medium ${isLightMode ? 'text-gray-700' : 'text-gray-300'} mb-2`}>
+                                        Topic *
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={localFormData.topic}
+                                        onChange={(e) => setLocalFormData({ ...localFormData, topic: e.target.value })}
+                                        placeholder="What do you want to write about?"
+                                        className={`w-full px-4 py-2 rounded-lg border ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} focus:outline-none focus:ring-2 focus:ring-purple-500`}
+                                        disabled={isLoading}
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className={`block text-sm font-medium ${isLightMode ? 'text-gray-700' : 'text-gray-300'} mb-2`}>
+                                        Target Audience
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={localFormData.targetAudience}
+                                        onChange={(e) => setLocalFormData({ ...localFormData, targetAudience: e.target.value })}
+                                        placeholder="e.g., professionals, developers, entrepreneurs"
+                                        className={`w-full px-4 py-2 rounded-lg border ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} focus:outline-none focus:ring-2 focus:ring-purple-500`}
+                                        disabled={isLoading}
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className={`block text-sm font-medium ${isLightMode ? 'text-gray-700' : 'text-gray-300'} mb-2`}>
+                                        Tone
+                                    </label>
+                                    <select
+                                        value={tone}
+                                        onChange={(e) => setTone(e.target.value)}
+                                        className={`w-full px-4 py-2 rounded-lg border ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} focus:outline-none focus:ring-2 focus:ring-purple-500`}
+                                        disabled={isLoading}
+                                    >
+                                        {tones.map(t => (
+                                            <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className={`block text-sm font-medium ${isLightMode ? 'text-gray-700' : 'text-gray-300'} mb-2`}>
+                                        Platforms
+                                    </label>
+                                    <div className="flex flex-wrap gap-2">
+                                        {platforms.map(platform => (
+                                            <button
+                                                key={platform}
+                                                type="button"
+                                                onClick={() => {
+                                                    if (selectedPlatforms.includes(platform)) {
+                                                        setSelectedPlatforms(selectedPlatforms.filter(p => p !== platform));
+                                                    } else {
+                                                        setSelectedPlatforms([...selectedPlatforms, platform]);
+                                                    }
+                                                }}
+                                                disabled={isLoading}
+                                                className={`px-3 py-1 rounded-full text-sm transition-all ${
+                                                    selectedPlatforms.includes(platform)
+                                                        ? 'bg-purple-500 text-white'
+                                                        : isLightMode
+                                                            ? 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                                            : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                                                }`}
+                                            >
+                                                {platform}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className={`block text-sm font-medium ${isLightMode ? 'text-gray-700' : 'text-gray-300'} mb-2`}>
+                                        Content Length
+                                    </label>
+                                    <select
+                                        value={localFormData.contentLength}
+                                        onChange={(e) => setLocalFormData({ ...localFormData, contentLength: e.target.value })}
+                                        className={`w-full px-4 py-2 rounded-lg border ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} focus:outline-none focus:ring-2 focus:ring-purple-500`}
+                                        disabled={isLoading}
+                                    >
+                                        {contentLengths.map(len => (
+                                            <option key={len} value={len}>{len.charAt(0).toUpperCase() + len.slice(1)}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <button
+                                    onClick={handleGenerate}
+                                    disabled={isLoading || !localFormData.topic}
+                                    className="w-full bg-gradient-to-r from-purple-500 to-indigo-600 text-white px-6 py-3 rounded-lg font-medium hover:from-purple-600 hover:to-indigo-700 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {isLoading ? (
+                                        <span className="flex items-center justify-center gap-2">
+                                            <span className="animate-spin">🔄</span>
+                                            Generating...
+                                        </span>
+                                    ) : (
+                                        'Generate Post'
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Generated Content */}
+                        {generatedContent && (
+                            <div className={`${isLightMode ? 'bg-white/30 border-white/20' : 'bg-gray-800 border-gray-700'} border rounded-xl p-6`}>
+                                <div className="flex items-center justify-between mb-4">
+                                    <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>Generated Content</h3>
+                                    <div className={`text-sm ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                        {getWordCount(generatedContent.content)} words • {getCharacterCount(generatedContent.content)} characters
+                                    </div>
+                                </div>
+
+                                <div className={`mb-4 p-4 rounded-lg ${isLightMode ? 'bg-gray-50' : 'bg-gray-900'} border ${isLightMode ? 'border-gray-200' : 'border-gray-700'}`}>
+                                    <pre className={`whitespace-pre-wrap ${isLightMode ? 'text-gray-900' : 'text-gray-50'} font-sans text-sm`}>
+                                        {generatedContent.content}
+                                    </pre>
+                                </div>
+
+                                {/* Action Buttons */}
+                                <div className="flex flex-wrap gap-3">
+                                    <button
+                                        onClick={handleCopy}
+                                        className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                                            isLightMode
+                                                ? 'bg-blue-500 text-white hover:bg-blue-600'
+                                                : 'bg-blue-600 text-white hover:bg-blue-700'
+                                        }`}
+                                    >
+                                        📋 Copy
+                                    </button>
+                                    <button
+                                        onClick={handleSave}
+                                        className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                                            isLightMode
+                                                ? 'bg-green-500 text-white hover:bg-green-600'
+                                                : 'bg-green-600 text-white hover:bg-green-700'
+                                        }`}
+                                    >
+                                        💾 Save
+                                    </button>
+                                    <button
+                                        onClick={() => handleScheduleContent && handleScheduleContent(generatedContent)}
+                                        className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                                            isLightMode
+                                                ? 'bg-orange-500 text-white hover:bg-orange-600'
+                                                : 'bg-orange-600 text-white hover:bg-orange-700'
+                                        }`}
+                                    >
+                                        📅 Schedule
+                                    </button>
+                                    <button
+                                        onClick={handleExport}
+                                        className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                                            isLightMode
+                                                ? 'bg-purple-500 text-white hover:bg-purple-600'
+                                                : 'bg-purple-600 text-white hover:bg-purple-700'
+                                        }`}
+                                    >
+                                        📥 Export
+                                    </button>
+                                    <button
+                                        onClick={handleGenerate}
+                                        disabled={isLoading}
+                                        className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                                            isLightMode
+                                                ? 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                                        } disabled:opacity-50`}
+                                    >
+                                        🔄 Regenerate
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                );
+            };
+
+            // Generator Component: Comment Helper
+            const CommentHelperComponent = ({
+                isLightMode, formData, setFormData, generatedContent, setGeneratedContent,
+                isLoading, setIsLoading, error, setError, generateComment,
+                tone, setTone, copyToClipboard, exportAsTextFile, getWordCount, getCharacterCount, saveContentToHistory,
+                handleScheduleContent
+            }) => {
+                const [localFormData, setLocalFormData] = React.useState({
+                    originalPost: formData.originalPost || '',
+                    context: formData.context || ''
+                });
+
+                const tones = ['professional', 'conversational', 'friendly', 'supportive', 'thoughtful'];
+
+                const handleGenerate = async () => {
+                    setError(null);
+                    if (!localFormData.originalPost || localFormData.originalPost.trim() === '') {
+                        setError('Original post text is required');
+                        return;
+                    }
+
+                    setIsLoading(true);
+                    try {
+                        const fullFormData = {
+                            ...localFormData,
+                            tone
+                        };
+                        const content = await generateComment(fullFormData);
+                        const contentObj = {
+                            title: 'Comment Response',
+                            content: content,
+                            type: 'comment-helper',
+                            metadata: {
+                                topic: 'Comment Response',
+                                platforms: [],
+                                tone: tone,
+                                timestamp: Date.now()
+                            }
+                        };
+                        setGeneratedContent(contentObj);
+                        setFormData(fullFormData);
+                    } catch (err) {
+                        setError(err.message || 'Failed to generate comment. Please try again.');
+                    } finally {
+                        setIsLoading(false);
+                    }
+                };
+
+                const handleCopy = async (text) => {
+                    try {
+                        await copyToClipboard(text);
+                        alert('Comment copied to clipboard!');
+                    } catch (err) {
+                        setError('Failed to copy to clipboard');
+                    }
+                };
+
+                const handleSave = () => {
+                    if (!generatedContent) return;
+                    try {
+                        saveContentToHistory(generatedContent);
+                        alert('Content saved to history!');
+                    } catch (err) {
+                        setError(err.message);
+                    }
+                };
+
+                // Parse multiple comments from generated content
+                const parseComments = (content) => {
+                    if (!content) return [];
+                    const lines = content.split('\n');
+                    const comments = [];
+                    let currentComment = '';
+                    let currentNum = null;
+
+                    lines.forEach(line => {
+                        const numMatch = line.match(/^(\d+)\.?\s*(.*)/);
+                        if (numMatch) {
+                            if (currentNum !== null && currentComment.trim()) {
+                                comments.push({ number: currentNum, text: currentComment.trim() });
+                            }
+                            currentNum = parseInt(numMatch[1]);
+                            currentComment = numMatch[2];
+                        } else if (line.trim() && currentNum !== null) {
+                            currentComment += ' ' + line.trim();
+                        }
+                    });
+
+                    if (currentNum !== null && currentComment.trim()) {
+                        comments.push({ number: currentNum, text: currentComment.trim() });
+                    }
+
+                    return comments.length > 0 ? comments : [{ number: 1, text: content }];
+                };
+
+                const comments = generatedContent ? parseComments(generatedContent.content) : [];
+
+                return (
+                    <div className="space-y-6">
+                        {/* Form */}
+                        <div className={`${isLightMode ? 'bg-white/30 border-white/20' : 'bg-gray-800 border-gray-700'} border rounded-xl p-6`}>
+                            <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-4`}>Generate Comment Response</h3>
+                            
+                            <div className="space-y-4">
+                                <div>
+                                    <label className={`block text-sm font-medium ${isLightMode ? 'text-gray-700' : 'text-gray-300'} mb-2`}>
+                                        Original Post Text *
+                                    </label>
+                                    <textarea
+                                        value={localFormData.originalPost}
+                                        onChange={(e) => setLocalFormData({ ...localFormData, originalPost: e.target.value })}
+                                        placeholder="Paste the post you want to respond to..."
+                                        rows="4"
+                                        className={`w-full px-4 py-2 rounded-lg border ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} focus:outline-none focus:ring-2 focus:ring-purple-500`}
+                                        disabled={isLoading}
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className={`block text-sm font-medium ${isLightMode ? 'text-gray-700' : 'text-gray-300'} mb-2`}>
+                                        Additional Context (Optional)
+                                    </label>
+                                    <textarea
+                                        value={localFormData.context}
+                                        onChange={(e) => setLocalFormData({ ...localFormData, context: e.target.value })}
+                                        placeholder="Any additional context or angle you want to emphasize..."
+                                        rows="2"
+                                        className={`w-full px-4 py-2 rounded-lg border ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} focus:outline-none focus:ring-2 focus:ring-purple-500`}
+                                        disabled={isLoading}
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className={`block text-sm font-medium ${isLightMode ? 'text-gray-700' : 'text-gray-300'} mb-2`}>
+                                        Tone
+                                    </label>
+                                    <select
+                                        value={tone}
+                                        onChange={(e) => setTone(e.target.value)}
+                                        className={`w-full px-4 py-2 rounded-lg border ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} focus:outline-none focus:ring-2 focus:ring-purple-500`}
+                                        disabled={isLoading}
+                                    >
+                                        {tones.map(t => (
+                                            <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <button
+                                    onClick={handleGenerate}
+                                    disabled={isLoading || !localFormData.originalPost}
+                                    className="w-full bg-gradient-to-r from-blue-500 to-cyan-600 text-white px-6 py-3 rounded-lg font-medium hover:from-blue-600 hover:to-cyan-700 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {isLoading ? (
+                                        <span className="flex items-center justify-center gap-2">
+                                            <span className="animate-spin">🔄</span>
+                                            Generating...
+                                        </span>
+                                    ) : (
+                                        'Generate Comments'
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Generated Comments */}
+                        {generatedContent && comments.length > 0 && (
+                            <div className={`${isLightMode ? 'bg-white/30 border-white/20' : 'bg-gray-800 border-gray-700'} border rounded-xl p-6`}>
+                                <div className="flex items-center justify-between mb-4">
+                                    <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>Generated Comment Options</h3>
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={() => handleScheduleContent && handleScheduleContent(generatedContent)}
+                                            className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                                                isLightMode
+                                                    ? 'bg-orange-500 text-white hover:bg-orange-600'
+                                                    : 'bg-orange-600 text-white hover:bg-orange-700'
+                                            }`}
+                                        >
+                                            📅 Schedule
+                                        </button>
+                                        <button
+                                            onClick={handleSave}
+                                            className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                                                isLightMode
+                                                    ? 'bg-green-500 text-white hover:bg-green-600'
+                                                    : 'bg-green-600 text-white hover:bg-green-700'
+                                            }`}
+                                        >
+                                            💾 Save All
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-4">
+                                    {comments.map((comment, index) => (
+                                        <div key={index} className={`${isLightMode ? 'bg-gray-50' : 'bg-gray-900'} border ${isLightMode ? 'border-gray-200' : 'border-gray-700'} rounded-lg p-4`}>
+                                            <div className="flex items-start justify-between mb-2">
+                                                <span className={`text-sm font-medium ${isLightMode ? 'text-purple-600' : 'text-purple-400'}`}>
+                                                    Option {comment.number}
+                                                </span>
+                                                <button
+                                                    onClick={() => handleCopy(comment.text)}
+                                                    className={`px-3 py-1 rounded-lg text-sm font-medium transition-all ${
+                                                        isLightMode
+                                                            ? 'bg-blue-500 text-white hover:bg-blue-600'
+                                                            : 'bg-blue-600 text-white hover:bg-blue-700'
+                                                    }`}
+                                                >
+                                                    📋 Copy
+                                                </button>
+                                            </div>
+                                            <p className={`${isLightMode ? 'text-gray-900' : 'text-gray-50'} text-sm whitespace-pre-wrap`}>
+                                                {comment.text}
+                                            </p>
+                                            <div className={`mt-2 text-xs ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                {getWordCount(comment.text)} words • {getCharacterCount(comment.text)} characters
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                );
+            };
+
+            // Generator Component: Carousel Maker
+            const CarouselMakerComponent = ({
+                isLightMode, formData, setFormData, generatedContent, setGeneratedContent,
+                isLoading, setIsLoading, error, setError, generateCarousel,
+                copyToClipboard, exportAsTextFile, getWordCount, getCharacterCount, saveContentToHistory,
+                handleScheduleContent
+            }) => {
+                const [localFormData, setLocalFormData] = React.useState({
+                    topic: formData.topic || '',
+                    numberOfSlides: formData.numberOfSlides || 5,
+                    platform: formData.platform || 'LinkedIn'
+                });
+
+                React.useEffect(() => {
+                    if (formData.topic) {
+                        setLocalFormData(prev => ({ ...prev, topic: formData.topic }));
+                    }
+                }, [formData.topic]);
+
+                const platforms = ['LinkedIn', 'Instagram', 'Twitter', 'Facebook'];
+
+                const handleGenerate = async () => {
+                    setError(null);
+                    if (!localFormData.topic || localFormData.topic.trim() === '') {
+                        setError('Topic is required');
+                        return;
+                    }
+
+                    setIsLoading(true);
+                    try {
+                        const content = await generateCarousel(localFormData);
+                        const contentObj = {
+                            title: localFormData.topic,
+                            content: content,
+                            type: 'carousel-maker',
+                            metadata: {
+                                topic: localFormData.topic,
+                                platforms: [localFormData.platform],
+                                tone: 'professional',
+                                timestamp: Date.now()
+                            }
+                        };
+                        setGeneratedContent(contentObj);
+                        setFormData(localFormData);
+                    } catch (err) {
+                        setError(err.message || 'Failed to generate carousel. Please try again.');
+                    } finally {
+                        setIsLoading(false);
+                    }
+                };
+
+                const handleSave = () => {
+                    if (!generatedContent) return;
+                    try {
+                        saveContentToHistory(generatedContent);
+                        alert('Content saved to history!');
+                    } catch (err) {
+                        setError(err.message);
+                    }
+                };
+
+                const handleCopy = async () => {
+                    if (!generatedContent?.content) return;
+                    try {
+                        await copyToClipboard(generatedContent.content);
+                        alert('Carousel content copied to clipboard!');
+                    } catch (err) {
+                        setError('Failed to copy to clipboard');
+                    }
+                };
+
+                const handleExport = () => {
+                    if (!generatedContent?.content) return;
+                    const filename = `carousel-${localFormData.topic.replace(/\s+/g, '-').toLowerCase()}-${Date.now()}.txt`;
+                    exportAsTextFile(generatedContent.content, filename);
+                };
+
+                // Parse slides from content
+                const parseSlides = (content) => {
+                    if (!content) return [];
+                    const slideRegex = /Slide\s+(\d+):?\s*(.*?)(?=Slide\s+\d+:|$)/gis;
+                    const matches = [...content.matchAll(slideRegex)];
+                    return matches.map(match => ({
+                        number: parseInt(match[1]),
+                        content: match[2].trim()
+                    }));
+                };
+
+                const slides = generatedContent ? parseSlides(generatedContent.content) : [];
+
+                return (
+                    <div className="space-y-6">
+                        {/* Form */}
+                        <div className={`${isLightMode ? 'bg-white/30 border-white/20' : 'bg-gray-800 border-gray-700'} border rounded-xl p-6`}>
+                            <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-4`}>Create Carousel</h3>
+                            
+                            <div className="space-y-4">
+                                <div>
+                                    <label className={`block text-sm font-medium ${isLightMode ? 'text-gray-700' : 'text-gray-300'} mb-2`}>
+                                        Topic *
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={localFormData.topic}
+                                        onChange={(e) => setLocalFormData({ ...localFormData, topic: e.target.value })}
+                                        placeholder="What topic should the carousel cover?"
+                                        className={`w-full px-4 py-2 rounded-lg border ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} focus:outline-none focus:ring-2 focus:ring-purple-500`}
+                                        disabled={isLoading}
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className={`block text-sm font-medium ${isLightMode ? 'text-gray-700' : 'text-gray-300'} mb-2`}>
+                                        Number of Slides (3-10)
+                                    </label>
+                                    <input
+                                        type="number"
+                                        min="3"
+                                        max="10"
+                                        value={localFormData.numberOfSlides}
+                                        onChange={(e) => setLocalFormData({ ...localFormData, numberOfSlides: parseInt(e.target.value) || 5 })}
+                                        className={`w-full px-4 py-2 rounded-lg border ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} focus:outline-none focus:ring-2 focus:ring-purple-500`}
+                                        disabled={isLoading}
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className={`block text-sm font-medium ${isLightMode ? 'text-gray-700' : 'text-gray-300'} mb-2`}>
+                                        Platform
+                                    </label>
+                                    <select
+                                        value={localFormData.platform}
+                                        onChange={(e) => setLocalFormData({ ...localFormData, platform: e.target.value })}
+                                        className={`w-full px-4 py-2 rounded-lg border ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} focus:outline-none focus:ring-2 focus:ring-purple-500`}
+                                        disabled={isLoading}
+                                    >
+                                        {platforms.map(p => (
+                                            <option key={p} value={p}>{p}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <button
+                                    onClick={handleGenerate}
+                                    disabled={isLoading || !localFormData.topic}
+                                    className="w-full bg-gradient-to-r from-purple-500 to-pink-600 text-white px-6 py-3 rounded-lg font-medium hover:from-purple-600 hover:to-pink-700 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {isLoading ? (
+                                        <span className="flex items-center justify-center gap-2">
+                                            <span className="animate-spin">🔄</span>
+                                            Generating...
+                                        </span>
+                                    ) : (
+                                        'Generate Carousel'
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Generated Carousel */}
+                        {generatedContent && (
+                            <div className={`${isLightMode ? 'bg-white/30 border-white/20' : 'bg-gray-800 border-gray-700'} border rounded-xl p-6`}>
+                                <div className="flex items-center justify-between mb-4">
+                                    <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>Carousel Content</h3>
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={handleCopy}
+                                            className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                                                isLightMode
+                                                    ? 'bg-blue-500 text-white hover:bg-blue-600'
+                                                    : 'bg-blue-600 text-white hover:bg-blue-700'
+                                            }`}
+                                        >
+                                            📋 Copy
+                                        </button>
+                                        <button
+                                            onClick={() => handleScheduleContent && handleScheduleContent(generatedContent)}
+                                            className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                                                isLightMode
+                                                    ? 'bg-orange-500 text-white hover:bg-orange-600'
+                                                    : 'bg-orange-600 text-white hover:bg-orange-700'
+                                            }`}
+                                        >
+                                            📅 Schedule
+                                        </button>
+                                        <button
+                                            onClick={handleSave}
+                                            className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                                                isLightMode
+                                                    ? 'bg-green-500 text-white hover:bg-green-600'
+                                                    : 'bg-green-600 text-white hover:bg-green-700'
+                                            }`}
+                                        >
+                                            💾 Save
+                                        </button>
+                                        <button
+                                            onClick={handleExport}
+                                            className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                                                isLightMode
+                                                    ? 'bg-purple-500 text-white hover:bg-purple-600'
+                                                    : 'bg-purple-600 text-white hover:bg-purple-700'
+                                            }`}
+                                        >
+                                            📥 Export
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {slides.length > 0 ? (
+                                    <div className="space-y-3">
+                                        {slides.map((slide, index) => (
+                                            <div key={index} className={`${isLightMode ? 'bg-gray-50' : 'bg-gray-900'} border ${isLightMode ? 'border-gray-200' : 'border-gray-700'} rounded-lg p-4`}>
+                                                <div className="flex items-center gap-2 mb-2">
+                                                    <span className={`text-sm font-bold ${isLightMode ? 'text-purple-600' : 'text-purple-400'}`}>
+                                                        Slide {slide.number}
+                                                    </span>
+                                                </div>
+                                                <p className={`${isLightMode ? 'text-gray-900' : 'text-gray-50'} text-sm whitespace-pre-wrap`}>
+                                                    {slide.content}
+                                                </p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className={`p-4 rounded-lg ${isLightMode ? 'bg-gray-50' : 'bg-gray-900'} border ${isLightMode ? 'border-gray-200' : 'border-gray-700'}`}>
+                                        <pre className={`whitespace-pre-wrap ${isLightMode ? 'text-gray-900' : 'text-gray-50'} font-sans text-sm`}>
+                                            {generatedContent.content}
+                                        </pre>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                );
+            };
+
+            // Generator Component: Repurpose Content
+            const RepurposeContentComponent = ({
+                isLightMode, formData, setFormData, generatedContent, setGeneratedContent,
+                isLoading, setIsLoading, error, setError, generateRepurposedContent,
+                copyToClipboard, exportAsTextFile, getWordCount, getCharacterCount, saveContentToHistory,
+                handleScheduleContent
+            }) => {
+                const [localFormData, setLocalFormData] = React.useState({
+                    originalContent: formData.originalContent || '',
+                    targetFormat: formData.targetFormat || 'post',
+                    targetPlatform: formData.targetPlatform || 'LinkedIn'
+                });
+
+                const formats = [
+                    { value: 'post', label: 'Social Media Post' },
+                    { value: 'carousel', label: 'Carousel' },
+                    { value: 'thread', label: 'Twitter/X Thread' },
+                    { value: 'article', label: 'Article' }
+                ];
+
+                const platforms = ['LinkedIn', 'Twitter', 'Facebook', 'Instagram', 'Medium'];
+
+                const handleGenerate = async () => {
+                    setError(null);
+                    if (!localFormData.originalContent || localFormData.originalContent.trim() === '') {
+                        setError('Original content is required');
+                        return;
+                    }
+
+                    setIsLoading(true);
+                    try {
+                        const content = await generateRepurposedContent(localFormData);
+                        const contentObj = {
+                            title: `Repurposed ${localFormData.targetFormat}`,
+                            content: content,
+                            type: 'repurpose-content',
+                            metadata: {
+                                topic: localFormData.targetFormat,
+                                platforms: [localFormData.targetPlatform],
+                                tone: 'professional',
+                                timestamp: Date.now()
+                            }
+                        };
+                        setGeneratedContent(contentObj);
+                        setFormData(localFormData);
+                    } catch (err) {
+                        setError(err.message || 'Failed to repurpose content. Please try again.');
+                    } finally {
+                        setIsLoading(false);
+                    }
+                };
+
+                const handleSave = () => {
+                    if (!generatedContent) return;
+                    try {
+                        saveContentToHistory(generatedContent);
+                        alert('Content saved to history!');
+                    } catch (err) {
+                        setError(err.message);
+                    }
+                };
+
+                const handleCopy = async () => {
+                    if (!generatedContent?.content) return;
+                    try {
+                        await copyToClipboard(generatedContent.content);
+                        alert('Content copied to clipboard!');
+                    } catch (err) {
+                        setError('Failed to copy to clipboard');
+                    }
+                };
+
+                const handleExport = () => {
+                    if (!generatedContent?.content) return;
+                    const filename = `repurposed-${localFormData.targetFormat}-${Date.now()}.txt`;
+                    exportAsTextFile(generatedContent.content, filename);
+                };
+
+                return (
+                    <div className="space-y-6">
+                        {/* Form */}
+                        <div className={`${isLightMode ? 'bg-white/30 border-white/20' : 'bg-gray-800 border-gray-700'} border rounded-xl p-6`}>
+                            <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-4`}>Repurpose Content</h3>
+                            
+                            <div className="space-y-4">
+                                <div>
+                                    <label className={`block text-sm font-medium ${isLightMode ? 'text-gray-700' : 'text-gray-300'} mb-2`}>
+                                        Original Content *
+                                    </label>
+                                    <textarea
+                                        value={localFormData.originalContent}
+                                        onChange={(e) => setLocalFormData({ ...localFormData, originalContent: e.target.value })}
+                                        placeholder="Paste your existing content here..."
+                                        rows="6"
+                                        className={`w-full px-4 py-2 rounded-lg border ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} focus:outline-none focus:ring-2 focus:ring-purple-500`}
+                                        disabled={isLoading}
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className={`block text-sm font-medium ${isLightMode ? 'text-gray-700' : 'text-gray-300'} mb-2`}>
+                                        Target Format
+                                    </label>
+                                    <select
+                                        value={localFormData.targetFormat}
+                                        onChange={(e) => setLocalFormData({ ...localFormData, targetFormat: e.target.value })}
+                                        className={`w-full px-4 py-2 rounded-lg border ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} focus:outline-none focus:ring-2 focus:ring-purple-500`}
+                                        disabled={isLoading}
+                                    >
+                                        {formats.map(f => (
+                                            <option key={f.value} value={f.value}>{f.label}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className={`block text-sm font-medium ${isLightMode ? 'text-gray-700' : 'text-gray-300'} mb-2`}>
+                                        Target Platform
+                                    </label>
+                                    <select
+                                        value={localFormData.targetPlatform}
+                                        onChange={(e) => setLocalFormData({ ...localFormData, targetPlatform: e.target.value })}
+                                        className={`w-full px-4 py-2 rounded-lg border ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} focus:outline-none focus:ring-2 focus:ring-purple-500`}
+                                        disabled={isLoading}
+                                    >
+                                        {platforms.map(p => (
+                                            <option key={p} value={p}>{p}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <button
+                                    onClick={handleGenerate}
+                                    disabled={isLoading || !localFormData.originalContent}
+                                    className="w-full bg-gradient-to-r from-green-500 to-emerald-600 text-white px-6 py-3 rounded-lg font-medium hover:from-green-600 hover:to-emerald-700 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {isLoading ? (
+                                        <span className="flex items-center justify-center gap-2">
+                                            <span className="animate-spin">🔄</span>
+                                            Repurposing...
+                                        </span>
+                                    ) : (
+                                        'Repurpose Content'
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Generated Content */}
+                        {generatedContent && (
+                            <div className={`${isLightMode ? 'bg-white/30 border-white/20' : 'bg-gray-800 border-gray-700'} border rounded-xl p-6`}>
+                                <div className="flex items-center justify-between mb-4">
+                                    <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>Repurposed Content</h3>
+                                    <div className={`text-sm ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                        {getWordCount(generatedContent.content)} words • {getCharacterCount(generatedContent.content)} characters
+                                    </div>
+                                </div>
+
+                                <div className={`mb-4 p-4 rounded-lg ${isLightMode ? 'bg-gray-50' : 'bg-gray-900'} border ${isLightMode ? 'border-gray-200' : 'border-gray-700'}`}>
+                                    <pre className={`whitespace-pre-wrap ${isLightMode ? 'text-gray-900' : 'text-gray-50'} font-sans text-sm`}>
+                                        {generatedContent.content}
+                                    </pre>
+                                </div>
+
+                                {/* Action Buttons */}
+                                <div className="flex flex-wrap gap-3">
+                                    <button
+                                        onClick={handleCopy}
+                                        className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                                            isLightMode
+                                                ? 'bg-blue-500 text-white hover:bg-blue-600'
+                                                : 'bg-blue-600 text-white hover:bg-blue-700'
+                                        }`}
+                                    >
+                                        📋 Copy
+                                    </button>
+                                    <button
+                                        onClick={() => handleScheduleContent && handleScheduleContent(generatedContent)}
+                                        className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                                            isLightMode
+                                                ? 'bg-orange-500 text-white hover:bg-orange-600'
+                                                : 'bg-orange-600 text-white hover:bg-orange-700'
+                                        }`}
+                                    >
+                                        📅 Schedule
+                                    </button>
+                                    <button
+                                        onClick={handleSave}
+                                        className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                                            isLightMode
+                                                ? 'bg-green-500 text-white hover:bg-green-600'
+                                                : 'bg-green-600 text-white hover:bg-green-700'
+                                        }`}
+                                    >
+                                        💾 Save
+                                    </button>
+                                    <button
+                                        onClick={handleExport}
+                                        className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                                            isLightMode
+                                                ? 'bg-purple-500 text-white hover:bg-purple-600'
+                                                : 'bg-purple-600 text-white hover:bg-purple-700'
+                                        }`}
+                                    >
+                                        📥 Export
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                );
+            };
+
+            // Schedule Modal Component
+            const ScheduleModal = ({ isOpen, onClose, content, isLightMode, editingPost }) => {
+                const [scheduleForm, setScheduleForm] = React.useState({
+                    content: content?.content || '',
+                    title: content?.title || '',
+                    platform: 'LinkedIn',
+                    date: new Date().toISOString().split('T')[0],
+                    time: new Date().toTimeString().slice(0, 5),
+                    status: 'draft',
+                    visibility: 'PUBLIC',
+                    contentType: content?.type || 'post-generator'
+                });
+                const [validationError, setValidationError] = React.useState(null);
+
+                React.useEffect(() => {
+                    if (content) {
+                        if (editingPost) {
+                            // Editing existing post
+                            const scheduledDate = new Date(editingPost.scheduledDate);
+                            setScheduleForm({
+                                content: editingPost.content || '',
+                                title: editingPost.title || '',
+                                platform: editingPost.platform || 'LinkedIn',
+                                date: scheduledDate.toISOString().split('T')[0],
+                                time: scheduledDate.toTimeString().slice(0, 5),
+                                status: editingPost.status || 'draft',
+                                visibility: editingPost.metadata?.visibility || 'PUBLIC',
+                                contentType: editingPost.contentType || 'post-generator'
+                            });
+                        } else {
+                            // New post from generated content
+                            setScheduleForm({
+                                content: content.content || '',
+                                title: content.title || '',
+                                platform: selectedPlatforms[0] || 'LinkedIn',
+                                date: new Date().toISOString().split('T')[0],
+                                time: new Date().toTimeString().slice(0, 5),
+                                status: 'draft',
+                                visibility: 'PUBLIC',
+                                contentType: content.type || 'post-generator'
+                            });
+                        }
+                    }
+                }, [content, editingPost]);
+
+                if (!isOpen) return null;
+
+                const handleSubmit = (e) => {
+                    e.preventDefault();
+                    setValidationError(null);
+
+                    // Validation
+                    if (!scheduleForm.content || scheduleForm.content.trim() === '') {
+                        setValidationError('Content is required');
+                        return;
+                    }
+                    if (!scheduleForm.platform) {
+                        setValidationError('Platform is required');
+                        return;
+                    }
+
+                    const scheduledDateTime = new Date(`${scheduleForm.date}T${scheduleForm.time}`);
+                    const now = new Date();
+                    
+                    if (scheduleForm.status === 'scheduled' && scheduledDateTime <= now) {
+                        setValidationError('Scheduled date must be in the future');
+                        return;
+                    }
+
+                    try {
+                        if (editingPost) {
+                            // Update existing post
+                            updateScheduledPost(editingPost.id, {
+                                content: scheduleForm.content,
+                                title: scheduleForm.title || scheduleForm.content.substring(0, 50) + '...',
+                                platform: scheduleForm.platform,
+                                scheduledDate: scheduledDateTime.toISOString(),
+                                status: scheduleForm.status,
+                                metadata: {
+                                    ...editingPost.metadata,
+                                    visibility: scheduleForm.platform === 'LinkedIn' ? scheduleForm.visibility : 'PUBLIC'
+                                }
+                            });
+                            alert('Post updated successfully!');
+                        } else {
+                            // Create new post
+                            const postData = {
+                                content: scheduleForm.content,
+                                title: scheduleForm.title || scheduleForm.content.substring(0, 50) + '...',
+                                platform: scheduleForm.platform,
+                                scheduledDate: scheduledDateTime.toISOString(),
+                                status: scheduleForm.status,
+                                contentType: scheduleForm.contentType,
+                                metadata: {
+                                    originalContentId: content?.id || null,
+                                    tone: tone || 'professional',
+                                    visibility: scheduleForm.platform === 'LinkedIn' ? scheduleForm.visibility : 'PUBLIC',
+                                    retryCount: 0,
+                                    errorMessage: null,
+                                    createdAt: new Date().toISOString()
+                                }
+                            };
+                            saveScheduledPost(postData);
+                            alert('Post scheduled successfully!');
+                        }
+                        onClose();
+                    } catch (error) {
+                        setValidationError(error.message || 'Failed to schedule post');
+                    }
+                };
+
+                const platforms = ['LinkedIn', 'Twitter', 'Facebook', 'Instagram', 'Medium'];
+
+                return (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
+                        <div className={`${isLightMode ? 'bg-white' : 'bg-gray-800'} rounded-2xl p-8 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto`} onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-between mb-6">
+                                <h2 className={`text-2xl font-bold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                    {editingPost ? 'Edit Scheduled Post' : 'Schedule Post'}
+                                </h2>
+                                <button
+                                    onClick={onClose}
+                                    className={`${isLightMode ? 'text-gray-500 hover:text-gray-700' : 'text-gray-400 hover:text-gray-200'}`}
+                                    aria-label="Close"
+                                >
+                                    ✕
+                                </button>
+                            </div>
+
+                            {validationError && (
+                                <div className={`mb-4 p-3 rounded-lg ${isLightMode ? 'bg-red-50 border-red-200' : 'bg-red-500/20 border-red-500/50'} border`}>
+                                    <p className={`text-sm ${isLightMode ? 'text-red-800' : 'text-red-300'}`}>{validationError}</p>
+                                </div>
+                            )}
+
+                            {/* LinkedIn Connection Warning */}
+                            {scheduleForm.platform === 'LinkedIn' && scheduleForm.status === 'scheduled' && (
+                                <div className={`mb-4 p-3 rounded-lg ${isLightMode ? 'bg-yellow-50 border-yellow-200' : 'bg-yellow-500/20 border-yellow-500/50'} border`}>
+                                    {(() => {
+                                        const linkedInProfile = window.LinkedInService?.getCachedProfile();
+                                        const isConnected = linkedInProfile && linkedInProfile.id;
+                                        return (
+                                            <p className={`text-sm ${isLightMode ? 'text-yellow-800' : 'text-yellow-300'}`}>
+                                                {isConnected 
+                                                    ? '✓ LinkedIn is connected. Posts will auto-publish at the scheduled time.'
+                                                    : '⚠ LinkedIn is not connected. Please connect your LinkedIn account to enable auto-publishing.'}
+                                            </p>
+                                        );
+                                    })()}
+                                </div>
+                            )}
+
+                            <form onSubmit={handleSubmit} className="space-y-4">
+                                <div>
+                                    <label className={`block text-sm font-medium ${isLightMode ? 'text-gray-700' : 'text-gray-300'} mb-2`}>
+                                        Content *
+                                    </label>
+                                    <textarea
+                                        value={scheduleForm.content}
+                                        onChange={(e) => setScheduleForm({ ...scheduleForm, content: e.target.value })}
+                                        rows="6"
+                                        className={`w-full px-4 py-2 rounded-lg border ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} focus:outline-none focus:ring-2 focus:ring-purple-500`}
+                                        required
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className={`block text-sm font-medium ${isLightMode ? 'text-gray-700' : 'text-gray-300'} mb-2`}>
+                                        Platform *
+                                    </label>
+                                    <select
+                                        value={scheduleForm.platform}
+                                        onChange={(e) => setScheduleForm({ ...scheduleForm, platform: e.target.value })}
+                                        className={`w-full px-4 py-2 rounded-lg border ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} focus:outline-none focus:ring-2 focus:ring-purple-500`}
+                                        required
+                                    >
+                                        {platforms.map(p => (
+                                            <option key={p} value={p}>{p}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className={`block text-sm font-medium ${isLightMode ? 'text-gray-700' : 'text-gray-300'} mb-2`}>
+                                            Date *
+                                        </label>
+                                        <input
+                                            type="date"
+                                            value={scheduleForm.date}
+                                            onChange={(e) => setScheduleForm({ ...scheduleForm, date: e.target.value })}
+                                            min={new Date().toISOString().split('T')[0]}
+                                            className={`w-full px-4 py-2 rounded-lg border ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} focus:outline-none focus:ring-2 focus:ring-purple-500`}
+                                            required
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className={`block text-sm font-medium ${isLightMode ? 'text-gray-700' : 'text-gray-300'} mb-2`}>
+                                            Time *
+                                        </label>
+                                        <input
+                                            type="time"
+                                            value={scheduleForm.time}
+                                            onChange={(e) => setScheduleForm({ ...scheduleForm, time: e.target.value })}
+                                            className={`w-full px-4 py-2 rounded-lg border ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} focus:outline-none focus:ring-2 focus:ring-purple-500`}
+                                            required
+                                        />
+                                    </div>
+                                </div>
+
+                                {scheduleForm.platform === 'LinkedIn' && (
+                                    <div>
+                                        <label className={`block text-sm font-medium ${isLightMode ? 'text-gray-700' : 'text-gray-300'} mb-2`}>
+                                            Visibility
+                                        </label>
+                                        <select
+                                            value={scheduleForm.visibility}
+                                            onChange={(e) => setScheduleForm({ ...scheduleForm, visibility: e.target.value })}
+                                            className={`w-full px-4 py-2 rounded-lg border ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} focus:outline-none focus:ring-2 focus:ring-purple-500`}
+                                        >
+                                            <option value="PUBLIC">Public</option>
+                                            <option value="CONNECTIONS">Connections Only</option>
+                                        </select>
+                                    </div>
+                                )}
+
+                                <div>
+                                    <label className={`block text-sm font-medium ${isLightMode ? 'text-gray-700' : 'text-gray-300'} mb-2`}>
+                                        Status
+                                    </label>
+                                    <select
+                                        value={scheduleForm.status}
+                                        onChange={(e) => setScheduleForm({ ...scheduleForm, status: e.target.value })}
+                                        className={`w-full px-4 py-2 rounded-lg border ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} focus:outline-none focus:ring-2 focus:ring-purple-500`}
+                                    >
+                                        <option value="draft">Draft</option>
+                                        <option value="scheduled">Scheduled</option>
+                                    </select>
+                                </div>
+
+                                <div className="flex gap-3 pt-4">
+                                    <button
+                                        type="button"
+                                        onClick={onClose}
+                                        className={`flex-1 px-4 py-2 rounded-lg font-medium transition-all ${
+                                            isLightMode
+                                                ? 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                                        }`}
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="submit"
+                                        className="flex-1 px-4 py-2 rounded-lg font-medium bg-gradient-to-r from-orange-500 to-red-600 text-white hover:from-orange-600 hover:to-red-700 transition-all"
+                                    >
+                                        {editingPost ? 'Update Post' : 'Schedule Post'}
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                );
+            };
+
+            // Calendar Month View Component
+            const MonthView = ({ selectedDate, setSelectedDate, scheduledPosts, onDateClick, isLightMode }) => {
+                const daysInMonth = getDaysInMonth(selectedDate);
+                const firstDay = getFirstDayOfMonth(selectedDate);
+                const monthName = selectedDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+                
+                const navigateMonth = (direction) => {
+                    const newDate = new Date(selectedDate);
+                    newDate.setMonth(selectedDate.getMonth() + direction);
+                    setSelectedDate(newDate);
+                };
+
+                const goToToday = () => {
+                    setSelectedDate(new Date());
+                };
+
+                const days = [];
+                for (let i = 0; i < firstDay; i++) {
+                    days.push(null);
+                }
+                for (let day = 1; day <= daysInMonth; day++) {
+                    days.push(day);
+                }
+
+                const today = new Date();
+                const isToday = (day) => {
+                    return day === today.getDate() &&
+                           selectedDate.getMonth() === today.getMonth() &&
+                           selectedDate.getFullYear() === today.getFullYear();
+                };
+
+                const getPostsForDay = (day) => {
+                    if (!day) return [];
+                    const date = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), day);
+                    return getPostsForDate(date);
+                };
+
+                return (
+                    <div className={`${isLightMode ? 'bg-white/30 border-white/20' : 'bg-gray-800 border-gray-700'} border rounded-xl p-6`}>
+                        <div className="flex items-center justify-between mb-6">
+                            <h3 className={`text-xl font-bold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>{monthName}</h3>
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={() => navigateMonth(-1)}
+                                    className={`px-3 py-1 rounded-lg ${isLightMode ? 'bg-gray-200 hover:bg-gray-300' : 'bg-gray-700 hover:bg-gray-600'} transition-colors`}
+                                >
+                                    ←
+                                </button>
+                                <button
+                                    onClick={goToToday}
+                                    className={`px-3 py-1 rounded-lg ${isLightMode ? 'bg-gray-200 hover:bg-gray-300' : 'bg-gray-700 hover:bg-gray-600'} transition-colors text-sm`}
+                                >
+                                    Today
+                                </button>
+                                <button
+                                    onClick={() => navigateMonth(1)}
+                                    className={`px-3 py-1 rounded-lg ${isLightMode ? 'bg-gray-200 hover:bg-gray-300' : 'bg-gray-700 hover:bg-gray-600'} transition-colors`}
+                                >
+                                    →
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-7 gap-2">
+                            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+                                <div key={day} className={`text-center font-semibold ${isLightMode ? 'text-gray-700' : 'text-gray-400'} py-2`}>
+                                    {day}
+                                </div>
+                            ))}
+                            {days.map((day, index) => {
+                                const dayPosts = getPostsForDay(day);
+                                return (
+                                    <div
+                                        key={index}
+                                        onClick={() => day && onDateClick && onDateClick(new Date(selectedDate.getFullYear(), selectedDate.getMonth(), day))}
+                                        className={`min-h-[80px] p-2 rounded-lg border cursor-pointer transition-all ${
+                                            !day
+                                                ? 'border-transparent'
+                                                : isToday(day)
+                                                    ? isLightMode
+                                                        ? 'bg-blue-50 border-blue-300'
+                                                        : 'bg-blue-500/20 border-blue-500/50'
+                                                    : isLightMode
+                                                        ? 'bg-gray-50 border-gray-200 hover:border-purple-300'
+                                                        : 'bg-gray-700/50 border-gray-600 hover:border-purple-500/50'
+                                        }`}
+                                    >
+                                        {day && (
+                                            <>
+                                                <div className={`text-sm font-medium mb-1 ${isToday(day) ? 'text-blue-600' : isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                    {day}
+                                                </div>
+                                                {dayPosts.length > 0 && (
+                                                    <div className="flex flex-wrap gap-1">
+                                                        {dayPosts.slice(0, 3).map((post, idx) => {
+                                                            const platformColorClasses = {
+                                                                'LinkedIn': 'bg-blue-500',
+                                                                'Twitter': 'bg-cyan-500',
+                                                                'Facebook': 'bg-indigo-500',
+                                                                'Instagram': 'bg-pink-500',
+                                                                'Medium': 'bg-green-500'
+                                                            };
+                                                            return (
+                                                                <div
+                                                                    key={idx}
+                                                                    className={`w-2 h-2 rounded-full ${platformColorClasses[post.platform] || 'bg-gray-500'}`}
+                                                                    title={`${post.platform}: ${post.title}`}
+                                                                />
+                                                            );
+                                                        })}
+                                                        {dayPosts.length > 3 && (
+                                                            <div className={`text-xs ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                                +{dayPosts.length - 3}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                );
+            };
+
+            // Day View Component
+            const DayView = ({ date, scheduledPosts, onPostClick, isLightMode }) => {
+                const dayPosts = getPostsForDate(date);
+                const dateStr = formatDate(date, 'long');
+
+                return (
+                    <div className={`${isLightMode ? 'bg-white/30 border-white/20' : 'bg-gray-800 border-gray-700'} border rounded-xl p-6`}>
+                        <h3 className={`text-xl font-bold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-4`}>
+                            {dateStr}
+                        </h3>
+                        {dayPosts.length === 0 ? (
+                            <div className={`text-center py-8 ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                No posts scheduled for this day
+                            </div>
+                        ) : (
+                            <div className="space-y-3">
+                                {dayPosts.map((post) => (
+                                    <div
+                                        key={post.id}
+                                        onClick={() => onPostClick && onPostClick(post)}
+                                        className={`${isLightMode ? 'bg-white border-gray-200' : 'bg-gray-900 border-gray-700'} border rounded-lg p-4 hover:border-purple-500/50 transition-all cursor-pointer`}
+                                    >
+                                        <div className="flex items-center justify-between mb-2">
+                                            <div className="flex items-center gap-2">
+                                                {(() => {
+                                                    const platformColorClasses = {
+                                                        'LinkedIn': 'bg-blue-500/20 text-blue-400',
+                                                        'Twitter': 'bg-cyan-500/20 text-cyan-400',
+                                                        'Facebook': 'bg-indigo-500/20 text-indigo-400',
+                                                        'Instagram': 'bg-pink-500/20 text-pink-400',
+                                                        'Medium': 'bg-green-500/20 text-green-400'
+                                                    };
+                                                    const statusColorClasses = {
+                                                        'draft': 'bg-gray-500/20 text-gray-400',
+                                                        'scheduled': 'bg-yellow-500/20 text-yellow-400',
+                                                        'published': 'bg-green-500/20 text-green-400',
+                                                        'failed': 'bg-red-500/20 text-red-400',
+                                                        'publishing': 'bg-blue-500/20 text-blue-400'
+                                                    };
+                                                    return (
+                                                        <>
+                                                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${platformColorClasses[post.platform] || 'bg-gray-500/20 text-gray-400'}`}>
+                                                                {post.platform}
+                                                            </span>
+                                                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusColorClasses[post.status] || 'bg-gray-500/20 text-gray-400'}`}>
+                                                                {post.status}
+                                                            </span>
+                                                        </>
+                                                    );
+                                                })()}
+                                            </div>
+                                            <div className={`text-xs ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                {new Date(post.scheduledDate).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
+                                            </div>
+                                        </div>
+                                        <h4 className={`font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-1`}>{post.title}</h4>
+                                        <p className={`text-sm ${isLightMode ? 'text-gray-600' : 'text-gray-300'} line-clamp-2`}>
+                                            {post.content.substring(0, 150)}...
+                                        </p>
+                                        {post.status === 'failed' && post.metadata?.errorMessage && (
+                                            <div className={`mt-2 p-2 rounded text-xs ${isLightMode ? 'bg-red-50 text-red-800' : 'bg-red-500/20 text-red-300'}`}>
+                                                Error: {post.metadata.errorMessage}
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                );
+            };
+
+            // Post Queue Component
+            const PostQueueComponent = ({ scheduledPosts, filters, setFilters, onPostClick, onDelete, onEdit, isLightMode, publishLinkedInPost, updateScheduledPost }) => {
+                const filteredPosts = scheduledPosts.filter(post => {
+                    if (filters.status !== 'all' && post.status !== filters.status) return false;
+                    if (filters.platform !== 'all' && post.platform !== filters.platform) return false;
+                    if (filters.search && !post.content.toLowerCase().includes(filters.search.toLowerCase()) && !post.title.toLowerCase().includes(filters.search.toLowerCase())) return false;
+                    return true;
+                });
+
+                const platforms = ['all', 'LinkedIn', 'Twitter', 'Facebook', 'Instagram', 'Medium'];
+                const statuses = ['all', 'draft', 'scheduled', 'published', 'failed'];
+
+                return (
+                    <div className={`${isLightMode ? 'bg-white/30 border-white/20' : 'bg-gray-800 border-gray-700'} border rounded-xl p-6`}>
+                        <div className="flex items-center justify-between mb-6">
+                            <h3 className={`text-xl font-bold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>Post Queue</h3>
+                            <div className={`text-sm ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                {filteredPosts.length} {filteredPosts.length === 1 ? 'post' : 'posts'}
+                            </div>
+                        </div>
+
+                        {/* Filters */}
+                        <div className="mb-6 space-y-4">
+                            <div>
+                                <input
+                                    type="text"
+                                    placeholder="Search posts..."
+                                    value={filters.search}
+                                    onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+                                    className={`w-full px-4 py-2 rounded-lg border ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} focus:outline-none focus:ring-2 focus:ring-purple-500`}
+                                />
+                            </div>
+                            <div className="flex flex-wrap gap-3">
+                                <select
+                                    value={filters.status}
+                                    onChange={(e) => setFilters({ ...filters, status: e.target.value })}
+                                    className={`px-3 py-2 rounded-lg border ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} focus:outline-none focus:ring-2 focus:ring-purple-500`}
+                                >
+                                    {statuses.map(s => (
+                                        <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
+                                    ))}
+                                </select>
+                                <select
+                                    value={filters.platform}
+                                    onChange={(e) => setFilters({ ...filters, platform: e.target.value })}
+                                    className={`px-3 py-2 rounded-lg border ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} focus:outline-none focus:ring-2 focus:ring-purple-500`}
+                                >
+                                    {platforms.map(p => (
+                                        <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>
+                                    ))}
+                                </select>
+                                <button
+                                    onClick={() => setFilters({ status: 'all', platform: 'all', search: '' })}
+                                    className={`px-3 py-2 rounded-lg ${isLightMode ? 'bg-gray-200 hover:bg-gray-300' : 'bg-gray-700 hover:bg-gray-600'} transition-colors text-sm`}
+                                >
+                                    Clear Filters
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Posts List */}
+                        <div className="space-y-3 max-h-96 overflow-y-auto">
+                            {filteredPosts.length === 0 ? (
+                                <div className={`text-center py-8 ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                    No posts found
+                                </div>
+                            ) : (
+                                filteredPosts.map((post) => (
+                                    <div
+                                        key={post.id}
+                                        className={`${isLightMode ? 'bg-white border-gray-200' : 'bg-gray-900 border-gray-700'} border rounded-lg p-4 hover:border-purple-500/50 transition-all cursor-pointer`}
+                                        onClick={() => onPostClick && onPostClick(post)}
+                                    >
+                                        <div className="flex items-start justify-between mb-2">
+                                            <div className="flex-1">
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    {(() => {
+                                                        const platformColorClasses = {
+                                                            'LinkedIn': 'bg-blue-500/20 text-blue-400',
+                                                            'Twitter': 'bg-cyan-500/20 text-cyan-400',
+                                                            'Facebook': 'bg-indigo-500/20 text-indigo-400',
+                                                            'Instagram': 'bg-pink-500/20 text-pink-400',
+                                                            'Medium': 'bg-green-500/20 text-green-400'
+                                                        };
+                                                        const statusColorClasses = {
+                                                            'draft': 'bg-gray-500/20 text-gray-400',
+                                                            'scheduled': 'bg-yellow-500/20 text-yellow-400',
+                                                            'published': 'bg-green-500/20 text-green-400',
+                                                            'failed': 'bg-red-500/20 text-red-400',
+                                                            'publishing': 'bg-blue-500/20 text-blue-400'
+                                                        };
+                                                        return (
+                                                            <>
+                                                                <span className={`px-2 py-1 rounded-full text-xs font-medium ${platformColorClasses[post.platform] || 'bg-gray-500/20 text-gray-400'}`}>
+                                                                    {post.platform}
+                                                                </span>
+                                                                <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusColorClasses[post.status] || 'bg-gray-500/20 text-gray-400'}`}>
+                                                                    {post.status}
+                                                                </span>
+                                                            </>
+                                                        );
+                                                    })()}
+                                                </div>
+                                                <h4 className={`font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-1`}>{post.title}</h4>
+                                                <p className={`text-sm ${isLightMode ? 'text-gray-600' : 'text-gray-300'} line-clamp-2`}>
+                                                    {post.content.substring(0, 100)}...
+                                                </p>
+                                                <div className={`text-xs mt-2 ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                    {formatDateTime(post.scheduledDate)}
+                                                </div>
+                                                {post.status === 'failed' && post.metadata?.errorMessage && (
+                                                    <div className={`mt-2 p-2 rounded text-xs ${isLightMode ? 'bg-red-50 text-red-800' : 'bg-red-500/20 text-red-300'}`}>
+                                                        Error: {post.metadata.errorMessage}
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <div className="flex gap-2 ml-4">
+                                                {post.status === 'scheduled' && post.platform === 'LinkedIn' && (
+                                                    <button
+                                                        onClick={async (e) => {
+                                                            e.stopPropagation();
+                                                            if (confirm('Publish this post now?')) {
+                                                                try {
+                                                                    await publishLinkedInPost(post);
+                                                                    updateScheduledPost(post.id, {
+                                                                        status: 'published',
+                                                                        metadata: {
+                                                                            ...post.metadata,
+                                                                            publishedAt: new Date().toISOString()
+                                                                        }
+                                                                    });
+                                                                    alert('Post published successfully!');
+                                                                } catch (error) {
+                                                                    alert(`Failed to publish: ${error.message}`);
+                                                                }
+                                                            }
+                                                        }}
+                                                        className={`px-2 py-1 rounded text-xs ${isLightMode ? 'bg-green-500 text-white hover:bg-green-600' : 'bg-green-600 text-white hover:bg-green-700'}`}
+                                                    >
+                                                        Publish Now
+                                                    </button>
+                                                )}
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        onEdit && onEdit(post);
+                                                    }}
+                                                    className={`px-2 py-1 rounded text-xs ${isLightMode ? 'bg-blue-500 text-white hover:bg-blue-600' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
+                                                >
+                                                    Edit
+                                                </button>
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        if (confirm('Delete this post?')) {
+                                                            onDelete && onDelete(post.id);
+                                                        }
+                                                    }}
+                                                    className={`px-2 py-1 rounded text-xs ${isLightMode ? 'bg-red-500 text-white hover:bg-red-600' : 'bg-red-600 text-white hover:bg-red-700'}`}
+                                                >
+                                                    Delete
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+                );
             };
 
             const tabs = [
@@ -18052,6 +20185,18 @@ Best regards,
 
             return (
                 <div className="space-y-8">
+                    {/* Schedule Modal */}
+                    <ScheduleModal
+                        isOpen={showScheduleModal}
+                        onClose={() => {
+                            setShowScheduleModal(false);
+                            setScheduleModalContent(null);
+                            setSelectedPost(null);
+                        }}
+                        content={scheduleModalContent}
+                        editingPost={selectedPost}
+                        isLightMode={isLightMode}
+                    />
 
                     {/* Navigation Tabs */}
                     <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-2`}>
@@ -18122,10 +20267,10 @@ Best regards,
                                                     </div>
                                                     <button
                                                         onClick={() => handleGenerateContent(suggestion)}
-                                                        disabled={isGenerating}
+                                                        disabled={isLoading}
                                                         className="bg-gradient-to-r from-purple-500 to-indigo-600 text-white px-6 py-2 rounded-lg font-medium hover:from-purple-600 hover:to-indigo-700 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
                                                     >
-                                                        {isGenerating ? (
+                                                        {isLoading ? (
                                                             <div className="flex items-center gap-2">
                                                                 <div className="w-4 h-4 animate-spin">🔄</div>
                                                                 Generating...
@@ -18247,6 +20392,87 @@ Best regards,
 
                     {activeTab === 'generator' && (
                         <div className="space-y-8">
+                            {/* Content History Section */}
+                            {contentHistory.length > 0 && !activeGenerator && (
+                                <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-8`}>
+                                    <div className="flex items-center justify-between mb-6">
+                                        <h2 className={`text-2xl font-bold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>Content History</h2>
+                                        <button
+                                            onClick={() => {
+                                                if (confirm('Clear all content history?')) {
+                                                    localStorage.removeItem(CONTENT_STORAGE_KEY);
+                                                    setContentHistory([]);
+                                                }
+                                            }}
+                                            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                                                isLightMode
+                                                    ? 'bg-red-500 text-white hover:bg-red-600'
+                                                    : 'bg-red-600 text-white hover:bg-red-700'
+                                            }`}
+                                        >
+                                            Clear All
+                                        </button>
+                                    </div>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-96 overflow-y-auto">
+                                        {contentHistory.slice(0, 9).map((item) => (
+                                            <div key={item.id} className={`${isLightMode ? 'bg-white/30 border-white/20' : 'bg-gray-800 border-gray-700'} border rounded-lg p-4 hover:border-purple-500/50 transition-all`}>
+                                                <div className="flex items-start justify-between mb-2">
+                                                    <h3 className={`text-sm font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} truncate`}>{item.title}</h3>
+                                                    <button
+                                                        onClick={() => {
+                                                            if (confirm('Delete this content?')) {
+                                                                deleteContentFromHistory(item.id);
+                                                            }
+                                                        }}
+                                                        className={`text-xs ${isLightMode ? 'text-red-600 hover:text-red-700' : 'text-red-400 hover:text-red-300'}`}
+                                                    >
+                                                        ×
+                                                    </button>
+                                                </div>
+                                                <p className={`text-xs ${isLightMode ? 'text-gray-500' : 'text-gray-400'} mb-2 line-clamp-2`}>
+                                                    {item.content.substring(0, 100)}...
+                                                </p>
+                                                <div className="flex items-center justify-between text-xs">
+                                                    <span className={`${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                        {new Date(item.metadata.timestamp).toLocaleDateString()}
+                                                    </span>
+                                                    <div className="flex gap-2">
+                                                        <button
+                                                            onClick={() => {
+                                                                setGeneratedContent(item);
+                                                                setActiveGenerator(item.type);
+                                                                setFormData({
+                                                                    topic: item.metadata.topic,
+                                                                    platforms: item.metadata.platforms,
+                                                                    tone: item.metadata.tone
+                                                                });
+                                                            }}
+                                                            className={`px-2 py-1 rounded text-xs font-medium transition-all ${
+                                                                isLightMode
+                                                                    ? 'bg-purple-500 text-white hover:bg-purple-600'
+                                                                    : 'bg-purple-600 text-white hover:bg-purple-700'
+                                                            }`}
+                                                        >
+                                                            View
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleScheduleContent(item)}
+                                                            className={`px-2 py-1 rounded text-xs font-medium transition-all ${
+                                                                isLightMode
+                                                                    ? 'bg-orange-500 text-white hover:bg-orange-600'
+                                                                    : 'bg-orange-600 text-white hover:bg-orange-700'
+                                                            }`}
+                                                        >
+                                                            📅
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
                             {!activeGenerator ? (
                                 <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-8`}>
                                     <h2 className={`text-2xl font-bold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-8`}>Choose Your Content Generator</h2>
@@ -18296,30 +20522,132 @@ Best regards,
                                     </div>
                                 </div>
                             ) : (
-                                <div className="bg-[#111827] border border-gray-700/50 rounded-2xl p-8">
+                                <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-8`}>
                                     <div className="flex items-center gap-4 mb-6">
                                         <button
-                                            onClick={() => setActiveGenerator(null)}
-                                            className="text-gray-400 hover:text-white transition-colors duration-200"
+                                            onClick={() => {
+                                                setActiveGenerator(null);
+                                                setGeneratedContent(null);
+                                                setError(null);
+                                            }}
+                                            className={`${isLightMode ? 'text-gray-600 hover:text-gray-900' : 'text-gray-400 hover:text-white'} transition-colors duration-200`}
+                                            aria-label="Back to generators"
                                         >
                                             <div className="w-6 h-6">←</div>
                                         </button>
-                                        <h2 className="text-2xl font-bold text-gray-50">Content Generator</h2>
+                                        <h2 className={`text-2xl font-bold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                            {activeGenerator === 'post-generator' && 'Post Generator'}
+                                            {activeGenerator === 'comment-helper' && 'Comment Helper'}
+                                            {activeGenerator === 'carousel-maker' && 'Carousel Maker'}
+                                            {activeGenerator === 'repurpose-content' && 'Repurpose Content'}
+                                        </h2>
                                     </div>
-                                    
-                                    <div className="text-center py-20">
-                                        <div className="w-16 h-16 bg-gradient-to-r from-purple-500 to-indigo-600 rounded-full flex items-center justify-center mx-auto mb-6">
-                                            <div className="w-8 h-8 text-white text-3xl">✨</div>
+
+                                    {/* Error Display */}
+                                    {error && (
+                                        <div className={`mb-6 p-4 rounded-lg border ${isLightMode ? 'bg-red-50 border-red-200' : 'bg-red-500/20 border-red-500/50'}`}>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-red-500">⚠️</span>
+                                                <p className={`text-sm ${isLightMode ? 'text-red-800' : 'text-red-300'}`}>{error}</p>
+                                            </div>
                                         </div>
-                                        <h3 className="text-xl font-semibold text-gray-50 mb-4">Generator Integration</h3>
-                                        <p className="text-gray-400 mb-8">This would integrate with the selected content generator</p>
-                                        <button
-                                            onClick={() => setActiveGenerator(null)}
-                                            className="bg-gradient-to-r from-purple-500 to-indigo-600 text-white px-6 py-3 rounded-lg font-medium hover:from-purple-600 hover:to-indigo-700 transition-all duration-300"
-                                        >
-                                            Back to Generators
-                                        </button>
-                                    </div>
+                                    )}
+
+                                    {/* Post Generator */}
+                                    {activeGenerator === 'post-generator' && (
+                                        <PostGeneratorComponent
+                                            isLightMode={isLightMode}
+                                            formData={formData}
+                                            setFormData={setFormData}
+                                            generatedContent={generatedContent}
+                                            setGeneratedContent={setGeneratedContent}
+                                            isLoading={isLoading}
+                                            setIsLoading={setIsLoading}
+                                            error={error}
+                                            setError={setError}
+                                            generatePost={generatePost}
+                                            tone={tone}
+                                            setTone={setTone}
+                                            selectedPlatforms={selectedPlatforms}
+                                            setSelectedPlatforms={setSelectedPlatforms}
+                                            contentType={contentType}
+                                            setContentType={setContentType}
+                                            copyToClipboard={copyToClipboard}
+                                            exportAsTextFile={exportAsTextFile}
+                                            getWordCount={getWordCount}
+                                            getCharacterCount={getCharacterCount}
+                                            saveContentToHistory={saveContentToHistory}
+                                            handleScheduleContent={handleScheduleContent}
+                                        />
+                                    )}
+
+                                    {/* Comment Helper */}
+                                    {activeGenerator === 'comment-helper' && (
+                                        <CommentHelperComponent
+                                            isLightMode={isLightMode}
+                                            formData={formData}
+                                            setFormData={setFormData}
+                                            generatedContent={generatedContent}
+                                            setGeneratedContent={setGeneratedContent}
+                                            isLoading={isLoading}
+                                            setIsLoading={setIsLoading}
+                                            error={error}
+                                            setError={setError}
+                                            generateComment={generateComment}
+                                            tone={tone}
+                                            setTone={setTone}
+                                            copyToClipboard={copyToClipboard}
+                                            exportAsTextFile={exportAsTextFile}
+                                            getWordCount={getWordCount}
+                                            getCharacterCount={getCharacterCount}
+                                            saveContentToHistory={saveContentToHistory}
+                                            handleScheduleContent={handleScheduleContent}
+                                        />
+                                    )}
+
+                                    {/* Carousel Maker */}
+                                    {activeGenerator === 'carousel-maker' && (
+                                        <CarouselMakerComponent
+                                            isLightMode={isLightMode}
+                                            formData={formData}
+                                            setFormData={setFormData}
+                                            generatedContent={generatedContent}
+                                            setGeneratedContent={setGeneratedContent}
+                                            isLoading={isLoading}
+                                            setIsLoading={setIsLoading}
+                                            error={error}
+                                            setError={setError}
+                                            generateCarousel={generateCarousel}
+                                            copyToClipboard={copyToClipboard}
+                                            exportAsTextFile={exportAsTextFile}
+                                            getWordCount={getWordCount}
+                                            getCharacterCount={getCharacterCount}
+                                            saveContentToHistory={saveContentToHistory}
+                                            handleScheduleContent={handleScheduleContent}
+                                        />
+                                    )}
+
+                                    {/* Repurpose Content */}
+                                    {activeGenerator === 'repurpose-content' && (
+                                        <RepurposeContentComponent
+                                            isLightMode={isLightMode}
+                                            formData={formData}
+                                            setFormData={setFormData}
+                                            generatedContent={generatedContent}
+                                            setGeneratedContent={setGeneratedContent}
+                                            isLoading={isLoading}
+                                            setIsLoading={setIsLoading}
+                                            error={error}
+                                            setError={setError}
+                                            generateRepurposedContent={generateRepurposedContent}
+                                            copyToClipboard={copyToClipboard}
+                                            exportAsTextFile={exportAsTextFile}
+                                            getWordCount={getWordCount}
+                                            getCharacterCount={getCharacterCount}
+                                            saveContentToHistory={saveContentToHistory}
+                                            handleScheduleContent={handleScheduleContent}
+                                        />
+                                    )}
                                 </div>
                             )}
                         </div>
@@ -18475,19 +20803,157 @@ Best regards,
                     {activeTab === 'calendar' && (
                         <div className="space-y-8">
                             <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-8`}>
-                                <div className="flex items-center gap-3 mb-6">
-                                    <div className="w-10 h-10 bg-orange-500 rounded-lg flex items-center justify-center">
-                                        <div className="w-5 h-5 text-white text-xl">📅</div>
+                                <div className="flex items-center justify-between mb-6">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 bg-orange-500 rounded-lg flex items-center justify-center">
+                                            <div className="w-5 h-5 text-white text-xl">📅</div>
+                                        </div>
+                                        <h2 className={`text-2xl font-bold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>Calendar & Post Queue</h2>
                                     </div>
-                                    <h2 className={`text-2xl font-bold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>Calendar & Post Queue</h2>
+                                    <div className="flex items-center gap-3">
+                                        {/* LinkedIn Connection Status */}
+                                        {(() => {
+                                            const linkedInProfile = window.LinkedInService?.getCachedProfile();
+                                            const isConnected = linkedInProfile && linkedInProfile.id;
+                                            return (
+                                                <div className={`flex items-center gap-2 px-3 py-1 rounded-lg text-sm ${
+                                                    isConnected
+                                                        ? isLightMode ? 'bg-green-100 text-green-700' : 'bg-green-500/20 text-green-400'
+                                                        : isLightMode ? 'bg-yellow-100 text-yellow-700' : 'bg-yellow-500/20 text-yellow-400'
+                                                }`}>
+                                                    <span>{isConnected ? '✓' : '⚠'}</span>
+                                                    <span>{isConnected ? 'LinkedIn Connected' : 'LinkedIn Not Connected'}</span>
+                                                </div>
+                                            );
+                                        })()}
+                                        <button
+                                            onClick={() => setCalendarView('month')}
+                                            className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                                                calendarView === 'month'
+                                                    ? 'bg-gradient-to-r from-orange-500 to-red-600 text-white'
+                                                    : isLightMode
+                                                        ? 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                                            }`}
+                                        >
+                                            Month
+                                        </button>
+                                        <button
+                                            onClick={() => setShowScheduleModal(true)}
+                                            className="px-4 py-2 rounded-lg font-medium bg-gradient-to-r from-orange-500 to-red-600 text-white hover:from-orange-600 hover:to-red-700 transition-all"
+                                        >
+                                            + Schedule Post
+                                        </button>
+                                    </div>
                                 </div>
-                                
-                                <div className="text-center py-20">
-                                    <div className="w-16 h-16 bg-gradient-to-r from-orange-500 to-red-500 rounded-full flex items-center justify-center mx-auto mb-6">
-                                        <div className="w-8 h-8 text-white text-3xl">📅</div>
+
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                                    {/* Calendar View */}
+                                    <div>
+                                        {calendarView === 'month' && (
+                                            <MonthView
+                                                selectedDate={selectedDate}
+                                                setSelectedDate={setSelectedDate}
+                                                scheduledPosts={scheduledPosts}
+                                                onDateClick={(date) => {
+                                                    setSelectedDate(date);
+                                                    setCalendarView('day');
+                                                }}
+                                                isLightMode={isLightMode}
+                                            />
+                                        )}
+                                        {calendarView === 'day' && (
+                                            <div className="space-y-4">
+                                                <button
+                                                    onClick={() => setCalendarView('month')}
+                                                    className={`px-4 py-2 rounded-lg font-medium ${isLightMode ? 'bg-gray-200 hover:bg-gray-300' : 'bg-gray-700 hover:bg-gray-600'} transition-colors mb-4`}
+                                                >
+                                                    ← Back to Month
+                                                </button>
+                                                <DayView
+                                                    date={selectedDate}
+                                                    scheduledPosts={scheduledPosts}
+                                                    onPostClick={(post) => {
+                                                        setSelectedPost(post);
+                                                        setShowScheduleModal(true);
+                                                        setScheduleModalContent({
+                                                            content: post.content,
+                                                            title: post.title,
+                                                            type: post.contentType,
+                                                            id: post.id
+                                                        });
+                                                    }}
+                                                    isLightMode={isLightMode}
+                                                />
+                                            </div>
+                                        )}
                                     </div>
-                                    <h3 className="text-xl font-semibold text-gray-50 mb-4">Calendar Integration</h3>
-                                    <p className="text-gray-400 mb-8">This would show your content calendar and scheduled posts</p>
+
+                                    {/* Post Queue */}
+                                    <div>
+                                        <PostQueueComponent
+                                            scheduledPosts={scheduledPosts}
+                                            filters={queueFilters}
+                                            setFilters={setQueueFilters}
+                                            onPostClick={(post) => {
+                                                setSelectedPost(post);
+                                                setShowScheduleModal(true);
+                                                setScheduleModalContent({
+                                                    content: post.content,
+                                                    title: post.title,
+                                                    type: post.contentType,
+                                                    id: post.id
+                                                });
+                                            }}
+                                            onDelete={(id) => {
+                                                deleteScheduledPost(id);
+                                            }}
+                                            onEdit={(post) => {
+                                                setSelectedPost(post);
+                                                setScheduleModalContent({
+                                                    content: post.content,
+                                                    title: post.title,
+                                                    type: post.contentType,
+                                                    id: post.id
+                                                });
+                                                setShowScheduleModal(true);
+                                            }}
+                                            publishLinkedInPost={publishLinkedInPost}
+                                            updateScheduledPost={updateScheduledPost}
+                                            isLightMode={isLightMode}
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Statistics */}
+                                <div className={`${isLightMode ? 'bg-white/30 border-white/20' : 'bg-gray-800 border-gray-700'} border rounded-xl p-6 mt-6`}>
+                                    <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-4`}>Statistics</h3>
+                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                        <div className="text-center">
+                                            <div className={`text-2xl font-bold ${isLightMode ? 'text-blue-600' : 'text-blue-400'} mb-1`}>
+                                                {scheduledPosts.filter(p => p.status === 'draft').length}
+                                            </div>
+                                            <div className={`text-sm ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>Drafts</div>
+                                        </div>
+                                        <div className="text-center">
+                                            <div className={`text-2xl font-bold ${isLightMode ? 'text-yellow-600' : 'text-yellow-400'} mb-1`}>
+                                                {scheduledPosts.filter(p => p.status === 'scheduled').length}
+                                            </div>
+                                            <div className={`text-sm ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>Scheduled</div>
+                                        </div>
+                                        <div className="text-center">
+                                            <div className={`text-2xl font-bold ${isLightMode ? 'text-green-600' : 'text-green-400'} mb-1`}>
+                                                {scheduledPosts.filter(p => p.status === 'published').length}
+                                            </div>
+                                            <div className={`text-sm ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>Published</div>
+                                        </div>
+                                        <div className="text-center">
+                                            <div className={`text-2xl font-bold ${isLightMode ? 'text-red-600' : 'text-red-400'} mb-1`}>
+                                                {scheduledPosts.filter(p => p.status === 'failed').length}
+                                            </div>
+                                            <div className={`text-sm ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>Failed</div>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>

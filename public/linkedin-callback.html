@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LinkedIn Authentication</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 16px;
+            padding: 40px;
+            max-width: 500px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            text-align: center;
+        }
+        
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #0077b5;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 24px;
+        }
+        
+        p {
+            color: #666;
+            margin-bottom: 20px;
+        }
+        
+        .error {
+            background: #fee;
+            color: #c33;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+        
+        .success {
+            background: #efe;
+            color: #3c3;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+        
+        button {
+            background: #0077b5;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-top: 20px;
+        }
+        
+        button:hover {
+            background: #005885;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div id="loading">
+            <div class="spinner"></div>
+            <h1>Connecting to LinkedIn...</h1>
+            <p>Please wait while we complete your authentication.</p>
+        </div>
+        
+        <div id="success" style="display: none;">
+            <div style="width: 50px; height: 50px; margin: 0 auto 20px; background: #3c3; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+                <span style="color: white; font-size: 30px;">✓</span>
+            </div>
+            <h1>Authentication Successful!</h1>
+            <p>You have successfully connected your LinkedIn account.</p>
+            <button onclick="redirectToDashboard()">Continue to Dashboard</button>
+        </div>
+        
+        <div id="error" style="display: none;">
+            <div style="width: 50px; height: 50px; margin: 0 auto 20px; background: #c33; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+                <span style="color: white; font-size: 30px;">✗</span>
+            </div>
+            <h1>Authentication Failed</h1>
+            <p id="errorMessage"></p>
+            <button onclick="redirectToLogin()">Back to Login</button>
+        </div>
+    </div>
+
+    <script src="/js/linkedin.js"></script>
+    <script>
+        async function handleCallback() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const code = urlParams.get('code');
+            const state = urlParams.get('state');
+            const error = urlParams.get('error');
+            const errorDescription = urlParams.get('error_description');
+
+            // Check for errors from LinkedIn
+            if (error) {
+                showError(errorDescription || error || 'Authentication was cancelled or failed.');
+                return;
+            }
+
+            // Check for authorization code
+            if (!code || !state) {
+                showError('Missing authorization code or state parameter.');
+                return;
+            }
+
+            try {
+                // Handle the callback
+                const result = await LinkedInService.handleCallback(code, state);
+
+                if (result.success) {
+                    // Fetch user profile
+                    try {
+                        await LinkedInService.getProfile();
+                    } catch (profileError) {
+                        console.warn('Could not fetch profile:', profileError);
+                        // Continue anyway - token is saved
+                    }
+
+                    showSuccess();
+                } else {
+                    showError(result.error || 'Failed to complete authentication');
+                }
+            } catch (err) {
+                console.error('Callback error:', err);
+                showError(err.message || 'An unexpected error occurred');
+            }
+        }
+
+        function showSuccess() {
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('error').style.display = 'none';
+            document.getElementById('success').style.display = 'block';
+            
+            // Auto-redirect after 2 seconds
+            setTimeout(() => {
+                redirectToDashboard();
+            }, 2000);
+        }
+
+        function showError(message) {
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('success').style.display = 'none';
+            document.getElementById('error').style.display = 'block';
+            document.getElementById('errorMessage').textContent = message;
+        }
+
+        function redirectToDashboard() {
+            // Send message to parent if in iframe, otherwise navigate
+            if (window.parent && window.parent !== window) {
+                window.parent.postMessage('navigate-to-dashboard', '*');
+            } else {
+                window.location.href = '/';
+            }
+        }
+
+        function redirectToLogin() {
+            if (window.parent && window.parent !== window) {
+                window.parent.postMessage('navigate-to-login', '*');
+            } else {
+                window.location.href = '/login.html';
+            }
+        }
+
+        // Initialize on page load
+        handleCallback();
+    </script>
+</body>
+</html>
+

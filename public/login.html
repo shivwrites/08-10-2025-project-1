@@ -7,6 +7,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
     <script src="/js/supabase.js"></script>
+    <script src="/js/linkedin.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -202,7 +203,7 @@
                                         </svg>
                                         <span>Sign in with Google</span>
                                     </button>
-                                    <button type="button" class="flex w-full items-center justify-center gap-3 rounded-lg border border-gray-300 bg-white py-2.5 px-4 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50">
+                                    <button type="button" onclick="handleLinkedInLogin()" class="flex w-full items-center justify-center gap-3 rounded-lg border border-gray-300 bg-white py-2.5 px-4 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50">
                                         <svg class="h-5 w-5" fill="#0A66C2" aria-hidden="true" viewBox="0 0 24 24">
                                             <path d="M4.98 3.5c0 1.381-1.11 2.5-2.48 2.5s-2.48-1.119-2.48-2.5c0-1.38 1.11-2.5 2.48-2.5s2.48 1.12 2.48 2.5zm.02 4.5h-5v16h5v-16zm7.982 0h-4.968v16h4.969v-8.399c0-4.67 6.029-4.484 6.029 0v8.399h4.988v-10.131c0-7.88-8.922-7.593-11.018-3.714v-2.155z"/>
                                         </svg>
@@ -354,6 +355,16 @@
                 // Reset button state
                 submitButton.textContent = originalText;
                 submitButton.disabled = false;
+            }
+        }
+
+        // LinkedIn login handler
+        function handleLinkedInLogin() {
+            try {
+                LinkedInService.initiateLogin();
+            } catch (error) {
+                console.error('LinkedIn login error:', error);
+                alert('Failed to initiate LinkedIn login: ' + (error.message || 'Unknown error'));
             }
         }
 

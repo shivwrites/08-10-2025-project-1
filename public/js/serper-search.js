@@ -1,8 +1,22 @@
 // Serper.dev Google Search API for HTML pages
-// API Key: a23d832961803015283a15c490e2d650d97dc135
+// API Key is loaded from localStorage (initialized by the React app from .env file)
 
-const SERPER_API_KEY = 'a23d832961803015283a15c490e2d650d97dc135';
 const SERPER_BASE_URL = 'https://google.serper.dev';
+
+/**
+ * Get Serper API key from localStorage or use default
+ */
+function getSerperAPIKey() {
+  // Try to get from localStorage (set by React app initialization)
+  const storedKey = localStorage.getItem('serper_api_key');
+  if (storedKey) {
+    return storedKey;
+  }
+  
+  // Fallback to default key if not found (for backward compatibility)
+  // This will be replaced once the app initializes from .env
+  return 'a23d832961803015283a15c490e2d650d97dc135';
+}
 
 const SerperSearch = {
   /**
@@ -17,10 +31,15 @@ const SerperSearch = {
    */
   async search(query, options = {}) {
     try {
+      const apiKey = getSerperAPIKey();
+      if (!apiKey) {
+        throw new Error('Serper API key not found. Please set it in Settings or ensure it is loaded from environment variables.');
+      }
+      
       const response = await fetch(`${SERPER_BASE_URL}/search`, {
         method: 'POST',
         headers: {
-          'X-API-KEY': SERPER_API_KEY,
+          'X-API-KEY': apiKey,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({

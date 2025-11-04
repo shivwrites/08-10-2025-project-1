@@ -3,6 +3,8 @@
  * Extracts structured data from resume files using OpenAI
  */
 
+import { getOpenAIKey } from './apiKey';
+
 export interface ResumeData {
   personalInfo: {
     name: string;
@@ -77,7 +79,7 @@ export async function extractTextFromFile(file: File): Promise<string> {
  * Parse resume using OpenAI
  */
 export async function parseResumeWithAI(resumeText: string): Promise<ResumeData> {
-  const apiKey = localStorage.getItem('openai_api_key');
+  const apiKey = getOpenAIKey();
   
   if (!apiKey) {
     throw new Error('OpenAI API key not found. Please set it in Settings.');
