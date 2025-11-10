@@ -20146,6 +20146,11 @@ Best regards,
             const [contentStrategy, setContentStrategy] = useState([]);
             const [authorityInsights, setAuthorityInsights] = useState({});
             
+            // Analytics state for dashboard
+            const [dashboardAnalytics, setDashboardAnalytics] = useState(null);
+            const [analyticsLoading, setAnalyticsLoading] = useState(false);
+            const [analyticsError, setAnalyticsError] = useState(null);
+            
             // Check for light mode
             const isLightMode = !document.documentElement.classList.contains('dark');
 
@@ -20776,6 +20781,43 @@ Best regards,
                 const posts = loadScheduledPosts();
                 setScheduledPosts(posts);
             }, []);
+
+            // Load analytics data for dashboard
+            const loadDashboardAnalytics = async () => {
+                try {
+                    setAnalyticsLoading(true);
+                    setAnalyticsError(null);
+                    
+                    // Initialize Supabase client
+                    if (typeof supabase === 'undefined') {
+                        throw new Error('Supabase library not loaded');
+                    }
+                    if (!window.ContentAnalytics) {
+                        throw new Error('ContentAnalytics not available');
+                    }
+                    
+                    const supabaseUrl = 'https://bialelscmftlquykreij.supabase.co';
+                    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJpYWxlbHNjbWZ0bHF1eWtyZWlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk4NzgxMTgsImV4cCI6MjA3NTQ1NDExOH0.wUywvxuTxDlgwVi6y8KaT9E64D4iVRKFFoqUx8wAalI';
+                    const supabaseClient = supabase.createClient(supabaseUrl, supabaseKey);
+                    
+                    const analytics = new window.ContentAnalytics(supabaseClient);
+                    const data = await analytics.getAnalyticsData(30); // Last 30 days
+                    setDashboardAnalytics(data);
+                } catch (err) {
+                    console.error('Error loading dashboard analytics:', err);
+                    setAnalyticsError('Failed to load analytics data');
+                    // Don't set analytics to null, keep previous data if available
+                } finally {
+                    setAnalyticsLoading(false);
+                }
+            };
+
+            // Load analytics when dashboard tab is active
+            React.useEffect(() => {
+                if (activeTab === 'dashboard') {
+                    loadDashboardAnalytics();
+                }
+            }, [activeTab]);
 
             const handleGenerateContent = (suggestion) => {
                 // Navigate to generator tab and pre-fill form
@@ -23261,6 +23303,67 @@ Generate the repurposed content:`;
             };
 
             // Calculate dashboard metrics from real data
+            // Helper functions for analytics display
+            const formatNumber = (num) => {
+                if (!num && num !== 0) return '0';
+                if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+                if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+                return num.toString();
+            };
+
+            const formatPercentage = (num) => {
+                if (!num && num !== 0) return '0%';
+                return num.toFixed(1) + '%';
+            };
+
+            // Mini sparkline chart component for engagement trends
+            const MiniSparkline = ({ data, color = '#8b5cf6', height = 40 }) => {
+                if (!data || data.length === 0) {
+                    return (
+                        <div className={`text-center py-2 text-xs ${isLightMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                            No data
+                        </div>
+                    );
+                }
+
+                const maxValue = Math.max(...data.map(d => d.engagement || d.views || 0), 1);
+                const width = 200;
+                const padding = 4;
+                const chartWidth = width - padding * 2;
+                const chartHeight = height - padding * 2;
+
+                const points = data.map((d, i) => {
+                    const x = padding + (i / (data.length - 1 || 1)) * chartWidth;
+                    const y = padding + chartHeight - ((d.engagement || d.views || 0) / maxValue) * chartHeight;
+                    return `${x},${y}`;
+                }).join(' ');
+
+                return (
+                    <svg width={width} height={height} className="overflow-visible">
+                        <polyline
+                            points={points}
+                            fill="none"
+                            stroke={color}
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                        />
+                        {points.split(' ').map((point, i) => {
+                            const [x, y] = point.split(',').map(Number);
+                            return (
+                                <circle
+                                    key={i}
+                                    cx={x}
+                                    cy={y}
+                                    r="2"
+                                    fill={color}
+                                />
+                            );
+                        })}
+                    </svg>
+                );
+            };
+
             const calculateDashboardMetrics = React.useMemo(() => {
                 const now = new Date();
                 const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -23444,6 +23547,186 @@ Generate the repurposed content:`;
                     }))
                     .sort((a, b) => b.timestamp - a.timestamp);
             }, [contentHistory]);
+
+            // Get recent content with performance metrics
+            const recentContentPerformance = React.useMemo(() => {
+                if (!dashboardAnalytics || !contentHistory) return [];
+                
+                // Get recent content from history (last 5)
+                const recent = contentHistory.slice(0, 5).map(item => {
+                    // Try to find matching analytics data
+                    const analyticsMatch = dashboardAnalytics.topPerformingContent?.find(
+                        perf => perf.title === item.title || perf.id === item.id
+                    );
+                    
+                    // Calculate engagement from metadata or use analytics
+                    const views = analyticsMatch?.views || item.metadata?.views || 0;
+                    const likes = analyticsMatch?.likes || item.metadata?.likes || 0;
+                    const comments = analyticsMatch?.comments || item.metadata?.comments || 0;
+                    const shares = analyticsMatch?.shares || item.metadata?.shares || 0;
+                    const totalEngagement = likes + comments + shares;
+                    const engagementRate = views > 0 ? (totalEngagement / views) * 100 : 0;
+                    
+                    // Calculate period comparison (compare to average)
+                    const avgEngagement = dashboardAnalytics.averageEngagementRate || 0;
+                    const engagementChange = engagementRate - avgEngagement;
+                    
+                    return {
+                        id: item.id,
+                        title: item.title || 'Untitled Content',
+                        type: item.type || item.metadata?.contentType || 'post',
+                        platform: item.metadata?.platforms?.[0] || 'LinkedIn',
+                        timestamp: new Date(item.metadata?.timestamp || item.createdAt || Date.now()),
+                        views,
+                        likes,
+                        comments,
+                        shares,
+                        totalEngagement,
+                        engagementRate,
+                        engagementChange,
+                        status: item.metadata?.status || 'generated'
+                    };
+                });
+                
+                return recent.sort((a, b) => b.timestamp - a.timestamp);
+            }, [contentHistory, dashboardAnalytics]);
+
+            // Get upcoming scheduled posts for calendar preview
+            const upcomingScheduledPosts = React.useMemo(() => {
+                const now = new Date();
+                const nextWeek = new Date(now);
+                nextWeek.setDate(now.getDate() + 7);
+                
+                return scheduledPosts
+                    .filter(post => {
+                        const postDate = new Date(post.scheduledDate);
+                        return postDate >= now && postDate <= nextWeek && post.status !== 'published';
+                    })
+                    .sort((a, b) => new Date(a.scheduledDate) - new Date(b.scheduledDate))
+                    .slice(0, 5);
+            }, [scheduledPosts]);
+
+            // Get next scheduled post for countdown
+            const nextScheduledPost = React.useMemo(() => {
+                const now = new Date();
+                const upcoming = scheduledPosts
+                    .filter(post => {
+                        const postDate = new Date(post.scheduledDate);
+                        return postDate >= now && post.status !== 'published';
+                    })
+                    .sort((a, b) => new Date(a.scheduledDate) - new Date(b.scheduledDate))[0];
+                
+                return upcoming || null;
+            }, [scheduledPosts]);
+
+            // Calculate countdown to next post
+            const [countdown, setCountdown] = React.useState({ days: 0, hours: 0, minutes: 0 });
+            
+            React.useEffect(() => {
+                if (!nextScheduledPost) {
+                    setCountdown({ days: 0, hours: 0, minutes: 0 });
+                    return;
+                }
+                
+                const updateCountdown = () => {
+                    const now = new Date();
+                    const postDate = new Date(nextScheduledPost.scheduledDate);
+                    const diff = postDate - now;
+                    
+                    if (diff <= 0) {
+                        setCountdown({ days: 0, hours: 0, minutes: 0 });
+                        return;
+                    }
+                    
+                    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+                    const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+                    
+                    setCountdown({ days, hours, minutes });
+                };
+                
+                updateCountdown();
+                const interval = setInterval(updateCountdown, 60000); // Update every minute
+                
+                return () => clearInterval(interval);
+            }, [nextScheduledPost]);
+
+            // Mini calendar component
+            const MiniCalendar = ({ posts }) => {
+                const now = new Date();
+                const currentMonth = now.getMonth();
+                const currentYear = now.getFullYear();
+                const firstDay = new Date(currentYear, currentMonth, 1);
+                const lastDay = new Date(currentYear, currentMonth + 1, 0);
+                const daysInMonth = lastDay.getDate();
+                const startingDayOfWeek = firstDay.getDay();
+                
+                const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+                
+                // Get posts for each day
+                const postsByDate = {};
+                posts.forEach(post => {
+                    const postDate = new Date(post.scheduledDate);
+                    if (postDate.getMonth() === currentMonth && postDate.getFullYear() === currentYear) {
+                        const day = postDate.getDate();
+                        postsByDate[day] = (postsByDate[day] || 0) + 1;
+                    }
+                });
+                
+                const days = [];
+                // Empty cells for days before month starts
+                for (let i = 0; i < startingDayOfWeek; i++) {
+                    days.push(null);
+                }
+                // Days of the month
+                for (let day = 1; day <= daysInMonth; day++) {
+                    days.push(day);
+                }
+                
+                return (
+                    <div className="w-full">
+                        <div className={`text-center font-semibold mb-3 ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                            {monthNames[currentMonth]} {currentYear}
+                        </div>
+                        <div className="grid grid-cols-7 gap-1 mb-2">
+                            {dayNames.map(day => (
+                                <div key={day} className={`text-center text-xs font-medium ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                    {day[0]}
+                                </div>
+                            ))}
+                        </div>
+                        <div className="grid grid-cols-7 gap-1">
+                            {days.map((day, index) => {
+                                if (day === null) {
+                                    return <div key={index} className="aspect-square"></div>;
+                                }
+                                
+                                const isToday = day === now.getDate();
+                                const hasPosts = postsByDate[day] > 0;
+                                
+                                return (
+                                    <div
+                                        key={day}
+                                        className={`aspect-square flex flex-col items-center justify-center text-xs rounded ${
+                                            isToday
+                                                ? 'bg-blue-500 text-white font-bold'
+                                                : hasPosts
+                                                ? (isLightMode ? 'bg-purple-100 text-purple-700' : 'bg-purple-500/20 text-purple-400')
+                                                : (isLightMode ? 'text-gray-600' : 'text-gray-400')
+                                        }`}
+                                    >
+                                        <span>{day}</span>
+                                        {hasPosts && (
+                                            <span className="text-[8px] mt-0.5">●</span>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                );
+            };
 
             // Calculate per-expertise analytics
             const getExpertiseAreaAnalytics = React.useCallback((areaName) => {
@@ -24822,11 +25105,25 @@ Generate the repurposed content:`;
 
                                 {/* Authority Score Overview */}
                                 <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-8`}>
-                                    <div className="flex items-center gap-3 mb-6">
-                                        <div className="w-10 h-10 bg-yellow-500 rounded-lg flex items-center justify-center">
-                                            <div className="w-5 h-5 text-white text-xl">⭐</div>
+                                    <div className="flex items-center justify-between mb-6">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 bg-yellow-500 rounded-lg flex items-center justify-center">
+                                                <div className="w-5 h-5 text-white text-xl">⭐</div>
+                                            </div>
+                                            <h2 className={`text-2xl font-bold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>Authority Score Overview</h2>
                                         </div>
-                                        <h2 className={`text-2xl font-bold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>Authority Score Overview</h2>
+                                        {dashboardAnalytics && (
+                                            <button
+                                                onClick={() => setActiveTab('analytics')}
+                                                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                                                    isLightMode 
+                                                        ? 'bg-purple-100 text-purple-700 hover:bg-purple-200' 
+                                                        : 'bg-purple-500/20 text-purple-400 hover:bg-purple-500/30'
+                                                }`}
+                                            >
+                                                View Full Analytics →
+                                            </button>
+                                        )}
                                     </div>
                                     
                                     <div className="grid grid-cols-3 gap-6">
@@ -24849,9 +25146,11 @@ Generate the repurposed content:`;
                                         </div>
                                         <div className="text-center">
                                             <div className={`text-4xl font-bold ${isLightMode ? 'text-blue-600' : 'text-blue-400'} mb-2`}>
-                                                {calculateDashboardMetrics.postsThisMonth}
+                                                {dashboardAnalytics ? dashboardAnalytics.totalContent : calculateDashboardMetrics.postsThisMonth}
                                             </div>
-                                            <div className={`text-sm ${isLightMode ? 'text-gray-500' : 'text-gray-400'} mb-1`}>Posts This Month</div>
+                                            <div className={`text-sm ${isLightMode ? 'text-gray-500' : 'text-gray-400'} mb-1`}>
+                                                {dashboardAnalytics ? 'Total Content' : 'Posts This Month'}
+                                            </div>
                                             <div className={`text-xs ${
                                                 calculateDashboardMetrics.postsChange >= 0 
                                                     ? (isLightMode ? 'text-blue-600' : 'text-blue-400')
@@ -24862,25 +25161,442 @@ Generate the repurposed content:`;
                                         </div>
                                         <div className="text-center">
                                             <div className={`text-4xl font-bold ${isLightMode ? 'text-purple-600' : 'text-purple-400'} mb-2`}>
-                                                {calculateDashboardMetrics.totalEngagement > 1000 
-                                                    ? (calculateDashboardMetrics.totalEngagement / 1000).toFixed(1) + 'K'
-                                                    : calculateDashboardMetrics.totalEngagement}
+                                                {dashboardAnalytics 
+                                                    ? formatNumber(dashboardAnalytics.totalViews || 0)
+                                                    : (calculateDashboardMetrics.totalEngagement > 1000 
+                                                        ? (calculateDashboardMetrics.totalEngagement / 1000).toFixed(1) + 'K'
+                                                        : calculateDashboardMetrics.totalEngagement)
+                                                }
                                             </div>
-                                            <div className={`text-sm ${isLightMode ? 'text-gray-500' : 'text-gray-400'} mb-1`}>Total Engagement</div>
+                                            <div className={`text-sm ${isLightMode ? 'text-gray-500' : 'text-gray-400'} mb-1`}>
+                                                {dashboardAnalytics ? 'Total Views' : 'Total Engagement'}
+                                            </div>
                                             <div className={`text-xs ${
                                                 calculateDashboardMetrics.engagementGrowth >= 0 
                                                     ? (isLightMode ? 'text-purple-600' : 'text-purple-400')
                                                     : (isLightMode ? 'text-red-600' : 'text-red-400')
                                             }`}>
-                                                {calculateDashboardMetrics.engagementGrowth >= 0 ? '+' : ''}{calculateDashboardMetrics.engagementGrowth}% growth
+                                                {dashboardAnalytics && dashboardAnalytics.averageEngagementRate 
+                                                    ? formatPercentage(dashboardAnalytics.averageEngagementRate) + ' engagement rate'
+                                                    : (calculateDashboardMetrics.engagementGrowth >= 0 ? '+' : '') + calculateDashboardMetrics.engagementGrowth + '% growth'
+                                                }
                                             </div>
                                         </div>
                                     </div>
                                 </div>
+
+                                {/* Real-time Analytics Integration */}
+                                {analyticsLoading && !dashboardAnalytics && (
+                                    <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-8`}>
+                                        <div className="flex items-center justify-center py-12">
+                                            <div className="text-center">
+                                                <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
+                                                <p className={`text-sm ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>Loading analytics...</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                                
+                                {analyticsError && !dashboardAnalytics && (
+                                    <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-8`}>
+                                        <div className="text-center py-8">
+                                            <p className={`text-sm ${isLightMode ? 'text-gray-600' : 'text-gray-400'} mb-4`}>{analyticsError}</p>
+                                            <button
+                                                onClick={loadDashboardAnalytics}
+                                                className={`px-4 py-2 rounded-lg text-sm font-medium ${
+                                                    isLightMode 
+                                                        ? 'bg-purple-100 text-purple-700 hover:bg-purple-200' 
+                                                        : 'bg-purple-500/20 text-purple-400 hover:bg-purple-500/30'
+                                                }`}
+                                            >
+                                                Retry
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {dashboardAnalytics && (
+                                    <>
+                                        {/* Engagement Trends with Mini Charts */}
+                                        <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-8`}>
+                                            <div className="flex items-center justify-between mb-6">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-10 h-10 bg-green-500 rounded-lg flex items-center justify-center">
+                                                        <div className="w-5 h-5 text-white text-xl">📈</div>
+                                                    </div>
+                                                    <h2 className={`text-2xl font-bold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>Engagement Trends</h2>
+                                                </div>
+                                                {analyticsLoading && (
+                                                    <div className="w-5 h-5 border-2 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
+                                                )}
+                                            </div>
+                                            
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                                <div className={`${isLightMode ? 'bg-white/30' : 'bg-gray-800'} rounded-xl p-4 border ${isLightMode ? 'border-gray-200' : 'border-gray-700'}`}>
+                                                    <div className={`text-sm ${isLightMode ? 'text-gray-600' : 'text-gray-400'} mb-2`}>Total Engagement</div>
+                                                    <div className={`text-2xl font-bold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-2`}>
+                                                        {formatNumber(dashboardAnalytics.totalLikes + dashboardAnalytics.totalComments + dashboardAnalytics.totalShares)}
+                                                    </div>
+                                                    {dashboardAnalytics.timeSeriesData && dashboardAnalytics.timeSeriesData.length > 0 && (
+                                                        <MiniSparkline 
+                                                            data={dashboardAnalytics.timeSeriesData.slice(-7)} 
+                                                            color="#10b981" 
+                                                        />
+                                                    )}
+                                                </div>
+                                                
+                                                <div className={`${isLightMode ? 'bg-white/30' : 'bg-gray-800'} rounded-xl p-4 border ${isLightMode ? 'border-gray-200' : 'border-gray-700'}`}>
+                                                    <div className={`text-sm ${isLightMode ? 'text-gray-600' : 'text-gray-400'} mb-2`}>Engagement Rate</div>
+                                                    <div className={`text-2xl font-bold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-2`}>
+                                                        {formatPercentage(dashboardAnalytics.averageEngagementRate || 0)}
+                                                    </div>
+                                                    {dashboardAnalytics.timeSeriesData && dashboardAnalytics.timeSeriesData.length > 0 && (
+                                                        <MiniSparkline 
+                                                            data={dashboardAnalytics.timeSeriesData.slice(-7).map(d => ({ engagement: d.engagement }))} 
+                                                            color="#8b5cf6" 
+                                                        />
+                                                    )}
+                                                </div>
+                                                
+                                                <div className={`${isLightMode ? 'bg-white/30' : 'bg-gray-800'} rounded-xl p-4 border ${isLightMode ? 'border-gray-200' : 'border-gray-700'}`}>
+                                                    <div className={`text-sm ${isLightMode ? 'text-gray-600' : 'text-gray-400'} mb-2`}>Total Views</div>
+                                                    <div className={`text-2xl font-bold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-2`}>
+                                                        {formatNumber(dashboardAnalytics.totalViews || 0)}
+                                                    </div>
+                                                    {dashboardAnalytics.timeSeriesData && dashboardAnalytics.timeSeriesData.length > 0 && (
+                                                        <MiniSparkline 
+                                                            data={dashboardAnalytics.timeSeriesData.slice(-7)} 
+                                                            color="#3b82f6" 
+                                                        />
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Top Performing Content */}
+                                        {dashboardAnalytics.topPerformingContent && dashboardAnalytics.topPerformingContent.length > 0 && (
+                                            <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-8`}>
+                                                <div className="flex items-center justify-between mb-6">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="w-10 h-10 bg-purple-500 rounded-lg flex items-center justify-center">
+                                                            <div className="w-5 h-5 text-white text-xl">🏆</div>
+                                                        </div>
+                                                        <h2 className={`text-2xl font-bold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>Top Performing Content</h2>
+                                                    </div>
+                                                    <button
+                                                        onClick={() => setActiveTab('analytics')}
+                                                        className={`text-sm font-medium ${isLightMode ? 'text-purple-600 hover:text-purple-700' : 'text-purple-400 hover:text-purple-300'}`}
+                                                    >
+                                                        View All →
+                                                    </button>
+                                                </div>
+                                                
+                                                <div className="space-y-4">
+                                                    {dashboardAnalytics.topPerformingContent.slice(0, 3).map((content, index) => (
+                                                        <div
+                                                            key={content.id}
+                                                            className={`${isLightMode ? 'bg-white/30' : 'bg-gray-800'} rounded-lg p-4 border ${isLightMode ? 'border-gray-200' : 'border-gray-700'} flex items-center justify-between hover:border-purple-500/50 transition-colors`}
+                                                        >
+                                                            <div className="flex items-center gap-4 flex-1">
+                                                                <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold ${
+                                                                    index === 0 ? 'bg-yellow-500 text-white' :
+                                                                    index === 1 ? 'bg-gray-400 text-white' :
+                                                                    'bg-orange-500 text-white'
+                                                                }`}>
+                                                                    {index + 1}
+                                                                </div>
+                                                                <div className="flex-1 min-w-0">
+                                                                    <div className={`font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-1 truncate`}>
+                                                                        {content.title || 'Untitled Content'}
+                                                                    </div>
+                                                                    <div className={`text-sm ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>
+                                                                        {content.platform || 'Unknown Platform'}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                            <div className="flex items-center gap-6 ml-4">
+                                                                <div className="text-right">
+                                                                    <div className={`text-sm font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                                        {formatNumber(content.views || 0)} views
+                                                                    </div>
+                                                                    <div className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>
+                                                                        {formatPercentage(content.engagement_rate || 0)} engagement
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Content Performance Widget */}
+                                        {recentContentPerformance.length > 0 && (
+                                            <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-8`}>
+                                                <div className="flex items-center justify-between mb-6">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center">
+                                                            <div className="w-5 h-5 text-white text-xl">📊</div>
+                                                        </div>
+                                                        <h2 className={`text-2xl font-bold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>Recent Content Performance</h2>
+                                                    </div>
+                                                    <button
+                                                        onClick={() => setActiveTab('analytics')}
+                                                        className={`text-sm font-medium ${isLightMode ? 'text-blue-600 hover:text-blue-700' : 'text-blue-400 hover:text-blue-300'}`}
+                                                    >
+                                                        View All →
+                                                    </button>
+                                                </div>
+                                                
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                    {recentContentPerformance.slice(0, 4).map((content) => (
+                                                        <div
+                                                            key={content.id}
+                                                            onClick={() => setActiveTab('analytics')}
+                                                            className={`${isLightMode ? 'bg-white/30' : 'bg-gray-800'} rounded-lg p-4 border ${isLightMode ? 'border-gray-200' : 'border-gray-700'} hover:border-blue-500/50 transition-all duration-200 cursor-pointer`}
+                                                        >
+                                                            <div className="flex items-start justify-between mb-3">
+                                                                <div className="flex-1 min-w-0">
+                                                                    <h3 className={`font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-1 truncate text-sm`}>
+                                                                        {content.title}
+                                                                    </h3>
+                                                                    <div className="flex items-center gap-2 text-xs">
+                                                                        <span className={`px-2 py-0.5 rounded-full ${
+                                                                            content.type === 'post' 
+                                                                                ? (isLightMode ? 'bg-purple-100 text-purple-700' : 'bg-purple-500/20 text-purple-400')
+                                                                                : content.type === 'article'
+                                                                                ? (isLightMode ? 'bg-blue-100 text-blue-700' : 'bg-blue-500/20 text-blue-400')
+                                                                                : (isLightMode ? 'bg-gray-100 text-gray-700' : 'bg-gray-500/20 text-gray-400')
+                                                                        }`}>
+                                                                            {content.type}
+                                                                        </span>
+                                                                        <span className={`${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                                            {content.platform}
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+                                                                <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                                                    content.status === 'published' 
+                                                                        ? (isLightMode ? 'bg-green-100 text-green-700' : 'bg-green-500/20 text-green-400')
+                                                                        : content.status === 'scheduled'
+                                                                        ? (isLightMode ? 'bg-blue-100 text-blue-700' : 'bg-blue-500/20 text-blue-400')
+                                                                        : (isLightMode ? 'bg-gray-100 text-gray-700' : 'bg-gray-500/20 text-gray-400')
+                                                                }`}>
+                                                                    {content.status}
+                                                                </span>
+                                                            </div>
+                                                            
+                                                            {/* Performance Metrics */}
+                                                            <div className="grid grid-cols-3 gap-3 mb-3">
+                                                                <div className="text-center">
+                                                                    <div className={`text-lg font-bold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                                        {formatNumber(content.views)}
+                                                                    </div>
+                                                                    <div className={`text-xs ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>Views</div>
+                                                                </div>
+                                                                <div className="text-center">
+                                                                    <div className={`text-lg font-bold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                                        {formatNumber(content.totalEngagement)}
+                                                                    </div>
+                                                                    <div className={`text-xs ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>Engagement</div>
+                                                                </div>
+                                                                <div className="text-center">
+                                                                    <div className={`text-lg font-bold ${
+                                                                        content.engagementRate >= 5 
+                                                                            ? (isLightMode ? 'text-green-600' : 'text-green-400')
+                                                                            : content.engagementRate >= 3
+                                                                            ? (isLightMode ? 'text-yellow-600' : 'text-yellow-400')
+                                                                            : (isLightMode ? 'text-gray-600' : 'text-gray-400')
+                                                                    }`}>
+                                                                        {formatPercentage(content.engagementRate)}
+                                                                    </div>
+                                                                    <div className={`text-xs ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>Rate</div>
+                                                                </div>
+                                                            </div>
+                                                            
+                                                            {/* Engagement Breakdown */}
+                                                            <div className={`flex items-center justify-between text-xs mb-3 pt-3 border-t ${isLightMode ? 'border-gray-200' : 'border-gray-700'}`}>
+                                                                <div className="flex items-center gap-3">
+                                                                    <span className={`${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>
+                                                                        👍 {formatNumber(content.likes)}
+                                                                    </span>
+                                                                    <span className={`${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>
+                                                                        💬 {formatNumber(content.comments)}
+                                                                    </span>
+                                                                    <span className={`${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>
+                                                                        🔄 {formatNumber(content.shares)}
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                            
+                                                            {/* Period Comparison */}
+                                                            {content.engagementChange !== 0 && (
+                                                                <div className={`flex items-center gap-2 text-xs pt-2 border-t ${isLightMode ? 'border-gray-200' : 'border-gray-700'}`}>
+                                                                    <span className={`font-medium ${
+                                                                        content.engagementChange > 0
+                                                                            ? (isLightMode ? 'text-green-600' : 'text-green-400')
+                                                                            : (isLightMode ? 'text-red-600' : 'text-red-400')
+                                                                    }`}>
+                                                                        {content.engagementChange > 0 ? '↑' : '↓'} {Math.abs(content.engagementChange).toFixed(1)}%
+                                                                    </span>
+                                                                    <span className={`${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                                        vs. average
+                                                                    </span>
+                                                                </div>
+                                                            )}
+                                                            
+                                                            {/* Timestamp */}
+                                                            <div className={`text-xs ${isLightMode ? 'text-gray-400' : 'text-gray-500'} mt-2`}>
+                                                                {content.timestamp.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </>
+                                )}
                             </div>
 
                             {/* Sidebar */}
                             <div className="space-y-6">
+                                {/* Content Calendar Preview */}
+                                <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
+                                    <div className="flex items-center justify-between mb-4">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">
+                                                <div className="w-4 h-4 text-white text-lg">📅</div>
+                                            </div>
+                                            <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>Content Calendar</h3>
+                                        </div>
+                                        <button
+                                            onClick={() => setActiveTab('calendar')}
+                                            className={`text-xs font-medium ${isLightMode ? 'text-blue-600 hover:text-blue-700' : 'text-blue-400 hover:text-blue-300'}`}
+                                        >
+                                            View All →
+                                        </button>
+                                    </div>
+
+                                    {/* Next Post Countdown */}
+                                    {nextScheduledPost && (
+                                        <div className={`${isLightMode ? 'bg-blue-50' : 'bg-blue-500/10'} rounded-lg p-4 mb-4 border ${isLightMode ? 'border-blue-200' : 'border-blue-500/20'}`}>
+                                            <div className={`text-xs font-medium mb-2 ${isLightMode ? 'text-blue-700' : 'text-blue-400'}`}>
+                                                Next Post
+                                            </div>
+                                            <div className={`text-sm font-semibold mb-2 ${isLightMode ? 'text-gray-900' : 'text-gray-50'} truncate`}>
+                                                {nextScheduledPost.title || 'Untitled Post'}
+                                            </div>
+                                            <div className="flex items-center gap-3">
+                                                <div className="flex items-center gap-1">
+                                                    <span className={`text-lg font-bold ${isLightMode ? 'text-blue-600' : 'text-blue-400'}`}>
+                                                        {countdown.days}
+                                                    </span>
+                                                    <span className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>d</span>
+                                                </div>
+                                                <div className="flex items-center gap-1">
+                                                    <span className={`text-lg font-bold ${isLightMode ? 'text-blue-600' : 'text-blue-400'}`}>
+                                                        {countdown.hours}
+                                                    </span>
+                                                    <span className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>h</span>
+                                                </div>
+                                                <div className="flex items-center gap-1">
+                                                    <span className={`text-lg font-bold ${isLightMode ? 'text-blue-600' : 'text-blue-400'}`}>
+                                                        {countdown.minutes}
+                                                    </span>
+                                                    <span className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>m</span>
+                                                </div>
+                                            </div>
+                                            <div className={`text-xs mt-2 ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                {new Date(nextScheduledPost.scheduledDate).toLocaleDateString('en-US', { 
+                                                    month: 'short', 
+                                                    day: 'numeric', 
+                                                    hour: 'numeric', 
+                                                    minute: '2-digit' 
+                                                })}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Mini Calendar View */}
+                                    <div className="mb-4">
+                                        <MiniCalendar posts={scheduledPosts} />
+                                    </div>
+
+                                    {/* Upcoming Scheduled Posts */}
+                                    {upcomingScheduledPosts.length > 0 ? (
+                                        <div className="space-y-2">
+                                            <div className={`text-xs font-medium mb-2 ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>
+                                                Upcoming ({upcomingScheduledPosts.length})
+                                            </div>
+                                            {upcomingScheduledPosts.slice(0, 3).map((post) => (
+                                                <div
+                                                    key={post.id}
+                                                    className={`${isLightMode ? 'bg-white/30' : 'bg-gray-800'} rounded-lg p-3 border ${isLightMode ? 'border-gray-200' : 'border-gray-700'} hover:border-blue-500/50 transition-colors`}
+                                                >
+                                                    <div className="flex items-start justify-between mb-2">
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className={`text-xs font-semibold mb-1 truncate ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                                {post.title || 'Untitled Post'}
+                                                            </div>
+                                                            <div className={`text-xs ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                                {new Date(post.scheduledDate).toLocaleDateString('en-US', { 
+                                                                    month: 'short', 
+                                                                    day: 'numeric',
+                                                                    hour: 'numeric',
+                                                                    minute: '2-digit'
+                                                                })}
+                                                            </div>
+                                                        </div>
+                                                        <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                                                            post.status === 'scheduled'
+                                                                ? (isLightMode ? 'bg-blue-100 text-blue-700' : 'bg-blue-500/20 text-blue-400')
+                                                                : (isLightMode ? 'bg-gray-100 text-gray-700' : 'bg-gray-500/20 text-gray-400')
+                                                        }`}>
+                                                            {post.status}
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex items-center gap-2 mt-2">
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setSelectedPost(post);
+                                                                setShowScheduleModal(true);
+                                                                setScheduleModalContent(post);
+                                                            }}
+                                                            className={`text-xs px-2 py-1 rounded ${isLightMode ? 'bg-blue-100 text-blue-700 hover:bg-blue-200' : 'bg-blue-500/20 text-blue-400 hover:bg-blue-500/30'}`}
+                                                        >
+                                                            Edit
+                                                        </button>
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setActiveTab('calendar');
+                                                            }}
+                                                            className={`text-xs px-2 py-1 rounded ${isLightMode ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' : 'bg-gray-500/20 text-gray-400 hover:bg-gray-500/30'}`}
+                                                        >
+                                                            Reschedule
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className={`text-center py-4 ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                            <p className="text-xs mb-2">No scheduled posts</p>
+                                            <button
+                                                onClick={() => setActiveTab('calendar')}
+                                                className={`text-xs px-3 py-1.5 rounded-lg font-medium ${
+                                                    isLightMode 
+                                                        ? 'bg-blue-100 text-blue-700 hover:bg-blue-200' 
+                                                        : 'bg-blue-500/20 text-blue-400 hover:bg-blue-500/30'
+                                                }`}
+                                            >
+                                                Schedule Post
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+
                                 {/* Trending Topics */}
                                 <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
                                     <div className="flex items-center gap-3 mb-4">
