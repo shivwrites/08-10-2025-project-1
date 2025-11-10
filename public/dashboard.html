@@ -25047,6 +25047,38 @@ Generate the repurposed content:`;
                         );
                         
                         if (!alreadyExists) {
+                            // Try to find expertise area from top-performing content
+                            let expertiseArea = null;
+                            if (dashboardAnalytics && dashboardAnalytics.topPerformingContent && dashboardAnalytics.topPerformingContent.length > 0) {
+                                const topContent = dashboardAnalytics.topPerformingContent[index] || dashboardAnalytics.topPerformingContent[0];
+                                // Try to match topic with expertise areas
+                                const matchingArea = expertiseAreas.find(area => {
+                                    const areaName = area.name.toLowerCase();
+                                    const topicLower = topic.toLowerCase();
+                                    return topicLower.includes(areaName.split(' ')[0]) || 
+                                           areaName.includes(topicLower.split(' ')[0]);
+                                });
+                                if (matchingArea) {
+                                    expertiseArea = matchingArea.name;
+                                } else if (expertiseAreas.length > 0) {
+                                    // Use the highest authority expertise area as fallback
+                                    const topArea = expertiseAreas.sort((a, b) => b.authorityScore - a.authorityScore)[0];
+                                    expertiseArea = topArea.name;
+                                }
+                            }
+                            
+                            // Calculate trending relevance based on topic matching
+                            let trendingRelevance = 70;
+                            const matchingTrendingTopic = trendingTopics.find(t => {
+                                const tTitle = t.title.toLowerCase();
+                                const topicLower = topic.toLowerCase();
+                                return tTitle.includes(topicLower.split(' ')[0]) || 
+                                       topicLower.includes(tTitle.split(' ')[0]);
+                            });
+                            if (matchingTrendingTopic) {
+                                trendingRelevance = matchingTrendingTopic.relevanceScore || 85;
+                            }
+                            
                             const suggestion = {
                                 id: `suggestion-performance-${index}`,
                                 topic: `Follow-up: ${topic.substring(0, 50)}`,
@@ -25056,8 +25088,9 @@ Generate the repurposed content:`;
                                 difficulty: 'Easy',
                                 timeToCreate: '15 min',
                                 platforms: [analyzePastPerformance.bestPlatform, 'LinkedIn'],
-                                trendingRelevance: 70,
-                                expertiseMatch: 75,
+                                expertiseArea: expertiseArea,
+                                trendingRelevance: trendingRelevance,
+                                expertiseMatch: expertiseArea ? (expertiseAreas.find(a => a.name === expertiseArea)?.authorityScore || 75) : 75,
                                 performanceMatch: 90,
                                 optimalPostingTime: `${calculateOptimalPostingTimes.bestDay} at ${calculateOptimalPostingTimes.bestTime}`,
                                 priorityScore: 0
