@@ -23310,6 +23310,60 @@ Generate the repurposed content:`;
                     ? ((recentEngagement - previousEngagement) / previousEngagement * 100).toFixed(1)
                     : 0;
                 
+                // Generate time-series data for charts (last 30 days)
+                const timeSeriesData = [];
+                const now = new Date();
+                for (let i = 29; i >= 0; i--) {
+                    const date = new Date(now);
+                    date.setDate(date.getDate() - i);
+                    const dateStr = date.toISOString().split('T')[0];
+                    
+                    const dayContent = relatedContent.filter(item => {
+                        const itemDate = new Date(item.metadata?.timestamp || item.createdAt || 0);
+                        return itemDate.toISOString().split('T')[0] === dateStr;
+                    });
+                    
+                    const dayEngagement = dayContent.reduce((sum, item) => 
+                        sum + (item.metadata?.engagement || item.metadata?.estimatedEngagement || 0), 0
+                    );
+                    
+                    timeSeriesData.push({
+                        date: dateStr,
+                        contentCount: dayContent.length,
+                        engagement: dayEngagement,
+                        views: dayContent.reduce((sum, item) => 
+                            sum + (item.metadata?.views || item.metadata?.estimatedViews || 0), 0
+                        )
+                    });
+                }
+                
+                // Authority score history (simulated based on content creation - in real app, this would be stored)
+                // For now, we'll create a trend based on content count over time
+                const authorityHistory = [];
+                const monthsBack = 6;
+                for (let i = monthsBack - 1; i >= 0; i--) {
+                    const monthDate = new Date(now);
+                    monthDate.setMonth(monthDate.getMonth() - i);
+                    const monthStart = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
+                    const monthEnd = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0);
+                    
+                    const monthContent = relatedContent.filter(item => {
+                        const itemDate = new Date(item.metadata?.timestamp || item.createdAt || 0);
+                        return itemDate >= monthStart && itemDate <= monthEnd;
+                    });
+                    
+                    // Estimate authority score based on content count (simplified)
+                    const estimatedScore = Math.min(100, Math.max(0, 
+                        (monthContent.length * 5) + (i === monthsBack - 1 ? 50 : 0)
+                    ));
+                    
+                    authorityHistory.push({
+                        month: monthDate.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
+                        score: estimatedScore,
+                        contentCount: monthContent.length
+                    });
+                }
+                
                 return {
                     contentCount: relatedContent.length,
                     totalEngagement,
@@ -23322,7 +23376,9 @@ Generate the repurposed content:`;
                     contentTypes,
                     bestPerforming,
                     engagementTrend: parseFloat(engagementTrend),
-                    recentContentCount: recentContent.length
+                    recentContentCount: recentContent.length,
+                    timeSeriesData,
+                    authorityHistory
                 };
             }, [contentHistory]);
 
@@ -23337,6 +23393,179 @@ Generate the repurposed content:`;
                     newExpanded.add(areaId);
                 }
                 setExpandedAnalytics(newExpanded);
+            };
+
+            // Mini Line Chart Component for expertise analytics
+            const MiniLineChart = ({ data, color, height = 80 }) => {
+                if (!data || data.length === 0) {
+                    return (
+                        <div className={`text-center py-4 text-xs ${isLightMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                            No data
+                        </div>
+                    );
+                }
+
+                const values = data.map(d => typeof d === 'object' ? (d.value || d.score || d.engagement || d.contentCount || 0) : d);
+                const maxValue = Math.max(...values, 1);
+                const minValue = Math.min(...values, 0);
+                const range = maxValue - minValue || 1;
+
+                return (
+                    <div className="relative" style={{ height: `${height}px` }}>
+                        <svg viewBox={`0 0 200 ${height}`} className="w-full h-full">
+                            {/* Grid line */}
+                            <line
+                                x1="20"
+                                y1={height / 2}
+                                x2="180"
+                                y2={height / 2}
+                                stroke={isLightMode ? '#e5e7eb' : '#374151'}
+                                strokeWidth="1"
+                            />
+                            
+                            {/* Data line */}
+                            <polyline
+                                points={values.map((val, i) => {
+                                    const x = 20 + (i / (values.length - 1 || 1)) * 160;
+                                    const y = height - 10 - ((val - minValue) / range) * (height - 20);
+                                    return `${x},${y}`;
+                                }).join(' ')}
+                                fill="none"
+                                stroke={color || '#8b5cf6'}
+                                strokeWidth="2"
+                            />
+                            
+                            {/* Data points */}
+                            {values.map((val, i) => {
+                                const x = 20 + (i / (values.length - 1 || 1)) * 160;
+                                const y = height - 10 - ((val - minValue) / range) * (height - 20);
+                                return (
+                                    <circle
+                                        key={i}
+                                        cx={x}
+                                        cy={y}
+                                        r="3"
+                                        fill={color || '#8b5cf6'}
+                                    />
+                                );
+                            })}
+                        </svg>
+                    </div>
+                );
+            };
+
+            // Mini Bar Chart Component
+            const MiniBarChart = ({ data, color, height = 80 }) => {
+                if (!data || data.length === 0) {
+                    return (
+                        <div className={`text-center py-4 text-xs ${isLightMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                            No data
+                        </div>
+                    );
+                }
+
+                const values = data.map(d => typeof d === 'object' ? (d.value || d.count || d.contentCount || 0) : d);
+                const maxValue = Math.max(...values, 1);
+
+                return (
+                    <div className="relative" style={{ height: `${height}px` }}>
+                        <svg viewBox={`0 0 200 ${height}`} className="w-full h-full">
+                            {values.map((val, i) => {
+                                const barWidth = 160 / values.length;
+                                const barHeight = (val / maxValue) * (height - 20);
+                                const x = 20 + (i * barWidth);
+                                const y = height - 10 - barHeight;
+                                
+                                return (
+                                    <rect
+                                        key={i}
+                                        x={x}
+                                        y={y}
+                                        width={barWidth - 2}
+                                        height={barHeight}
+                                        fill={color || '#8b5cf6'}
+                                        rx="2"
+                                    />
+                                );
+                            })}
+                        </svg>
+                    </div>
+                );
+            };
+
+            // Comparison Chart Component for all expertise areas
+            const ExpertiseComparisonChart = () => {
+                if (expertiseAreas.length === 0) {
+                    return (
+                        <div className={`text-center py-4 text-sm ${isLightMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                            No expertise areas to compare
+                        </div>
+                    );
+                }
+
+                const maxScore = Math.max(...expertiseAreas.map(a => a.authorityScore), 1);
+                const maxContent = Math.max(...expertiseAreas.map(a => a.contentCount), 1);
+
+                return (
+                    <div className="space-y-4">
+                        {/* Authority Score Comparison */}
+                        <div>
+                            <h5 className={`text-xs font-semibold ${isLightMode ? 'text-gray-700' : 'text-gray-300'} mb-2`}>
+                                Authority Scores
+                            </h5>
+                            <div className="space-y-2">
+                                {expertiseAreas.map((area) => (
+                                    <div key={area.id}>
+                                        <div className="flex items-center justify-between mb-1">
+                                            <span className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>
+                                                {area.name}
+                                            </span>
+                                            <span className={`text-xs font-medium ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                {area.authorityScore}
+                                            </span>
+                                        </div>
+                                        <div className={`w-full ${isLightMode ? 'bg-gray-200' : 'bg-gray-700'} rounded-full h-2`}>
+                                            <div
+                                                className={`h-2 rounded-full ${
+                                                    area.authorityScore >= 80 ? 'bg-green-500' : 
+                                                    area.authorityScore >= 60 ? 'bg-yellow-500' : 'bg-red-500'
+                                                }`}
+                                                style={{ width: `${(area.authorityScore / maxScore) * 100}%` }}
+                                            ></div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Content Count Comparison */}
+                        <div>
+                            <h5 className={`text-xs font-semibold ${isLightMode ? 'text-gray-700' : 'text-gray-300'} mb-2`}>
+                                Content Count
+                            </h5>
+                            <div className="space-y-2">
+                                {expertiseAreas.map((area) => (
+                                    <div key={area.id}>
+                                        <div className="flex items-center justify-between mb-1">
+                                            <span className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>
+                                                {area.name}
+                                            </span>
+                                            <span className={`text-xs font-medium ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                {area.contentCount}
+                                            </span>
+                                        </div>
+                                        <div className={`w-full ${isLightMode ? 'bg-gray-200' : 'bg-gray-700'} rounded-full h-2`}>
+                                            <div
+                                                className="h-2 rounded-full bg-purple-500"
+                                                style={{ width: `${maxContent > 0 ? (area.contentCount / maxContent) * 100 : 0}%` }}
+                                            ></div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                );
             };
 
             // Update dynamic content when expertise areas or content history changes
@@ -24243,6 +24472,66 @@ Generate the repurposed content:`;
                                                                 </div>
                                                             )}
                                                             
+                                                            {/* Visual Performance Charts */}
+                                                            <div className={`grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t ${isLightMode ? 'border-gray-200' : 'border-gray-700'}`}>
+                                                                {/* Authority Score Trend */}
+                                                                {analytics.authorityHistory && analytics.authorityHistory.length > 0 && (
+                                                                    <div className={`${isLightMode ? 'bg-gray-50' : 'bg-gray-700/30'} rounded-lg p-4`}>
+                                                                        <h4 className={`text-sm font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-3`}>
+                                                                            Authority Score Trend (6 Months)
+                                                                        </h4>
+                                                                        <MiniLineChart 
+                                                                            data={analytics.authorityHistory.map(h => ({ value: h.score }))}
+                                                                            color="#10b981"
+                                                                            height={100}
+                                                                        />
+                                                                        <div className="flex justify-between text-xs mt-2">
+                                                                            {analytics.authorityHistory.filter((_, i) => i % 2 === 0).map((h, i) => (
+                                                                                <span key={i} className={isLightMode ? 'text-gray-500' : 'text-gray-400'}>
+                                                                                    {h.month.split(' ')[0]}
+                                                                                </span>
+                                                                            ))}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                                
+                                                                {/* Content Creation Frequency */}
+                                                                {analytics.timeSeriesData && analytics.timeSeriesData.length > 0 && (
+                                                                    <div className={`${isLightMode ? 'bg-gray-50' : 'bg-gray-700/30'} rounded-lg p-4`}>
+                                                                        <h4 className={`text-sm font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-3`}>
+                                                                            Content Creation (Last 30 Days)
+                                                                        </h4>
+                                                                        <MiniBarChart 
+                                                                            data={analytics.timeSeriesData.map(d => ({ value: d.contentCount }))}
+                                                                            color="#8b5cf6"
+                                                                            height={100}
+                                                                        />
+                                                                        <div className="flex justify-between text-xs mt-2">
+                                                                            <span className={isLightMode ? 'text-gray-500' : 'text-gray-400'}>30d ago</span>
+                                                                            <span className={isLightMode ? 'text-gray-500' : 'text-gray-400'}>Today</span>
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                                
+                                                                {/* Engagement Trend Chart */}
+                                                                {analytics.timeSeriesData && analytics.timeSeriesData.length > 0 && (
+                                                                    <div className={`${isLightMode ? 'bg-gray-50' : 'bg-gray-700/30'} rounded-lg p-4`}>
+                                                                        <h4 className={`text-sm font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-3`}>
+                                                                            Engagement Trend (Last 30 Days)
+                                                                        </h4>
+                                                                        <MiniLineChart 
+                                                                            data={analytics.timeSeriesData.map(d => ({ value: d.engagement }))}
+                                                                            color="#3b82f6"
+                                                                            height={100}
+                                                                        />
+                                                                        <div className="flex justify-between text-xs mt-2">
+                                                                            <span className={isLightMode ? 'text-gray-500' : 'text-gray-400'}>30d ago</span>
+                                                                            <span className={isLightMode ? 'text-gray-500' : 'text-gray-400'}>Today</span>
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                            
                                                             {/* Best Performing Content */}
                                                             {analytics.bestPerforming.length > 0 && (
                                                                 <div>
@@ -24471,6 +24760,14 @@ Generate the repurposed content:`;
                                         </div>
                                     </div>
                                 </div>
+
+                                {/* Expertise Comparison Chart */}
+                                {expertiseAreas.length > 1 && (
+                                    <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
+                                        <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-4`}>Area Comparison</h3>
+                                        <ExpertiseComparisonChart />
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}
