@@ -22098,7 +22098,7 @@ Generate the repurposed content:`;
             };
 
             // Expertise Modal Component
-            const ExpertiseModal = ({ isOpen, onClose, isLightMode, editingExpertise, onSave, onError }) => {
+            const ExpertiseModal = ({ isOpen, onClose, isLightMode, editingExpertise, onSave, onError, expertiseAreas }) => {
                 const [formData, setFormData] = React.useState({
                     name: '',
                     level: 'Intermediate',
@@ -22138,7 +22138,7 @@ Generate the repurposed content:`;
                     }
 
                     try {
-                        setIsSavingExpertise(true);
+                        setIsSaving(true);
                         if (editingExpertise) {
                             await onSave(editingExpertise.id, formData);
                         } else {
@@ -22149,7 +22149,7 @@ Generate the repurposed content:`;
                         setValidationError(error.message || 'Failed to save expertise area');
                         if (onError) onError(error);
                     } finally {
-                        setIsSavingExpertise(false);
+                        setIsSaving(false);
                     }
                 };
 
@@ -22206,7 +22206,7 @@ Generate the repurposed content:`;
                                         maxLength={50}
                                         className={`w-full px-4 py-2 rounded-lg border ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} focus:outline-none focus:ring-2 focus:ring-purple-500`}
                                         required
-                                        disabled={isSavingExpertise}
+                                        disabled={isSaving}
                                         aria-label="Expertise area name"
                                     />
                                     <p className={`mt-1 text-xs ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
@@ -23001,22 +23001,25 @@ Generate the repurposed content:`;
                 }
                 
                 // Calculate overall authority as average
-                const overallAuthority = Math.round(
-                    areas.reduce((sum, area) => sum + area.authorityScore, 0) / areas.length
-                );
+                const overallAuthority = areas.length > 0 
+                    ? Math.round(areas.reduce((sum, area) => sum + area.authorityScore, 0) / areas.length)
+                    : 0;
                 
                 // Calculate content consistency (based on content count distribution)
                 const totalContent = areas.reduce((sum, area) => sum + area.contentCount, 0);
-                const avgContentPerArea = totalContent / areas.length;
-                const consistencyScore = areas.reduce((score, area) => {
-                    const deviation = Math.abs(area.contentCount - avgContentPerArea);
-                    return score + Math.max(0, 100 - (deviation / avgContentPerArea * 100));
-                }, 0) / areas.length;
-                const contentConsistency = Math.round(consistencyScore);
+                const avgContentPerArea = areas.length > 0 ? totalContent / areas.length : 0;
+                let contentConsistency = 100; // Default to 100% if no content
+                if (avgContentPerArea > 0) {
+                    const consistencyScore = areas.reduce((score, area) => {
+                        const deviation = Math.abs(area.contentCount - avgContentPerArea);
+                        return score + Math.max(0, 100 - (deviation / avgContentPerArea * 100));
+                    }, 0) / areas.length;
+                    contentConsistency = Math.round(consistencyScore);
+                }
                 
                 // Calculate trend alignment (placeholder - would need trending topics data)
                 const highAuthorityAreas = areas.filter(a => a.authorityScore >= 70).length;
-                const trendAlignment = Math.round((highAuthorityAreas / areas.length) * 100);
+                const trendAlignment = areas.length > 0 ? Math.round((highAuthorityAreas / areas.length) * 100) : 0;
                 
                 // Engagement quality (placeholder for now)
                 const engagementQuality = 68;
@@ -23120,6 +23123,7 @@ Generate the repurposed content:`;
                         }}
                         isLightMode={isLightMode}
                         editingExpertise={editingExpertise}
+                        expertiseAreas={expertiseAreas}
                         onSave={async (id, formData) => {
                             try {
                                 if (id) {
@@ -23781,21 +23785,41 @@ Generate the repurposed content:`;
                                     <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-4`}>Authority Insights</h3>
                                     <div className="space-y-4">
                                         <div className="text-center">
-                                            <div className="text-3xl font-bold text-green-400 mb-2">78</div>
+                                            <div className={`text-3xl font-bold mb-2 ${
+                                                (authorityInsights.overallAuthority || 0) >= 80 ? 'text-green-400' : 
+                                                (authorityInsights.overallAuthority || 0) >= 60 ? 'text-yellow-400' : 'text-red-400'
+                                            }`}>
+                                                {authorityInsights.overallAuthority || 0}
+                                            </div>
                                             <div className={`text-sm ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>Overall Authority</div>
                                         </div>
                                         <div className="space-y-2">
                                             <div className="flex justify-between text-sm">
                                                 <span className={`${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>Content Consistency</span>
-                                                <span className="text-green-400">85%</span>
+                                                <span className={`${
+                                                    (authorityInsights.contentConsistency || 0) >= 80 ? 'text-green-400' : 
+                                                    (authorityInsights.contentConsistency || 0) >= 60 ? 'text-yellow-400' : 'text-red-400'
+                                                }`}>
+                                                    {authorityInsights.contentConsistency || 0}%
+                                                </span>
                                             </div>
                                             <div className="flex justify-between text-sm">
                                                 <span className={`${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>Trend Alignment</span>
-                                                <span className="text-blue-400">72%</span>
+                                                <span className={`${
+                                                    (authorityInsights.trendAlignment || 0) >= 80 ? 'text-green-400' : 
+                                                    (authorityInsights.trendAlignment || 0) >= 60 ? 'text-blue-400' : 'text-yellow-400'
+                                                }`}>
+                                                    {authorityInsights.trendAlignment || 0}%
+                                                </span>
                                             </div>
                                             <div className="flex justify-between text-sm">
                                                 <span className={`${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>Engagement Quality</span>
-                                                <span className="text-purple-400">68%</span>
+                                                <span className={`${
+                                                    (authorityInsights.engagementQuality || 0) >= 80 ? 'text-green-400' : 
+                                                    (authorityInsights.engagementQuality || 0) >= 60 ? 'text-purple-400' : 'text-yellow-400'
+                                                }`}>
+                                                    {authorityInsights.engagementQuality || 0}%
+                                                </span>
                                             </div>
                                         </div>
                                     </div>
