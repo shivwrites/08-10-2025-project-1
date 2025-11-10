@@ -20173,6 +20173,16 @@ Best regards,
             const [showExportModal, setShowExportModal] = useState(false);
             const [exportLoading, setExportLoading] = useState(false);
             
+            // Content templates state
+            const [contentTemplates, setContentTemplates] = useState([]);
+            const [showTemplateModal, setShowTemplateModal] = useState(false);
+            const [selectedTemplate, setSelectedTemplate] = useState(null);
+            const [templateName, setTemplateName] = useState('');
+            const [templateDescription, setTemplateDescription] = useState('');
+            
+            // Performance predictions state
+            const [performancePredictions, setPerformancePredictions] = useState({});
+            
             // Check for light mode
             const isLightMode = !document.documentElement.classList.contains('dark');
 
@@ -21631,6 +21641,287 @@ Best regards,
                 }
             };
 
+            // Load content templates from localStorage
+            React.useEffect(() => {
+                try {
+                    const savedTemplates = localStorage.getItem('content_templates');
+                    if (savedTemplates) {
+                        setContentTemplates(JSON.parse(savedTemplates));
+                    }
+                } catch (error) {
+                    console.error('Error loading templates:', error);
+                }
+            }, []);
+
+            // Save templates to localStorage
+            const saveTemplates = (templates) => {
+                try {
+                    localStorage.setItem('content_templates', JSON.stringify(templates));
+                    setContentTemplates(templates);
+                } catch (error) {
+                    console.error('Error saving templates:', error);
+                }
+            };
+
+            // Create template from existing content
+            const createTemplateFromContent = (content) => {
+                setSelectedTemplate({
+                    name: content.title || content.metadata?.topic || 'Untitled Template',
+                    description: `Template based on: ${content.title || 'content'}`,
+                    contentType: content.type || content.metadata?.contentType || 'post',
+                    platforms: content.metadata?.platforms || ['LinkedIn'],
+                    tone: content.metadata?.tone || 'professional',
+                    structure: content.content || '',
+                    metadata: {
+                        topic: content.metadata?.topic || '',
+                        angle: content.metadata?.angle || '',
+                        expertiseArea: content.metadata?.expertiseArea || '',
+                        estimatedEngagement: content.metadata?.estimatedEngagement || 0
+                    }
+                });
+                setTemplateName(content.title || content.metadata?.topic || 'Untitled Template');
+                setTemplateDescription(`Template based on: ${content.title || 'content'}`);
+                setShowTemplateModal(true);
+            };
+
+            // Save new template
+            const saveTemplate = () => {
+                if (!templateName.trim()) {
+                    alert('Please enter a template name');
+                    return;
+                }
+
+                const newTemplate = {
+                    id: Date.now().toString(),
+                    name: templateName,
+                    description: templateDescription,
+                    contentType: selectedTemplate?.contentType || 'post',
+                    platforms: selectedTemplate?.platforms || ['LinkedIn'],
+                    tone: selectedTemplate?.tone || 'professional',
+                    structure: selectedTemplate?.structure || '',
+                    metadata: selectedTemplate?.metadata || {},
+                    createdAt: new Date().toISOString(),
+                    usageCount: 0
+                };
+
+                const updatedTemplates = [...contentTemplates, newTemplate];
+                saveTemplates(updatedTemplates);
+                setShowTemplateModal(false);
+                setTemplateName('');
+                setTemplateDescription('');
+                setSelectedTemplate(null);
+                alert('Template saved successfully!');
+            };
+
+            // Delete template
+            const deleteTemplate = (templateId) => {
+                if (confirm('Are you sure you want to delete this template?')) {
+                    const updatedTemplates = contentTemplates.filter(t => t.id !== templateId);
+                    saveTemplates(updatedTemplates);
+                    alert('Template deleted successfully!');
+                }
+            };
+
+            // Apply template to content generation
+            const applyTemplate = (template) => {
+                // Update usage count
+                const updatedTemplates = contentTemplates.map(t => 
+                    t.id === template.id ? { ...t, usageCount: (t.usageCount || 0) + 1 } : t
+                );
+                saveTemplates(updatedTemplates);
+
+                // Navigate to generator and pre-fill form
+                setActiveTab('generator');
+                setActiveGenerator('post-generator');
+                setFormData({
+                    topic: template.metadata?.topic || '',
+                    angle: template.metadata?.angle || '',
+                    platforms: template.platforms,
+                    contentType: template.contentType,
+                    tone: template.tone,
+                    templateId: template.id
+                });
+                setSelectedPlatforms(template.platforms);
+                setContentType(template.contentType.toLowerCase().includes('article') ? 'article' : 'post');
+                
+                alert(`Template "${template.name}" applied! Fill in the details and generate.`);
+            };
+
+            // Predict content performance based on historical data
+            const predictContentPerformance = React.useCallback((contentData) => {
+                if (!contentData || !dashboardAnalytics) {
+                    return null;
+                }
+
+                const {
+                    contentType = 'post',
+                    platforms = ['LinkedIn'],
+                    expertiseArea = '',
+                    topic = '',
+                    estimatedEngagement = 0
+                } = contentData;
+
+                // Base prediction factors
+                let predictedViews = 0;
+                let predictedEngagement = 0;
+                let predictedEngagementRate = 0;
+                let confidence = 0;
+                let factors = [];
+
+                // Factor 1: Historical average performance
+                if (dashboardAnalytics.averageEngagementRate) {
+                    const baseEngagementRate = dashboardAnalytics.averageEngagementRate;
+                    predictedEngagementRate = baseEngagementRate;
+                    factors.push({
+                        name: 'Historical Average',
+                        impact: 'neutral',
+                        value: `${baseEngagementRate.toFixed(1)}%`
+                    });
+                    confidence += 30;
+                }
+
+                // Factor 2: Content type performance
+                const contentTypeMultiplier = contentType === 'article' ? 1.2 : contentType === 'thread' ? 0.9 : 1.0;
+                if (contentType === 'article') {
+                    factors.push({
+                        name: 'Article Format',
+                        impact: 'positive',
+                        value: '+20% boost'
+                    });
+                }
+                confidence += 15;
+
+                // Factor 3: Platform performance
+                const platformPerformance = dashboardAnalytics.contentByPlatform || {};
+                let platformMultiplier = 1.0;
+                platforms.forEach(platform => {
+                    const platformData = platformPerformance[platform] || {};
+                    if (platformData.avgEngagementRate) {
+                        platformMultiplier = Math.max(platformMultiplier, platformData.avgEngagementRate / (dashboardAnalytics.averageEngagementRate || 1));
+                    }
+                });
+                if (platformMultiplier > 1.1) {
+                    factors.push({
+                        name: 'Platform Performance',
+                        impact: 'positive',
+                        value: `+${Math.round((platformMultiplier - 1) * 100)}% boost`
+                    });
+                }
+                confidence += 15;
+
+                // Factor 4: Expertise area alignment
+                if (expertiseArea && expertiseAreas.length > 0) {
+                    const matchingArea = expertiseAreas.find(area => 
+                        area.name.toLowerCase().includes(expertiseArea.toLowerCase()) ||
+                        expertiseArea.toLowerCase().includes(area.name.toLowerCase())
+                    );
+                    if (matchingArea) {
+                        const authorityMultiplier = matchingArea.authorityScore / 100;
+                        predictedEngagementRate *= (0.8 + authorityMultiplier * 0.4);
+                        factors.push({
+                            name: 'Expertise Alignment',
+                            impact: matchingArea.authorityScore >= 70 ? 'positive' : 'neutral',
+                            value: `${matchingArea.authorityScore}% authority`
+                        });
+                        confidence += 20;
+                    }
+                }
+
+                // Factor 5: Estimated engagement from suggestion
+                if (estimatedEngagement > 0) {
+                    const engagementMultiplier = Math.min(1.5, estimatedEngagement / 500);
+                    predictedEngagementRate *= (0.9 + engagementMultiplier * 0.2);
+                    factors.push({
+                        name: 'AI Suggestion Score',
+                        impact: estimatedEngagement > 300 ? 'positive' : 'neutral',
+                        value: `${estimatedEngagement} potential`
+                    });
+                    confidence += 10;
+                }
+
+                // Factor 6: Optimal posting time
+                if (calculateOptimalPostingTimes) {
+                    const now = new Date();
+                    const currentDay = now.toLocaleDateString('en-US', { weekday: 'long' });
+                    const currentHour = now.getHours();
+                    const isOptimalDay = calculateOptimalPostingTimes.bestDays?.includes(currentDay);
+                    const isOptimalHour = calculateOptimalPostingTimes.bestHours?.includes(currentHour);
+                    
+                    if (isOptimalDay || isOptimalHour) {
+                        predictedEngagementRate *= 1.15;
+                        factors.push({
+                            name: 'Optimal Timing',
+                            impact: 'positive',
+                            value: 'Best time to post'
+                        });
+                        confidence += 10;
+                    }
+                }
+
+                // Calculate final predictions
+                const avgViews = dashboardAnalytics.totalViews / (dashboardAnalytics.totalContent || 1);
+                predictedViews = Math.round(avgViews * (0.8 + Math.random() * 0.4)); // Add some variance
+                predictedEngagement = Math.round(predictedViews * (predictedEngagementRate / 100));
+                
+                // Cap confidence at 100%
+                confidence = Math.min(100, confidence);
+
+                // Determine prediction category
+                let category = 'moderate';
+                let categoryColor = 'yellow';
+                if (predictedEngagementRate >= 6) {
+                    category = 'high';
+                    categoryColor = 'green';
+                } else if (predictedEngagementRate < 3) {
+                    category = 'low';
+                    categoryColor = 'red';
+                }
+
+                return {
+                    predictedViews,
+                    predictedEngagement,
+                    predictedEngagementRate: Math.round(predictedEngagementRate * 10) / 10,
+                    confidence: Math.round(confidence),
+                    category,
+                    categoryColor,
+                    factors,
+                    recommendation: getPerformanceRecommendation(predictedEngagementRate, factors)
+                };
+            }, [dashboardAnalytics, expertiseAreas, calculateOptimalPostingTimes]);
+
+            // Get performance recommendation based on prediction
+            const getPerformanceRecommendation = (engagementRate, factors) => {
+                if (engagementRate >= 6) {
+                    return 'This content is predicted to perform well! Consider posting during optimal hours for maximum reach.';
+                } else if (engagementRate >= 4) {
+                    return 'Good performance expected. Consider adding a call-to-action or question to boost engagement.';
+                } else if (engagementRate >= 2) {
+                    return 'Moderate performance predicted. Try adding visuals or adjusting the posting time for better results.';
+                } else {
+                    return 'Lower performance expected. Consider revising the content angle or posting on a different platform.';
+                }
+            };
+
+            // Update predictions for suggestions
+            React.useEffect(() => {
+                if (generatePersonalizedSuggestions && dashboardAnalytics) {
+                    const predictions = {};
+                    generatePersonalizedSuggestions.forEach(suggestion => {
+                        const prediction = predictContentPerformance({
+                            contentType: suggestion.contentType,
+                            platforms: suggestion.platforms,
+                            expertiseArea: suggestion.expertiseArea,
+                            topic: suggestion.topic,
+                            estimatedEngagement: suggestion.estimatedEngagement
+                        });
+                        if (prediction) {
+                            predictions[suggestion.id] = prediction;
+                        }
+                    });
+                    setPerformancePredictions(predictions);
+                }
+            }, [generatePersonalizedSuggestions, dashboardAnalytics, predictContentPerformance]);
+
             // Load content-related goals
             const loadContentGoals = async () => {
                 try {
@@ -21728,21 +22019,21 @@ Best regards,
                     // One-click quick generation
                     handleQuickGenerate(suggestion);
                 } else {
-                    // Navigate to generator tab and pre-fill form
-                    setActiveTab('generator');
-                    setActiveGenerator('post-generator'); // Default to post generator
-                    setSelectedTopic(suggestion);
-                    setFormData({
-                        topic: suggestion.topic,
-                        angle: suggestion.angle,
-                        platforms: suggestion.platforms,
-                        contentType: suggestion.contentType,
+                // Navigate to generator tab and pre-fill form
+                setActiveTab('generator');
+                setActiveGenerator('post-generator'); // Default to post generator
+                setSelectedTopic(suggestion);
+                setFormData({
+                    topic: suggestion.topic,
+                    angle: suggestion.angle,
+                    platforms: suggestion.platforms,
+                    contentType: suggestion.contentType,
                         tone: 'professional',
                         expertiseArea: suggestion.expertiseArea,
                         optimalPostingTime: suggestion.optimalPostingTime
-                    });
-                    setSelectedPlatforms(suggestion.platforms);
-                    setContentType(suggestion.contentType.toLowerCase().includes('post') ? 'post' : 'article');
+                });
+                setSelectedPlatforms(suggestion.platforms);
+                setContentType(suggestion.contentType.toLowerCase().includes('post') ? 'post' : 'article');
                 }
             };
 
@@ -24669,10 +24960,10 @@ Generate the repurposed content:`;
                 
                 // Generate suggestions based on expertise areas
                 if (expertiseAreas.length > 0) {
-                    expertiseAreas.forEach((area, index) => {
+                expertiseAreas.forEach((area, index) => {
                         if (index >= 5) return; // Consider top 5 expertise areas
-                        
-                        const areaName = area.name.toLowerCase();
+                    
+                    const areaName = area.name.toLowerCase();
                         
                         // Find matching trending topics
                         const matchingTopics = trendingTopics.filter(topic => {
@@ -24701,7 +24992,7 @@ Generate the repurposed content:`;
                             const performanceMultiplier = analyzePastPerformance.avgEngagementRate > 0 
                                 ? (analyzePastPerformance.avgEngagementRate / 10) 
                                 : 1;
-                            const estimatedEngagement = Math.round(
+                        const estimatedEngagement = Math.round(
                                 baseEngagement * authorityMultiplier * performanceMultiplier * 8
                             );
                             
@@ -24726,10 +25017,10 @@ Generate the repurposed content:`;
                                 id: `suggestion-${area.id}-${topicIndex}`,
                                 topic: matchingTopic.title,
                                 angle: `Leverage your ${area.level.toLowerCase()} expertise in ${area.name} to discuss ${matchingTopic.title}`,
-                                contentType,
-                                estimatedEngagement,
+                            contentType,
+                            estimatedEngagement,
                                 difficulty,
-                                timeToCreate: contentType === 'Article' ? '25 min' : '15 min',
+                            timeToCreate: contentType === 'Article' ? '25 min' : '15 min',
                                 platforms,
                                 expertiseArea: area.name,
                                 trendingRelevance: matchingTopic.relevanceScore,
@@ -26462,22 +26753,22 @@ Generate the repurposed content:`;
                     <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-2`}>
                         <div className="flex items-center justify-between gap-4">
                             <div className="flex space-x-1 overflow-x-auto flex-1">
-                                {tabs.map((tab) => (
-                                    <button
-                                        key={tab.id}
-                                        onClick={() => setActiveTab(tab.id)}
-                                        className={`flex items-center gap-2 px-4 py-3 rounded-lg font-medium transition-all duration-300 whitespace-nowrap ${
-                                            activeTab === tab.id
-                                                ? 'bg-gradient-to-r from-purple-500 to-indigo-600 text-white shadow-lg'
-                                                : isLightMode 
-                                                    ? 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-                                                    : 'text-gray-400 hover:text-gray-50 hover:bg-gray-800'
-                                        }`}
-                                    >
-                                        <div className="w-4 h-4">{tab.icon}</div>
-                                        {tab.label}
-                                    </button>
-                                ))}
+                            {tabs.map((tab) => (
+                                <button
+                                    key={tab.id}
+                                    onClick={() => setActiveTab(tab.id)}
+                                    className={`flex items-center gap-2 px-4 py-3 rounded-lg font-medium transition-all duration-300 whitespace-nowrap ${
+                                        activeTab === tab.id
+                                            ? 'bg-gradient-to-r from-purple-500 to-indigo-600 text-white shadow-lg'
+                                            : isLightMode 
+                                                ? 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                                                : 'text-gray-400 hover:text-gray-50 hover:bg-gray-800'
+                                    }`}
+                                >
+                                    <div className="w-4 h-4">{tab.icon}</div>
+                                    {tab.label}
+                                </button>
+                            ))}
                             </div>
                             {activeTab === 'dashboard' && (
                                 <button
@@ -26495,6 +26786,105 @@ Generate the repurposed content:`;
                             )}
                         </div>
                     </div>
+
+                    {/* Template Creation Modal */}
+                    {showTemplateModal && (
+                        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                            <div className={`${isLightMode ? 'bg-white' : 'bg-gray-800'} rounded-2xl shadow-2xl max-w-md w-full`}>
+                                <div className={`${isLightMode ? 'bg-gray-50' : 'bg-gray-900'} px-6 py-4 border-b ${isLightMode ? 'border-gray-200' : 'border-gray-700'} flex items-center justify-between`}>
+                                    <h2 className={`text-xl font-bold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                        {selectedTemplate ? 'Save Template' : 'Create New Template'}
+                                    </h2>
+                                    <button
+                                        onClick={() => {
+                                            setShowTemplateModal(false);
+                                            setTemplateName('');
+                                            setTemplateDescription('');
+                                            setSelectedTemplate(null);
+                                        }}
+                                        className={`p-2 rounded-lg ${isLightMode ? 'hover:bg-gray-200' : 'hover:bg-gray-700'} transition-colors`}
+                                    >
+                                        <svg className={`w-5 h-5 ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                        </svg>
+                                    </button>
+                                </div>
+                                
+                                <div className="p-6 space-y-4">
+                                    <div>
+                                        <label className={`block text-sm font-medium mb-2 ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>
+                                            Template Name *
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={templateName}
+                                            onChange={(e) => setTemplateName(e.target.value)}
+                                            placeholder="e.g., Weekly LinkedIn Post"
+                                            className={`w-full px-4 py-2 rounded-lg border ${
+                                                isLightMode 
+                                                    ? 'bg-white border-gray-300 text-gray-900' 
+                                                    : 'bg-gray-700 border-gray-600 text-gray-50'
+                                            } focus:outline-none focus:ring-2 focus:ring-purple-500`}
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className={`block text-sm font-medium mb-2 ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>
+                                            Description (Optional)
+                                        </label>
+                                        <textarea
+                                            value={templateDescription}
+                                            onChange={(e) => setTemplateDescription(e.target.value)}
+                                            placeholder="Describe when to use this template..."
+                                            rows={3}
+                                            className={`w-full px-4 py-2 rounded-lg border ${
+                                                isLightMode 
+                                                    ? 'bg-white border-gray-300 text-gray-900' 
+                                                    : 'bg-gray-700 border-gray-600 text-gray-50'
+                                            } focus:outline-none focus:ring-2 focus:ring-purple-500`}
+                                        />
+                                    </div>
+
+                                    {selectedTemplate && (
+                                        <div className={`${isLightMode ? 'bg-blue-50' : 'bg-blue-500/10'} rounded-lg p-4 border ${isLightMode ? 'border-blue-200' : 'border-blue-500/30'}`}>
+                                            <div className={`text-xs font-medium mb-2 ${isLightMode ? 'text-blue-900' : 'text-blue-400'}`}>
+                                                Template Details:
+                                            </div>
+                                            <div className={`text-xs space-y-1 ${isLightMode ? 'text-blue-800' : 'text-blue-300'}`}>
+                                                <div>Type: {selectedTemplate.contentType}</div>
+                                                <div>Platforms: {selectedTemplate.platforms?.join(', ') || 'LinkedIn'}</div>
+                                                <div>Tone: {selectedTemplate.tone || 'professional'}</div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <div className="flex items-center gap-3 pt-2">
+                                        <button
+                                            onClick={() => {
+                                                setShowTemplateModal(false);
+                                                setTemplateName('');
+                                                setTemplateDescription('');
+                                                setSelectedTemplate(null);
+                                            }}
+                                            className={`flex-1 px-4 py-2 rounded-lg font-medium ${
+                                                isLightMode 
+                                                    ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' 
+                                                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                                            } transition-colors`}
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            onClick={saveTemplate}
+                                            className="flex-1 px-4 py-2 rounded-lg font-medium bg-gradient-to-r from-purple-500 to-indigo-600 text-white hover:from-purple-600 hover:to-indigo-700 transition-all"
+                                        >
+                                            Save Template
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Export/Share Modal */}
                     {showExportModal && (
@@ -26629,10 +27019,10 @@ Generate the repurposed content:`;
                                 <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-8`}>
                                     <div className="flex items-center justify-between mb-6">
                                         <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 bg-yellow-500 rounded-lg flex items-center justify-center">
-                                                <div className="w-5 h-5 text-white text-xl">💡</div>
-                                            </div>
-                                            <h2 className={`text-2xl font-bold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>Today's Content Suggestions</h2>
+                                        <div className="w-10 h-10 bg-yellow-500 rounded-lg flex items-center justify-center">
+                                            <div className="w-5 h-5 text-white text-xl">💡</div>
+                                        </div>
+                                        <h2 className={`text-2xl font-bold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>Today's Content Suggestions</h2>
                                         </div>
                                         {batchGenerationQueue.length > 0 && (
                                             <div className="flex items-center gap-2">
@@ -26721,7 +27111,7 @@ Generate the repurposed content:`;
                                                                         {suggestion.trendingRelevance}% trending match
                                                                     </span>
                                                                 )}
-                                                            </div>
+                                                    </div>
                                                         )}
                                                     </div>
                                                     <div className="text-right ml-4">
@@ -26729,8 +27119,91 @@ Generate the repurposed content:`;
                                                             {suggestion.estimatedEngagement}
                                                         </div>
                                                         <div className={`text-sm ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>Est. Engagement</div>
+                                                        {performancePredictions[suggestion.id] && (
+                                                            <div className={`mt-2 px-2 py-1 rounded text-xs font-medium ${
+                                                                performancePredictions[suggestion.id].categoryColor === 'green'
+                                                                    ? (isLightMode ? 'bg-green-100 text-green-700' : 'bg-green-500/20 text-green-400')
+                                                                    : performancePredictions[suggestion.id].categoryColor === 'red'
+                                                                    ? (isLightMode ? 'bg-red-100 text-red-700' : 'bg-red-500/20 text-red-400')
+                                                                    : (isLightMode ? 'bg-yellow-100 text-yellow-700' : 'bg-yellow-500/20 text-yellow-400')
+                                                            }`}>
+                                                                {performancePredictions[suggestion.id].predictedEngagementRate}% predicted
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </div>
+                                                
+                                                {/* Performance Prediction Details */}
+                                                {performancePredictions[suggestion.id] && (
+                                                    <div className={`mt-4 pt-4 border-t ${isLightMode ? 'border-gray-200' : 'border-gray-700'}`}>
+                                                        <div className={`${isLightMode ? 'bg-blue-50' : 'bg-blue-500/10'} rounded-lg p-4 border ${isLightMode ? 'border-blue-200' : 'border-blue-500/30'}`}>
+                                                            <div className="flex items-center justify-between mb-3">
+                                                                <h4 className={`font-semibold text-sm ${isLightMode ? 'text-blue-900' : 'text-blue-400'}`}>
+                                                                    📊 Performance Prediction
+                                                                </h4>
+                                                                <span className={`text-xs px-2 py-1 rounded-full ${
+                                                                    performancePredictions[suggestion.id].confidence >= 70
+                                                                        ? (isLightMode ? 'bg-green-100 text-green-700' : 'bg-green-500/20 text-green-400')
+                                                                        : performancePredictions[suggestion.id].confidence >= 50
+                                                                        ? (isLightMode ? 'bg-yellow-100 text-yellow-700' : 'bg-yellow-500/20 text-yellow-400')
+                                                                        : (isLightMode ? 'bg-gray-100 text-gray-700' : 'bg-gray-500/20 text-gray-400')
+                                                                }`}>
+                                                                    {performancePredictions[suggestion.id].confidence}% confidence
+                                                                </span>
+                                                            </div>
+                                                            
+                                                            <div className="grid grid-cols-3 gap-3 mb-3">
+                                                                <div>
+                                                                    <div className={`text-xs ${isLightMode ? 'text-blue-700' : 'text-blue-300'} mb-1`}>Predicted Views</div>
+                                                                    <div className={`text-lg font-bold ${isLightMode ? 'text-blue-900' : 'text-blue-400'}`}>
+                                                                        {formatNumber(performancePredictions[suggestion.id].predictedViews)}
+                                                                    </div>
+                                                                </div>
+                                                                <div>
+                                                                    <div className={`text-xs ${isLightMode ? 'text-blue-700' : 'text-blue-300'} mb-1`}>Predicted Engagement</div>
+                                                                    <div className={`text-lg font-bold ${isLightMode ? 'text-blue-900' : 'text-blue-400'}`}>
+                                                                        {formatNumber(performancePredictions[suggestion.id].predictedEngagement)}
+                                                                    </div>
+                                                                </div>
+                                                                <div>
+                                                                    <div className={`text-xs ${isLightMode ? 'text-blue-700' : 'text-blue-300'} mb-1`}>Engagement Rate</div>
+                                                                    <div className={`text-lg font-bold ${
+                                                                        performancePredictions[suggestion.id].categoryColor === 'green'
+                                                                            ? (isLightMode ? 'text-green-600' : 'text-green-400')
+                                                                            : performancePredictions[suggestion.id].categoryColor === 'red'
+                                                                            ? (isLightMode ? 'text-red-600' : 'text-red-400')
+                                                                            : (isLightMode ? 'text-yellow-600' : 'text-yellow-400')
+                                                                    }`}>
+                                                                        {performancePredictions[suggestion.id].predictedEngagementRate}%
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                            
+                                                            {performancePredictions[suggestion.id].factors && performancePredictions[suggestion.id].factors.length > 0 && (
+                                                                <div className="mb-3">
+                                                                    <div className={`text-xs font-medium mb-2 ${isLightMode ? 'text-blue-800' : 'text-blue-300'}`}>
+                                                                        Key Factors:
+                                                                    </div>
+                                                                    <div className="flex flex-wrap gap-2">
+                                                                        {performancePredictions[suggestion.id].factors.slice(0, 4).map((factor, idx) => (
+                                                                            <span key={idx} className={`px-2 py-1 rounded text-xs ${
+                                                                                factor.impact === 'positive'
+                                                                                    ? (isLightMode ? 'bg-green-100 text-green-700' : 'bg-green-500/20 text-green-400')
+                                                                                    : (isLightMode ? 'bg-gray-100 text-gray-600' : 'bg-gray-500/20 text-gray-400')
+                                                                            }`}>
+                                                                                {factor.name}: {factor.value}
+                                                                            </span>
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                            
+                                                            <div className={`text-xs ${isLightMode ? 'text-blue-800' : 'text-blue-300'} italic`}>
+                                                                💡 {performancePredictions[suggestion.id].recommendation}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
                                                 
                                                 <div className="flex items-center justify-between flex-wrap gap-3">
                                                     <div className="flex items-center gap-2 flex-wrap">
@@ -26741,7 +27214,7 @@ Generate the repurposed content:`;
                                                         ))}
                                                     </div>
                                                     <div className="flex items-center gap-2">
-                                                        <button
+                                                    <button
                                                             onClick={() => addToBatchQueue(suggestion)}
                                                             disabled={quickGenerateLoading || batchGenerationQueue.find(s => s.id === suggestion.id)}
                                                             className={`px-3 py-2 rounded-lg text-xs font-medium transition-all duration-200 ${
@@ -26761,15 +27234,15 @@ Generate the repurposed content:`;
                                                             {quickGenerateLoading ? (
                                                                 <>
                                                                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                                                                    Generating...
+                                                                Generating...
                                                                 </>
-                                                            ) : (
+                                                        ) : (
                                                                 <>
                                                                     <span>⚡</span>
                                                                     Quick Generate
                                                                 </>
-                                                            )}
-                                                        </button>
+                                                        )}
+                                                    </button>
                                                         <button
                                                             onClick={() => handleGenerateContent(suggestion, false)}
                                                             disabled={isLoading || quickGenerateLoading}
@@ -26780,7 +27253,7 @@ Generate the repurposed content:`;
                                                             } disabled:opacity-50 disabled:cursor-not-allowed`}
                                                         >
                                                             Customize
-                                                        </button>
+                                                    </button>
                                                     </div>
                                                 </div>
                                             </div>
@@ -26792,10 +27265,10 @@ Generate the repurposed content:`;
                                 <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-8`}>
                                     <div className="flex items-center justify-between mb-6">
                                         <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 bg-yellow-500 rounded-lg flex items-center justify-center">
-                                                <div className="w-5 h-5 text-white text-xl">⭐</div>
-                                            </div>
-                                            <h2 className={`text-2xl font-bold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>Authority Score Overview</h2>
+                                        <div className="w-10 h-10 bg-yellow-500 rounded-lg flex items-center justify-center">
+                                            <div className="w-5 h-5 text-white text-xl">⭐</div>
+                                        </div>
+                                        <h2 className={`text-2xl font-bold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>Authority Score Overview</h2>
                                         </div>
                                         {dashboardAnalytics && (
                                             <button
@@ -26849,7 +27322,7 @@ Generate the repurposed content:`;
                                                 {dashboardAnalytics 
                                                     ? formatNumber(dashboardAnalytics.totalViews || 0)
                                                     : (calculateDashboardMetrics.totalEngagement > 1000 
-                                                        ? (calculateDashboardMetrics.totalEngagement / 1000).toFixed(1) + 'K'
+                                                    ? (calculateDashboardMetrics.totalEngagement / 1000).toFixed(1) + 'K'
                                                         : calculateDashboardMetrics.totalEngagement)
                                                 }
                                             </div>
@@ -28143,7 +28616,104 @@ Generate the repurposed content:`;
                                     </div>
                                 )}
 
-                                {/* Template Shortcuts */}
+                                {/* Content Templates Library */}
+                                <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
+                                    <div className="flex items-center justify-between mb-4">
+                                        <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>My Templates</h3>
+                                        <button
+                                            onClick={() => {
+                                                setSelectedTemplate(null);
+                                                setTemplateName('');
+                                                setTemplateDescription('');
+                                                setShowTemplateModal(true);
+                                            }}
+                                            className={`text-xs px-2 py-1 rounded ${isLightMode ? 'bg-purple-100 text-purple-700 hover:bg-purple-200' : 'bg-purple-500/20 text-purple-400 hover:bg-purple-500/30'}`}
+                                        >
+                                            + New
+                                        </button>
+                                    </div>
+                                    
+                                    {contentTemplates.length > 0 ? (
+                                        <div className="space-y-2 max-h-64 overflow-y-auto">
+                                            {contentTemplates.map((template) => (
+                                                <div
+                                                    key={template.id}
+                                                    className={`${isLightMode ? 'bg-white/30' : 'bg-gray-800'} rounded-lg p-3 border ${isLightMode ? 'border-gray-200' : 'border-gray-700'} hover:border-purple-500/50 transition-all`}
+                                                >
+                                                    <div className="flex items-start justify-between mb-2">
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className={`font-semibold text-sm mb-1 ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                                {template.name}
+                                                            </div>
+                                                            {template.description && (
+                                                                <div className={`text-xs mb-2 ${isLightMode ? 'text-gray-600' : 'text-gray-400'} line-clamp-1`}>
+                                                                    {template.description}
+                                                                </div>
+                                                            )}
+                                                            <div className="flex items-center gap-2 flex-wrap">
+                                                                <span className={`px-2 py-0.5 rounded text-xs ${
+                                                                    template.contentType === 'Article'
+                                                                        ? (isLightMode ? 'bg-blue-100 text-blue-700' : 'bg-blue-500/20 text-blue-400')
+                                                                        : (isLightMode ? 'bg-purple-100 text-purple-700' : 'bg-purple-500/20 text-purple-400')
+                                                                }`}>
+                                                                    {template.contentType}
+                                                                </span>
+                                                                {template.usageCount > 0 && (
+                                                                    <span className={`text-xs ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                                        Used {template.usageCount}x
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                deleteTemplate(template.id);
+                                                            }}
+                                                            className={`ml-2 p-1 rounded ${isLightMode ? 'hover:bg-red-100 text-red-600' : 'hover:bg-red-500/20 text-red-400'}`}
+                                                            title="Delete template"
+                                                        >
+                                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                                            </svg>
+                                                        </button>
+                                                    </div>
+                                                    <button
+                                                        onClick={() => applyTemplate(template)}
+                                                        className={`w-full mt-2 py-1.5 rounded text-xs font-medium ${
+                                                            isLightMode 
+                                                                ? 'bg-purple-100 text-purple-700 hover:bg-purple-200' 
+                                                                : 'bg-purple-500/20 text-purple-400 hover:bg-purple-500/30'
+                                                        } transition-colors`}
+                                                    >
+                                                        Use Template
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className={`text-center py-6 ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                            <p className="text-sm mb-2">No templates saved yet</p>
+                                            <button
+                                                onClick={() => {
+                                                    setSelectedTemplate(null);
+                                                    setTemplateName('');
+                                                    setTemplateDescription('');
+                                                    setShowTemplateModal(true);
+                                                }}
+                                                className={`text-xs px-3 py-1.5 rounded-lg font-medium ${
+                                                    isLightMode 
+                                                        ? 'bg-purple-100 text-purple-700 hover:bg-purple-200' 
+                                                        : 'bg-purple-500/20 text-purple-400 hover:bg-purple-500/30'
+                                                }`}
+                                            >
+                                                Create Template
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Quick Template Shortcuts */}
                                 <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
                                     <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-4`}>Quick Templates</h3>
                                     <div className="space-y-2">
