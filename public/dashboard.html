@@ -20155,6 +20155,24 @@ Best regards,
             const [contentGoals, setContentGoals] = useState([]);
             const [goalsLoading, setGoalsLoading] = useState(false);
             
+            // Engagement insights state
+            const [engagementNotifications, setEngagementNotifications] = useState([]);
+            const [responseRate, setResponseRate] = useState(null);
+            const [audienceGrowth, setAudienceGrowth] = useState(null);
+            
+            // Performance comparison state
+            const [performanceComparison, setPerformanceComparison] = useState(null);
+            
+            // Content gap analysis state
+            const [contentGaps, setContentGaps] = useState(null);
+            
+            // Activity feed state
+            const [activityFeed, setActivityFeed] = useState([]);
+            
+            // Export/share state
+            const [showExportModal, setShowExportModal] = useState(false);
+            const [exportLoading, setExportLoading] = useState(false);
+            
             // Check for light mode
             const isLightMode = !document.documentElement.classList.contains('dark');
 
@@ -20830,6 +20848,788 @@ Best regards,
                     loadContentGoals();
                 }
             }, [dashboardAnalytics, contentHistory]);
+
+            // Calculate engagement insights
+            const engagementInsights = React.useMemo(() => {
+                if (!dashboardAnalytics) {
+                    return {
+                        responseRate: null,
+                        audienceGrowth: null,
+                        notifications: []
+                    };
+                }
+
+                // Calculate response rate (comments / total engagement)
+                const totalEngagement = dashboardAnalytics.totalLikes + dashboardAnalytics.totalComments + dashboardAnalytics.totalShares;
+                const responseRateValue = totalEngagement > 0 
+                    ? (dashboardAnalytics.totalComments / totalEngagement) * 100 
+                    : 0;
+
+                // Calculate audience growth (simplified - would need historical data)
+                const avgEngagementRate = dashboardAnalytics.averageEngagementRate || 0;
+                const growthTrend = avgEngagementRate > 5 ? 'growing' : avgEngagementRate > 3 ? 'stable' : 'declining';
+
+                // Generate engagement notifications
+                const notifications = [];
+                
+                // High engagement notification
+                if (dashboardAnalytics.averageEngagementRate > 5) {
+                    notifications.push({
+                        id: 'high-engagement',
+                        type: 'success',
+                        title: 'High Engagement Rate!',
+                        message: `Your content is performing well with ${dashboardAnalytics.averageEngagementRate.toFixed(1)}% engagement rate.`,
+                        timestamp: new Date(),
+                        icon: '🎉'
+                    });
+                }
+
+                // Engagement spike notification
+                if (dashboardAnalytics.topPerformingContent && dashboardAnalytics.topPerformingContent.length > 0) {
+                    const topContent = dashboardAnalytics.topPerformingContent[0];
+                    if (topContent.engagement_rate > 8) {
+                        notifications.push({
+                            id: 'engagement-spike',
+                            type: 'success',
+                            title: 'Engagement Spike Detected!',
+                            message: `"${topContent.title}" is performing exceptionally well with ${topContent.engagement_rate.toFixed(1)}% engagement.`,
+                            timestamp: new Date(),
+                            icon: '📈'
+                        });
+                    }
+                }
+
+                // Low engagement warning
+                if (dashboardAnalytics.averageEngagementRate < 2 && dashboardAnalytics.totalContent > 5) {
+                    notifications.push({
+                        id: 'low-engagement',
+                        type: 'warning',
+                        title: 'Engagement Opportunity',
+                        message: `Your engagement rate is ${dashboardAnalytics.averageEngagementRate.toFixed(1)}%. Try asking questions or using visuals to boost engagement.`,
+                        timestamp: new Date(),
+                        icon: '💡'
+                    });
+                }
+
+                // Content milestone notification
+                if (dashboardAnalytics.totalContent > 0 && dashboardAnalytics.totalContent % 10 === 0) {
+                    notifications.push({
+                        id: 'content-milestone',
+                        type: 'info',
+                        title: 'Content Milestone!',
+                        message: `Congratulations! You've created ${dashboardAnalytics.totalContent} pieces of content.`,
+                        timestamp: new Date(),
+                        icon: '🏆'
+                    });
+                }
+
+                return {
+                    responseRate: responseRateValue,
+                    audienceGrowth: {
+                        trend: growthTrend,
+                        engagementRate: avgEngagementRate,
+                        totalEngagement: totalEngagement
+                    },
+                    notifications: notifications.slice(0, 3) // Limit to 3 most recent
+                };
+            }, [dashboardAnalytics]);
+
+            // Update engagement insights state
+            React.useEffect(() => {
+                if (engagementInsights) {
+                    setResponseRate(engagementInsights.responseRate);
+                    setAudienceGrowth(engagementInsights.audienceGrowth);
+                    setEngagementNotifications(engagementInsights.notifications);
+                }
+            }, [engagementInsights]);
+
+            // Calculate performance comparisons (week-over-week, month-over-month)
+            const calculatePerformanceComparison = React.useMemo(() => {
+                if (!dashboardAnalytics || !dashboardAnalytics.timeSeriesData || dashboardAnalytics.timeSeriesData.length === 0) {
+                    return null;
+                }
+
+                const now = new Date();
+                const oneWeekAgo = new Date(now);
+                oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+                const twoWeeksAgo = new Date(now);
+                twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
+                
+                const oneMonthAgo = new Date(now);
+                oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+                const twoMonthsAgo = new Date(now);
+                twoMonthsAgo.setMonth(twoMonthsAgo.getMonth() - 2);
+
+                // Filter data for different periods
+                const thisWeek = dashboardAnalytics.timeSeriesData.filter(d => {
+                    const date = new Date(d.date);
+                    return date >= oneWeekAgo;
+                });
+                
+                const lastWeek = dashboardAnalytics.timeSeriesData.filter(d => {
+                    const date = new Date(d.date);
+                    return date >= twoWeeksAgo && date < oneWeekAgo;
+                });
+
+                const thisMonth = dashboardAnalytics.timeSeriesData.filter(d => {
+                    const date = new Date(d.date);
+                    return date >= oneMonthAgo;
+                });
+
+                const lastMonth = dashboardAnalytics.timeSeriesData.filter(d => {
+                    const date = new Date(d.date);
+                    return date >= twoMonthsAgo && date < oneMonthAgo;
+                });
+
+                // Calculate metrics for each period
+                const calculatePeriodMetrics = (period) => {
+                    if (period.length === 0) return { engagement: 0, views: 0, posts: 0 };
+                    return {
+                        engagement: period.reduce((sum, d) => sum + (d.engagement || 0), 0),
+                        views: period.reduce((sum, d) => sum + (d.views || 0), 0),
+                        posts: period.length
+                    };
+                };
+
+                const thisWeekMetrics = calculatePeriodMetrics(thisWeek);
+                const lastWeekMetrics = calculatePeriodMetrics(lastWeek);
+                const thisMonthMetrics = calculatePeriodMetrics(thisMonth);
+                const lastMonthMetrics = calculatePeriodMetrics(lastMonth);
+
+                // Calculate percentage changes
+                const calculateChange = (current, previous) => {
+                    if (previous === 0) return current > 0 ? 100 : 0;
+                    return ((current - previous) / previous) * 100;
+                };
+
+                const weekOverWeek = {
+                    engagement: {
+                        current: thisWeekMetrics.engagement,
+                        previous: lastWeekMetrics.engagement,
+                        change: calculateChange(thisWeekMetrics.engagement, lastWeekMetrics.engagement)
+                    },
+                    views: {
+                        current: thisWeekMetrics.views,
+                        previous: lastWeekMetrics.views,
+                        change: calculateChange(thisWeekMetrics.views, lastWeekMetrics.views)
+                    },
+                    posts: {
+                        current: thisWeekMetrics.posts,
+                        previous: lastWeekMetrics.posts,
+                        change: calculateChange(thisWeekMetrics.posts, lastWeekMetrics.posts)
+                    }
+                };
+
+                const monthOverMonth = {
+                    engagement: {
+                        current: thisMonthMetrics.engagement,
+                        previous: lastMonthMetrics.engagement,
+                        change: calculateChange(thisMonthMetrics.engagement, lastMonthMetrics.engagement)
+                    },
+                    views: {
+                        current: thisMonthMetrics.views,
+                        previous: lastMonthMetrics.views,
+                        change: calculateChange(thisMonthMetrics.views, lastMonthMetrics.views)
+                    },
+                    posts: {
+                        current: thisMonthMetrics.posts,
+                        previous: lastMonthMetrics.posts,
+                        change: calculateChange(thisMonthMetrics.posts, lastMonthMetrics.posts)
+                    }
+                };
+
+                // Determine trends
+                const getTrend = (change) => {
+                    if (change > 10) return { direction: 'up', color: 'green', icon: '📈' };
+                    if (change > 0) return { direction: 'up', color: 'green', icon: '↗️' };
+                    if (change < -10) return { direction: 'down', color: 'red', icon: '📉' };
+                    if (change < 0) return { direction: 'down', color: 'red', icon: '↘️' };
+                    return { direction: 'stable', color: 'gray', icon: '➡️' };
+                };
+
+                return {
+                    weekOverWeek: {
+                        ...weekOverWeek,
+                        engagementTrend: getTrend(weekOverWeek.engagement.change),
+                        viewsTrend: getTrend(weekOverWeek.views.change),
+                        postsTrend: getTrend(weekOverWeek.posts.change)
+                    },
+                    monthOverMonth: {
+                        ...monthOverMonth,
+                        engagementTrend: getTrend(monthOverMonth.engagement.change),
+                        viewsTrend: getTrend(monthOverMonth.views.change),
+                        postsTrend: getTrend(monthOverMonth.posts.change)
+                    }
+                };
+            }, [dashboardAnalytics]);
+
+            // Update performance comparison state
+            React.useEffect(() => {
+                if (calculatePerformanceComparison) {
+                    setPerformanceComparison(calculatePerformanceComparison);
+                }
+            }, [calculatePerformanceComparison]);
+
+            // Calculate content gaps analysis
+            const calculateContentGaps = React.useMemo(() => {
+                if (!expertiseAreas || expertiseAreas.length === 0 || !contentHistory || contentHistory.length === 0) {
+                    return null;
+                }
+
+                const gaps = {
+                    expertiseGaps: [],
+                    contentTypeGaps: [],
+                    topicGaps: [],
+                    platformGaps: [],
+                    recommendations: []
+                };
+
+                // Analyze expertise area coverage
+                expertiseAreas.forEach(area => {
+                    const areaContent = contentHistory.filter(item => {
+                        const topic = item.metadata?.topic?.toLowerCase() || '';
+                        const areaName = area.name.toLowerCase();
+                        return topic.includes(areaName.split(' ')[0]) || 
+                               areaName.includes(topic.split(' ')[0]) ||
+                               item.metadata?.expertiseArea?.toLowerCase() === areaName;
+                    });
+
+                    const contentCount = areaContent.length;
+                    const authorityScore = area.authorityScore || 0;
+                    
+                    // Identify gaps: high authority but low content, or low authority overall
+                    if (authorityScore >= 70 && contentCount < 3) {
+                        gaps.expertiseGaps.push({
+                            area: area.name,
+                            authorityScore,
+                            contentCount,
+                            priority: 'high',
+                            reason: 'High authority but limited content',
+                            recommendation: `Create more content in ${area.name} to leverage your expertise`
+                        });
+                    } else if (authorityScore < 50 && contentCount < 5) {
+                        gaps.expertiseGaps.push({
+                            area: area.name,
+                            authorityScore,
+                            contentCount,
+                            priority: 'medium',
+                            reason: 'Low authority and limited content',
+                            recommendation: `Build authority in ${area.name} by creating more content`
+                        });
+                    }
+                });
+
+                // Analyze content type distribution
+                const contentTypeCounts = {
+                    post: 0,
+                    article: 0,
+                    thread: 0,
+                    video: 0
+                };
+
+                contentHistory.forEach(item => {
+                    const type = (item.type || item.metadata?.contentType || 'post').toLowerCase();
+                    if (type.includes('post')) contentTypeCounts.post++;
+                    else if (type.includes('article')) contentTypeCounts.article++;
+                    else if (type.includes('thread')) contentTypeCounts.thread++;
+                    else if (type.includes('video')) contentTypeCounts.video++;
+                });
+
+                const totalContent = contentHistory.length;
+                const postPercentage = (contentTypeCounts.post / totalContent) * 100;
+                const articlePercentage = (contentTypeCounts.article / totalContent) * 100;
+
+                // Identify content type gaps
+                if (postPercentage > 80) {
+                    gaps.contentTypeGaps.push({
+                        type: 'Article',
+                        currentPercentage: articlePercentage,
+                        recommendation: 'Diversify content by creating more articles for deeper engagement'
+                    });
+                }
+                if (articlePercentage > 60 && contentTypeCounts.thread === 0) {
+                    gaps.contentTypeGaps.push({
+                        type: 'Thread',
+                        currentPercentage: 0,
+                        recommendation: 'Try creating Twitter/X threads for quick, engaging content'
+                    });
+                }
+                if (contentTypeCounts.article === 0 && totalContent > 5) {
+                    gaps.contentTypeGaps.push({
+                        type: 'Article',
+                        currentPercentage: 0,
+                        recommendation: 'Create long-form articles to establish thought leadership'
+                    });
+                }
+
+                // Analyze platform distribution
+                const platformCounts = {
+                    LinkedIn: 0,
+                    Twitter: 0,
+                    Medium: 0,
+                    Other: 0
+                };
+
+                contentHistory.forEach(item => {
+                    const platforms = item.metadata?.platforms || [];
+                    if (Array.isArray(platforms)) {
+                        platforms.forEach(platform => {
+                            const p = platform.toLowerCase();
+                            if (p.includes('linkedin')) platformCounts.LinkedIn++;
+                            else if (p.includes('twitter') || p.includes('x')) platformCounts.Twitter++;
+                            else if (p.includes('medium')) platformCounts.Medium++;
+                            else platformCounts.Other++;
+                        });
+                    }
+                });
+
+                const totalPlatformUsage = Object.values(platformCounts).reduce((a, b) => a + b, 0);
+                if (totalPlatformUsage > 0) {
+                    const linkedInPercentage = (platformCounts.LinkedIn / totalPlatformUsage) * 100;
+                    const twitterPercentage = (platformCounts.Twitter / totalPlatformUsage) * 100;
+
+                    if (linkedInPercentage > 90 && platformCounts.Twitter === 0) {
+                        gaps.platformGaps.push({
+                            platform: 'Twitter/X',
+                            currentPercentage: 0,
+                            recommendation: 'Expand to Twitter/X to reach a different audience'
+                        });
+                    }
+                    if (twitterPercentage > 80 && platformCounts.LinkedIn === 0) {
+                        gaps.platformGaps.push({
+                            platform: 'LinkedIn',
+                            currentPercentage: 0,
+                            recommendation: 'Post on LinkedIn for professional networking and B2B engagement'
+                        });
+                    }
+                }
+
+                // Analyze topic coverage
+                const coveredTopics = new Set();
+                contentHistory.forEach(item => {
+                    const topic = item.metadata?.topic?.toLowerCase();
+                    if (topic) {
+                        coveredTopics.add(topic);
+                    }
+                });
+
+                // Check trending topics coverage
+                const uncoveredTrendingTopics = trendingTopics.filter(topic => {
+                    const topicTitle = topic.title.toLowerCase();
+                    return !Array.from(coveredTopics).some(covered => 
+                        covered.includes(topicTitle.split(' ')[0]) || 
+                        topicTitle.includes(covered.split(' ')[0])
+                    );
+                }).slice(0, 3);
+
+                uncoveredTrendingTopics.forEach(topic => {
+                    gaps.topicGaps.push({
+                        topic: topic.title,
+                        engagementPotential: topic.engagementPotential || 0,
+                        recommendation: `Create content about "${topic.title}" - trending topic with high engagement potential`
+                    });
+                });
+
+                // Generate overall recommendations
+                if (gaps.expertiseGaps.length > 0) {
+                    const highPriorityGaps = gaps.expertiseGaps.filter(g => g.priority === 'high');
+                    if (highPriorityGaps.length > 0) {
+                        gaps.recommendations.push({
+                            type: 'expertise',
+                            priority: 'high',
+                            message: `Focus on ${highPriorityGaps[0].area} - you have high authority but limited content`,
+                            action: `Create 3-5 pieces of content in ${highPriorityGaps[0].area} this month`
+                        });
+                    }
+                }
+
+                if (gaps.contentTypeGaps.length > 0) {
+                    gaps.recommendations.push({
+                        type: 'content-type',
+                        priority: 'medium',
+                        message: `Diversify your content mix - try creating ${gaps.contentTypeGaps[0].type}`,
+                        action: `Create your first ${gaps.contentTypeGaps[0].type.toLowerCase()} this week`
+                    });
+                }
+
+                if (gaps.topicGaps.length > 0) {
+                    gaps.recommendations.push({
+                        type: 'topic',
+                        priority: 'medium',
+                        message: `Cover trending topic: "${gaps.topicGaps[0].topic}"`,
+                        action: `Create content about ${gaps.topicGaps[0].topic} to tap into trending conversations`
+                    });
+                }
+
+                return gaps;
+            }, [expertiseAreas, contentHistory, trendingTopics]);
+
+            // Update content gaps state
+            React.useEffect(() => {
+                if (calculateContentGaps) {
+                    setContentGaps(calculateContentGaps);
+                }
+            }, [calculateContentGaps]);
+
+            // Generate activity feed
+            const generateActivityFeed = React.useMemo(() => {
+                const activities = [];
+
+                // Add recent content creation activities
+                if (contentHistory && contentHistory.length > 0) {
+                    const recentContent = contentHistory
+                        .slice()
+                        .sort((a, b) => {
+                            const timeA = new Date(a.metadata?.timestamp || a.createdAt || 0);
+                            const timeB = new Date(b.metadata?.timestamp || b.createdAt || 0);
+                            return timeB - timeA;
+                        })
+                        .slice(0, 5);
+
+                    recentContent.forEach((item, index) => {
+                        const timestamp = new Date(item.metadata?.timestamp || item.createdAt || Date.now());
+                        const timeAgo = getTimeAgo(timestamp);
+                        
+                        activities.push({
+                            id: `content-${item.id || index}`,
+                            type: 'content-created',
+                            icon: '📝',
+                            title: 'Content Created',
+                            description: item.title || item.metadata?.topic || 'New content piece',
+                            timestamp: timestamp,
+                            timeAgo: timeAgo,
+                            metadata: {
+                                contentType: item.type || item.metadata?.contentType || 'post',
+                                platforms: item.metadata?.platforms || [],
+                                expertiseArea: item.metadata?.expertiseArea
+                            }
+                        });
+                    });
+                }
+
+                // Add goal completion activities
+                if (contentGoals && contentGoals.length > 0) {
+                    contentGoals
+                        .filter(goal => goal.progress >= 100)
+                        .forEach((goal, index) => {
+                            activities.push({
+                                id: `goal-completed-${goal.id || index}`,
+                                type: 'goal-completed',
+                                icon: '🎯',
+                                title: 'Goal Completed!',
+                                description: `${goal.title} - ${goal.current_value}/${goal.target_value} ${goal.metric || ''}`,
+                                timestamp: new Date(),
+                                timeAgo: 'Just now',
+                                metadata: {
+                                    goalId: goal.id,
+                                    category: goal.category
+                                }
+                            });
+                        });
+                }
+
+                // Add achievement activities (if available)
+                if (unlockedAchievements && unlockedAchievements.length > 0) {
+                    unlockedAchievements
+                        .slice()
+                        .sort((a, b) => {
+                            const timeA = new Date(a.unlockedAt || 0);
+                            const timeB = new Date(b.unlockedAt || 0);
+                            return timeB - timeA;
+                        })
+                        .slice(0, 3)
+                        .forEach((achievement, index) => {
+                            activities.push({
+                                id: `achievement-${achievement.id || index}`,
+                                type: 'achievement',
+                                icon: '🏆',
+                                title: 'Achievement Unlocked!',
+                                description: achievement.name || achievement.title,
+                                timestamp: new Date(achievement.unlockedAt || Date.now()),
+                                timeAgo: getTimeAgo(new Date(achievement.unlockedAt || Date.now())),
+                                metadata: {
+                                    achievementId: achievement.id,
+                                    xp: achievement.xp || 0
+                                }
+                            });
+                        });
+                }
+
+                // Add milestone activities
+                if (contentHistory && contentHistory.length > 0) {
+                    const milestones = [10, 25, 50, 100, 250, 500];
+                    milestones.forEach(milestone => {
+                        if (contentHistory.length === milestone) {
+                            activities.push({
+                                id: `milestone-${milestone}`,
+                                type: 'milestone',
+                                icon: '🌟',
+                                title: 'Content Milestone!',
+                                description: `You've created ${milestone} pieces of content!`,
+                                timestamp: new Date(),
+                                timeAgo: 'Just now',
+                                metadata: {
+                                    milestone: milestone
+                                }
+                            });
+                        }
+                    });
+                }
+
+                // Add analytics insights activities
+                if (dashboardAnalytics) {
+                    if (dashboardAnalytics.averageEngagementRate > 5) {
+                        activities.push({
+                            id: 'high-engagement',
+                            type: 'insight',
+                            icon: '📈',
+                            title: 'High Engagement Rate',
+                            description: `Your content is performing well with ${dashboardAnalytics.averageEngagementRate.toFixed(1)}% engagement`,
+                            timestamp: new Date(),
+                            timeAgo: 'Just now',
+                            metadata: {
+                                engagementRate: dashboardAnalytics.averageEngagementRate
+                            }
+                        });
+                    }
+
+                    if (dashboardAnalytics.topPerformingContent && dashboardAnalytics.topPerformingContent.length > 0) {
+                        const topContent = dashboardAnalytics.topPerformingContent[0];
+                        if (topContent.engagement_rate > 8) {
+                            activities.push({
+                                id: 'top-performing',
+                                type: 'insight',
+                                icon: '🔥',
+                                title: 'Top Performing Content',
+                                description: `"${topContent.title}" is performing exceptionally well`,
+                                timestamp: new Date(),
+                                timeAgo: 'Just now',
+                                metadata: {
+                                    contentId: topContent.id,
+                                    engagementRate: topContent.engagement_rate
+                                }
+                            });
+                        }
+                    }
+                }
+
+                // Sort by timestamp (most recent first) and limit to 10
+                return activities
+                    .sort((a, b) => b.timestamp - a.timestamp)
+                    .slice(0, 10);
+            }, [contentHistory, contentGoals, unlockedAchievements, dashboardAnalytics]);
+
+            // Helper function to get time ago
+            const getTimeAgo = (date) => {
+                const now = new Date();
+                const diffMs = now - date;
+                const diffMins = Math.floor(diffMs / 60000);
+                const diffHours = Math.floor(diffMs / 3600000);
+                const diffDays = Math.floor(diffMs / 86400000);
+
+                if (diffMins < 1) return 'Just now';
+                if (diffMins < 60) return `${diffMins}m ago`;
+                if (diffHours < 24) return `${diffHours}h ago`;
+                if (diffDays < 7) return `${diffDays}d ago`;
+                return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            };
+
+            // Update activity feed state
+            React.useEffect(() => {
+                if (generateActivityFeed) {
+                    setActivityFeed(generateActivityFeed);
+                }
+            }, [generateActivityFeed]);
+
+            // Export dashboard data as JSON
+            const exportDashboardData = () => {
+                try {
+                    const exportData = {
+                        exportDate: new Date().toISOString(),
+                        dashboard: {
+                            metrics: calculateDashboardMetrics,
+                            analytics: dashboardAnalytics ? {
+                                totalContent: dashboardAnalytics.totalContent,
+                                totalViews: dashboardAnalytics.totalViews,
+                                totalEngagement: dashboardAnalytics.totalLikes + dashboardAnalytics.totalComments + dashboardAnalytics.totalShares,
+                                averageEngagementRate: dashboardAnalytics.averageEngagementRate,
+                                topPerformingContent: dashboardAnalytics.topPerformingContent?.slice(0, 5) || []
+                            } : null,
+                            performanceComparison: performanceComparison,
+                            contentGaps: contentGaps,
+                            engagementInsights: {
+                                responseRate: responseRate,
+                                audienceGrowth: audienceGrowth,
+                                notifications: engagementNotifications
+                            },
+                            goals: contentGoals,
+                            activityFeed: activityFeed.slice(0, 10)
+                        },
+                        contentHistory: contentHistory.slice(0, 20), // Last 20 items
+                        expertiseAreas: expertiseAreas
+                    };
+
+                    const dataStr = JSON.stringify(exportData, null, 2);
+                    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+                    const url = URL.createObjectURL(dataBlob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = `dashboard-export-${new Date().toISOString().split('T')[0]}.json`;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    URL.revokeObjectURL(url);
+                    
+                    alert('Dashboard data exported successfully!');
+                } catch (error) {
+                    console.error('Error exporting dashboard data:', error);
+                    alert('Error exporting dashboard data. Please try again.');
+                }
+            };
+
+            // Export dashboard summary as CSV
+            const exportDashboardSummaryCSV = () => {
+                try {
+                    setExportLoading(true);
+                    
+                    const rows = [];
+                    rows.push(['Dashboard Summary', '']);
+                    rows.push(['Export Date', new Date().toLocaleDateString()]);
+                    rows.push(['']);
+                    
+                    // Metrics
+                    rows.push(['Metrics', '']);
+                    rows.push(['Content Generated This Week', calculateDashboardMetrics.contentGeneratedThisWeek]);
+                    rows.push(['Published This Week', calculateDashboardMetrics.publishedThisWeek]);
+                    rows.push(['Total Engagement', calculateDashboardMetrics.totalEngagement]);
+                    rows.push(['Average Engagement', calculateDashboardMetrics.avgEngagement || 0]);
+                    rows.push(['Authority Change', calculateDashboardMetrics.authorityChange + '%']);
+                    rows.push(['']);
+                    
+                    // Analytics
+                    if (dashboardAnalytics) {
+                        rows.push(['Analytics', '']);
+                        rows.push(['Total Content', dashboardAnalytics.totalContent || 0]);
+                        rows.push(['Total Views', dashboardAnalytics.totalViews || 0]);
+                        rows.push(['Total Likes', dashboardAnalytics.totalLikes || 0]);
+                        rows.push(['Total Comments', dashboardAnalytics.totalComments || 0]);
+                        rows.push(['Total Shares', dashboardAnalytics.totalShares || 0]);
+                        rows.push(['Average Engagement Rate', (dashboardAnalytics.averageEngagementRate || 0) + '%']);
+                        rows.push(['']);
+                    }
+                    
+                    // Goals
+                    if (contentGoals.length > 0) {
+                        rows.push(['Goals', 'Progress', 'Target', 'Status']);
+                        contentGoals.forEach(goal => {
+                            rows.push([
+                                goal.title,
+                                goal.current_value || 0,
+                                goal.target_value || 0,
+                                goal.progress >= 100 ? 'Completed' : 'In Progress'
+                            ]);
+                        });
+                        rows.push(['']);
+                    }
+                    
+                    // Top Performing Content
+                    if (dashboardAnalytics?.topPerformingContent && dashboardAnalytics.topPerformingContent.length > 0) {
+                        rows.push(['Top Performing Content', 'Views', 'Engagement Rate']);
+                        dashboardAnalytics.topPerformingContent.slice(0, 5).forEach(content => {
+                            rows.push([
+                                content.title || 'Untitled',
+                                content.views || 0,
+                                (content.engagement_rate || 0) + '%'
+                            ]);
+                        });
+                    }
+                    
+                    const csvContent = rows.map(row => 
+                        row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')
+                    ).join('\n');
+                    
+                    const dataBlob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                    const url = URL.createObjectURL(dataBlob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = `dashboard-summary-${new Date().toISOString().split('T')[0]}.csv`;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    URL.revokeObjectURL(url);
+                    
+                    alert('Dashboard summary exported as CSV successfully!');
+                } catch (error) {
+                    console.error('Error exporting CSV:', error);
+                    alert('Error exporting CSV. Please try again.');
+                } finally {
+                    setExportLoading(false);
+                }
+            };
+
+            // Generate shareable insights report
+            const generateShareableReport = () => {
+                try {
+                    setExportLoading(true);
+                    
+                    let reportText = '📊 Content Engine Dashboard Report\n';
+                    reportText += 'Generated: ' + new Date().toLocaleDateString() + '\n\n';
+                    
+                    reportText += '📈 Key Metrics:\n';
+                    reportText += `• Content Generated This Week: ${calculateDashboardMetrics.contentGeneratedThisWeek}\n`;
+                    reportText += `• Published This Week: ${calculateDashboardMetrics.publishedThisWeek}\n`;
+                    reportText += `• Total Engagement: ${formatNumber(calculateDashboardMetrics.totalEngagement)}\n`;
+                    reportText += `• Average Engagement: ${calculateDashboardMetrics.avgEngagement || 0}\n`;
+                    reportText += `• Authority Change: ${calculateDashboardMetrics.authorityChange >= 0 ? '+' : ''}${calculateDashboardMetrics.authorityChange}%\n\n`;
+                    
+                    if (dashboardAnalytics) {
+                        reportText += '📊 Analytics Overview:\n';
+                        reportText += `• Total Content: ${dashboardAnalytics.totalContent || 0}\n`;
+                        reportText += `• Total Views: ${formatNumber(dashboardAnalytics.totalViews || 0)}\n`;
+                        reportText += `• Average Engagement Rate: ${(dashboardAnalytics.averageEngagementRate || 0).toFixed(1)}%\n\n`;
+                    }
+                    
+                    if (performanceComparison) {
+                        reportText += '📈 Performance Trends:\n';
+                        reportText += `• Week-over-Week Engagement: ${performanceComparison.weekOverWeek.engagement.change >= 0 ? '+' : ''}${performanceComparison.weekOverWeek.engagement.change.toFixed(1)}%\n`;
+                        reportText += `• Month-over-Month Engagement: ${performanceComparison.monthOverMonth.engagement.change >= 0 ? '+' : ''}${performanceComparison.monthOverMonth.engagement.change.toFixed(1)}%\n\n`;
+                    }
+                    
+                    if (contentGoals.length > 0) {
+                        reportText += '🎯 Goals Progress:\n';
+                        contentGoals.forEach(goal => {
+                            reportText += `• ${goal.title}: ${goal.current_value || 0}/${goal.target_value || 0} (${goal.progress || 0}%)\n`;
+                        });
+                        reportText += '\n';
+                    }
+                    
+                    if (dashboardAnalytics?.topPerformingContent && dashboardAnalytics.topPerformingContent.length > 0) {
+                        reportText += '🏆 Top Performing Content:\n';
+                        dashboardAnalytics.topPerformingContent.slice(0, 3).forEach((content, index) => {
+                            reportText += `${index + 1}. ${content.title || 'Untitled'} - ${formatNumber(content.views || 0)} views, ${(content.engagement_rate || 0).toFixed(1)}% engagement\n`;
+                        });
+                    }
+                    
+                    // Copy to clipboard
+                    navigator.clipboard.writeText(reportText).then(() => {
+                        alert('Report copied to clipboard! You can now paste it anywhere.');
+                    }).catch(() => {
+                        // Fallback: show in alert
+                        const textarea = document.createElement('textarea');
+                        textarea.value = reportText;
+                        document.body.appendChild(textarea);
+                        textarea.select();
+                        document.execCommand('copy');
+                        document.body.removeChild(textarea);
+                        alert('Report copied to clipboard!');
+                    });
+                } catch (error) {
+                    console.error('Error generating report:', error);
+                    alert('Error generating report. Please try again.');
+                } finally {
+                    setExportLoading(false);
+                }
+            };
 
             // Load content-related goals
             const loadContentGoals = async () => {
@@ -25660,25 +26460,165 @@ Generate the repurposed content:`;
 
                     {/* Navigation Tabs */}
                     <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-2`}>
-                        <div className="flex space-x-1 overflow-x-auto">
-                            {tabs.map((tab) => (
+                        <div className="flex items-center justify-between gap-4">
+                            <div className="flex space-x-1 overflow-x-auto flex-1">
+                                {tabs.map((tab) => (
+                                    <button
+                                        key={tab.id}
+                                        onClick={() => setActiveTab(tab.id)}
+                                        className={`flex items-center gap-2 px-4 py-3 rounded-lg font-medium transition-all duration-300 whitespace-nowrap ${
+                                            activeTab === tab.id
+                                                ? 'bg-gradient-to-r from-purple-500 to-indigo-600 text-white shadow-lg'
+                                                : isLightMode 
+                                                    ? 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                                                    : 'text-gray-400 hover:text-gray-50 hover:bg-gray-800'
+                                        }`}
+                                    >
+                                        <div className="w-4 h-4">{tab.icon}</div>
+                                        {tab.label}
+                                    </button>
+                                ))}
+                            </div>
+                            {activeTab === 'dashboard' && (
                                 <button
-                                    key={tab.id}
-                                    onClick={() => setActiveTab(tab.id)}
-                                    className={`flex items-center gap-2 px-4 py-3 rounded-lg font-medium transition-all duration-300 whitespace-nowrap ${
-                                        activeTab === tab.id
-                                            ? 'bg-gradient-to-r from-purple-500 to-indigo-600 text-white shadow-lg'
-                                            : isLightMode 
-                                                ? 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-                                                : 'text-gray-400 hover:text-gray-50 hover:bg-gray-800'
+                                    onClick={() => setShowExportModal(true)}
+                                    className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all duration-200 whitespace-nowrap ${
+                                        isLightMode 
+                                            ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' 
+                                            : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
                                     }`}
+                                    title="Export & Share Dashboard"
                                 >
-                                    <div className="w-4 h-4">{tab.icon}</div>
-                                    {tab.label}
+                                    <span>📥</span>
+                                    <span className="hidden sm:inline">Export</span>
                                 </button>
-                            ))}
+                            )}
                         </div>
                     </div>
+
+                    {/* Export/Share Modal */}
+                    {showExportModal && (
+                        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                            <div className={`${isLightMode ? 'bg-white' : 'bg-gray-800'} rounded-2xl shadow-2xl max-w-md w-full`}>
+                                <div className={`${isLightMode ? 'bg-gray-50' : 'bg-gray-900'} px-6 py-4 border-b ${isLightMode ? 'border-gray-200' : 'border-gray-700'} flex items-center justify-between`}>
+                                    <h2 className={`text-xl font-bold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                        Export & Share Dashboard
+                                    </h2>
+                                    <button
+                                        onClick={() => setShowExportModal(false)}
+                                        className={`p-2 rounded-lg ${isLightMode ? 'hover:bg-gray-200' : 'hover:bg-gray-700'} transition-colors`}
+                                    >
+                                        <svg className={`w-5 h-5 ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                        </svg>
+                                    </button>
+                                </div>
+                                
+                                <div className="p-6 space-y-4">
+                                    <div className={`${isLightMode ? 'bg-blue-50' : 'bg-blue-500/10'} rounded-lg p-4 border ${isLightMode ? 'border-blue-200' : 'border-blue-500/30'}`}>
+                                        <h3 className={`font-semibold text-sm mb-2 ${isLightMode ? 'text-blue-900' : 'text-blue-400'}`}>
+                                            📊 Export Options
+                                        </h3>
+                                        <p className={`text-xs ${isLightMode ? 'text-blue-800' : 'text-blue-300'}`}>
+                                            Choose how you want to export your dashboard data
+                                        </p>
+                                    </div>
+
+                                    <div className="space-y-3">
+                                        <button
+                                            onClick={() => {
+                                                exportDashboardData();
+                                                setShowExportModal(false);
+                                            }}
+                                            disabled={exportLoading}
+                                            className={`w-full flex items-center gap-3 p-4 rounded-lg border transition-all ${
+                                                isLightMode 
+                                                    ? 'bg-white border-gray-200 hover:bg-gray-50' 
+                                                    : 'bg-gray-700 border-gray-600 hover:bg-gray-600'
+                                            } disabled:opacity-50 disabled:cursor-not-allowed`}
+                                        >
+                                            <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                                                isLightMode ? 'bg-blue-100' : 'bg-blue-500/20'
+                                            }`}>
+                                                <span className="text-xl">📄</span>
+                                            </div>
+                                            <div className="flex-1 text-left">
+                                                <div className={`font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                    Export as JSON
+                                                </div>
+                                                <div className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>
+                                                    Full dashboard data with all metrics
+                                                </div>
+                                            </div>
+                                        </button>
+
+                                        <button
+                                            onClick={() => {
+                                                exportDashboardSummaryCSV();
+                                                setShowExportModal(false);
+                                            }}
+                                            disabled={exportLoading}
+                                            className={`w-full flex items-center gap-3 p-4 rounded-lg border transition-all ${
+                                                isLightMode 
+                                                    ? 'bg-white border-gray-200 hover:bg-gray-50' 
+                                                    : 'bg-gray-700 border-gray-600 hover:bg-gray-600'
+                                            } disabled:opacity-50 disabled:cursor-not-allowed`}
+                                        >
+                                            <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                                                isLightMode ? 'bg-green-100' : 'bg-green-500/20'
+                                            }`}>
+                                                <span className="text-xl">📊</span>
+                                            </div>
+                                            <div className="flex-1 text-left">
+                                                <div className={`font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                    Export as CSV
+                                                </div>
+                                                <div className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>
+                                                    Summary data in spreadsheet format
+                                                </div>
+                                            </div>
+                                        </button>
+
+                                        <button
+                                            onClick={() => {
+                                                generateShareableReport();
+                                                setShowExportModal(false);
+                                            }}
+                                            disabled={exportLoading}
+                                            className={`w-full flex items-center gap-3 p-4 rounded-lg border transition-all ${
+                                                isLightMode 
+                                                    ? 'bg-white border-gray-200 hover:bg-gray-50' 
+                                                    : 'bg-gray-700 border-gray-600 hover:bg-gray-600'
+                                            } disabled:opacity-50 disabled:cursor-not-allowed`}
+                                        >
+                                            <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                                                isLightMode ? 'bg-purple-100' : 'bg-purple-500/20'
+                                            }`}>
+                                                <span className="text-xl">📋</span>
+                                            </div>
+                                            <div className="flex-1 text-left">
+                                                <div className={`font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                    Copy Report to Clipboard
+                                                </div>
+                                                <div className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>
+                                                    Shareable text report with key insights
+                                                </div>
+                                            </div>
+                                        </button>
+                                    </div>
+
+                                    {exportLoading && (
+                                        <div className="text-center py-2">
+                                            <div className="inline-flex items-center gap-2 text-sm text-gray-500">
+                                                <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+                                                Processing...
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Tab Content */}
                     {activeTab === 'dashboard' && (
@@ -26017,6 +26957,348 @@ Generate the repurposed content:`;
                                                 </div>
                                             </div>
                                         </div>
+
+                                        {/* Performance Comparison */}
+                                        {performanceComparison && (
+                                            <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-8`}>
+                                                <div className="flex items-center gap-3 mb-6">
+                                                    <div className="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center">
+                                                        <div className="w-5 h-5 text-white text-xl">📊</div>
+                                                    </div>
+                                                    <h2 className={`text-2xl font-bold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>Performance Comparison</h2>
+                                                </div>
+
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                                                    {/* Week Over Week */}
+                                                    <div className={`${isLightMode ? 'bg-white/30' : 'bg-gray-800'} rounded-xl p-6 border ${isLightMode ? 'border-gray-200' : 'border-gray-700'}`}>
+                                                        <h3 className={`text-lg font-semibold mb-4 ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                            Week Over Week
+                                                        </h3>
+                                                        <div className="space-y-4">
+                                                            {/* Engagement */}
+                                                            <div>
+                                                                <div className="flex items-center justify-between mb-2">
+                                                                    <span className={`text-sm ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>Engagement</span>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className={`text-sm font-semibold ${
+                                                                            performanceComparison.weekOverWeek.engagementTrend.color === 'green'
+                                                                                ? (isLightMode ? 'text-green-600' : 'text-green-400')
+                                                                                : performanceComparison.weekOverWeek.engagementTrend.color === 'red'
+                                                                                ? (isLightMode ? 'text-red-600' : 'text-red-400')
+                                                                                : (isLightMode ? 'text-gray-600' : 'text-gray-400')
+                                                                        }`}>
+                                                                            {performanceComparison.weekOverWeek.engagement.change > 0 ? '+' : ''}
+                                                                            {formatPercentage(performanceComparison.weekOverWeek.engagement.change)}
+                                                                        </span>
+                                                                        <span className="text-lg">{performanceComparison.weekOverWeek.engagementTrend.icon}</span>
+                                                                    </div>
+                                                                </div>
+                                                                <div className={`text-xs ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                                    {formatNumber(performanceComparison.weekOverWeek.engagement.current)} vs {formatNumber(performanceComparison.weekOverWeek.engagement.previous)}
+                                                                </div>
+                                                            </div>
+
+                                                            {/* Views */}
+                                                            <div>
+                                                                <div className="flex items-center justify-between mb-2">
+                                                                    <span className={`text-sm ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>Views</span>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className={`text-sm font-semibold ${
+                                                                            performanceComparison.weekOverWeek.viewsTrend.color === 'green'
+                                                                                ? (isLightMode ? 'text-green-600' : 'text-green-400')
+                                                                                : performanceComparison.weekOverWeek.viewsTrend.color === 'red'
+                                                                                ? (isLightMode ? 'text-red-600' : 'text-red-400')
+                                                                                : (isLightMode ? 'text-gray-600' : 'text-gray-400')
+                                                                        }`}>
+                                                                            {performanceComparison.weekOverWeek.views.change > 0 ? '+' : ''}
+                                                                            {formatPercentage(performanceComparison.weekOverWeek.views.change)}
+                                                                        </span>
+                                                                        <span className="text-lg">{performanceComparison.weekOverWeek.viewsTrend.icon}</span>
+                                                                    </div>
+                                                                </div>
+                                                                <div className={`text-xs ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                                    {formatNumber(performanceComparison.weekOverWeek.views.current)} vs {formatNumber(performanceComparison.weekOverWeek.views.previous)}
+                                                                </div>
+                                                            </div>
+
+                                                            {/* Posts */}
+                                                            <div>
+                                                                <div className="flex items-center justify-between mb-2">
+                                                                    <span className={`text-sm ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>Posts</span>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className={`text-sm font-semibold ${
+                                                                            performanceComparison.weekOverWeek.postsTrend.color === 'green'
+                                                                                ? (isLightMode ? 'text-green-600' : 'text-green-400')
+                                                                                : performanceComparison.weekOverWeek.postsTrend.color === 'red'
+                                                                                ? (isLightMode ? 'text-red-600' : 'text-red-400')
+                                                                                : (isLightMode ? 'text-gray-600' : 'text-gray-400')
+                                                                        }`}>
+                                                                            {performanceComparison.weekOverWeek.posts.change > 0 ? '+' : ''}
+                                                                            {formatPercentage(performanceComparison.weekOverWeek.posts.change)}
+                                                                        </span>
+                                                                        <span className="text-lg">{performanceComparison.weekOverWeek.postsTrend.icon}</span>
+                                                                    </div>
+                                                                </div>
+                                                                <div className={`text-xs ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                                    {performanceComparison.weekOverWeek.posts.current} vs {performanceComparison.weekOverWeek.posts.previous}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Month Over Month */}
+                                                    <div className={`${isLightMode ? 'bg-white/30' : 'bg-gray-800'} rounded-xl p-6 border ${isLightMode ? 'border-gray-200' : 'border-gray-700'}`}>
+                                                        <h3 className={`text-lg font-semibold mb-4 ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                            Month Over Month
+                                                        </h3>
+                                                        <div className="space-y-4">
+                                                            {/* Engagement */}
+                                                            <div>
+                                                                <div className="flex items-center justify-between mb-2">
+                                                                    <span className={`text-sm ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>Engagement</span>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className={`text-sm font-semibold ${
+                                                                            performanceComparison.monthOverMonth.engagementTrend.color === 'green'
+                                                                                ? (isLightMode ? 'text-green-600' : 'text-green-400')
+                                                                                : performanceComparison.monthOverMonth.engagementTrend.color === 'red'
+                                                                                ? (isLightMode ? 'text-red-600' : 'text-red-400')
+                                                                                : (isLightMode ? 'text-gray-600' : 'text-gray-400')
+                                                                        }`}>
+                                                                            {performanceComparison.monthOverMonth.engagement.change > 0 ? '+' : ''}
+                                                                            {formatPercentage(performanceComparison.monthOverMonth.engagement.change)}
+                                                                        </span>
+                                                                        <span className="text-lg">{performanceComparison.monthOverMonth.engagementTrend.icon}</span>
+                                                                    </div>
+                                                                </div>
+                                                                <div className={`text-xs ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                                    {formatNumber(performanceComparison.monthOverMonth.engagement.current)} vs {formatNumber(performanceComparison.monthOverMonth.engagement.previous)}
+                                                                </div>
+                                                            </div>
+
+                                                            {/* Views */}
+                                                            <div>
+                                                                <div className="flex items-center justify-between mb-2">
+                                                                    <span className={`text-sm ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>Views</span>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className={`text-sm font-semibold ${
+                                                                            performanceComparison.monthOverMonth.viewsTrend.color === 'green'
+                                                                                ? (isLightMode ? 'text-green-600' : 'text-green-400')
+                                                                                : performanceComparison.monthOverMonth.viewsTrend.color === 'red'
+                                                                                ? (isLightMode ? 'text-red-600' : 'text-red-400')
+                                                                                : (isLightMode ? 'text-gray-600' : 'text-gray-400')
+                                                                        }`}>
+                                                                            {performanceComparison.monthOverMonth.views.change > 0 ? '+' : ''}
+                                                                            {formatPercentage(performanceComparison.monthOverMonth.views.change)}
+                                                                        </span>
+                                                                        <span className="text-lg">{performanceComparison.monthOverMonth.viewsTrend.icon}</span>
+                                                                    </div>
+                                                                </div>
+                                                                <div className={`text-xs ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                                    {formatNumber(performanceComparison.monthOverMonth.views.current)} vs {formatNumber(performanceComparison.monthOverMonth.views.previous)}
+                                                                </div>
+                                                            </div>
+
+                                                            {/* Posts */}
+                                                            <div>
+                                                                <div className="flex items-center justify-between mb-2">
+                                                                    <span className={`text-sm ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>Posts</span>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className={`text-sm font-semibold ${
+                                                                            performanceComparison.monthOverMonth.postsTrend.color === 'green'
+                                                                                ? (isLightMode ? 'text-green-600' : 'text-green-400')
+                                                                                : performanceComparison.monthOverMonth.postsTrend.color === 'red'
+                                                                                ? (isLightMode ? 'text-red-600' : 'text-red-400')
+                                                                                : (isLightMode ? 'text-gray-600' : 'text-gray-400')
+                                                                        }`}>
+                                                                            {performanceComparison.monthOverMonth.posts.change > 0 ? '+' : ''}
+                                                                            {formatPercentage(performanceComparison.monthOverMonth.posts.change)}
+                                                                        </span>
+                                                                        <span className="text-lg">{performanceComparison.monthOverMonth.postsTrend.icon}</span>
+                                                                    </div>
+                                                                </div>
+                                                                <div className={`text-xs ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                                    {performanceComparison.monthOverMonth.posts.current} vs {performanceComparison.monthOverMonth.posts.previous}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Performance Insights */}
+                                                <div className={`${isLightMode ? 'bg-blue-50' : 'bg-blue-500/10'} rounded-lg p-4 border ${isLightMode ? 'border-blue-200' : 'border-blue-500/30'}`}>
+                                                    <h4 className={`font-semibold text-sm mb-2 ${isLightMode ? 'text-blue-900' : 'text-blue-400'}`}>
+                                                        💡 Performance Insights
+                                                    </h4>
+                                                    <ul className={`space-y-1 text-sm ${isLightMode ? 'text-blue-800' : 'text-blue-300'}`}>
+                                                        {performanceComparison.weekOverWeek.engagement.change > 10 && (
+                                                            <li>• Strong week-over-week engagement growth! Keep up the momentum.</li>
+                                                        )}
+                                                        {performanceComparison.weekOverWeek.engagement.change < -10 && (
+                                                            <li>• Engagement declined this week. Consider adjusting your content strategy.</li>
+                                                        )}
+                                                        {performanceComparison.monthOverMonth.views.change > 20 && (
+                                                            <li>• Excellent month-over-month views growth! Your content is reaching more people.</li>
+                                                        )}
+                                                        {performanceComparison.weekOverWeek.posts.change > 0 && performanceComparison.weekOverWeek.engagement.change > 0 && (
+                                                            <li>• More posts are driving higher engagement. Consistency is paying off!</li>
+                                                        )}
+                                                        {performanceComparison.weekOverWeek.posts.change < 0 && (
+                                                            <li>• Posting frequency decreased. Consider maintaining a consistent schedule.</li>
+                                                        )}
+                                                    </ul>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Content Gap Analysis */}
+                                        {contentGaps && (contentGaps.expertiseGaps.length > 0 || contentGaps.contentTypeGaps.length > 0 || contentGaps.topicGaps.length > 0) && (
+                                            <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-8`}>
+                                                <div className="flex items-center gap-3 mb-6">
+                                                    <div className="w-10 h-10 bg-orange-500 rounded-lg flex items-center justify-center">
+                                                        <div className="w-5 h-5 text-white text-xl">🔍</div>
+                                                    </div>
+                                                    <h2 className={`text-2xl font-bold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>Content Gap Analysis</h2>
+                                                </div>
+
+                                                {/* Top Recommendations */}
+                                                {contentGaps.recommendations.length > 0 && (
+                                                    <div className={`${isLightMode ? 'bg-orange-50' : 'bg-orange-500/10'} rounded-lg p-4 border ${isLightMode ? 'border-orange-200' : 'border-orange-500/30'} mb-6`}>
+                                                        <h3 className={`font-semibold text-sm mb-3 ${isLightMode ? 'text-orange-900' : 'text-orange-400'}`}>
+                                                            💡 Top Recommendations
+                                                        </h3>
+                                                        <div className="space-y-3">
+                                                            {contentGaps.recommendations.slice(0, 3).map((rec, index) => (
+                                                                <div key={index} className={`${isLightMode ? 'bg-white' : 'bg-gray-800'} rounded-lg p-3 border ${isLightMode ? 'border-orange-200' : 'border-orange-500/20'}`}>
+                                                                    <div className="flex items-start gap-2">
+                                                                        <span className={`text-xs font-semibold px-2 py-0.5 rounded ${
+                                                                            rec.priority === 'high'
+                                                                                ? (isLightMode ? 'bg-red-100 text-red-700' : 'bg-red-500/20 text-red-400')
+                                                                                : (isLightMode ? 'bg-yellow-100 text-yellow-700' : 'bg-yellow-500/20 text-yellow-400')
+                                                                        }`}>
+                                                                            {rec.priority === 'high' ? 'High' : 'Medium'}
+                                                                        </span>
+                                                                        <div className="flex-1">
+                                                                            <p className={`text-sm font-medium mb-1 ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                                                {rec.message}
+                                                                            </p>
+                                                                            <p className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>
+                                                                                {rec.action}
+                                                                            </p>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                                    {/* Expertise Gaps */}
+                                                    {contentGaps.expertiseGaps.length > 0 && (
+                                                        <div className={`${isLightMode ? 'bg-white/30' : 'bg-gray-800'} rounded-xl p-6 border ${isLightMode ? 'border-gray-200' : 'border-gray-700'}`}>
+                                                            <h3 className={`text-lg font-semibold mb-4 ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                                Expertise Gaps
+                                                            </h3>
+                                                            <div className="space-y-3">
+                                                                {contentGaps.expertiseGaps.slice(0, 3).map((gap, index) => (
+                                                                    <div key={index} className={`p-3 rounded-lg border ${
+                                                                        gap.priority === 'high'
+                                                                            ? (isLightMode ? 'bg-red-50 border-red-200' : 'bg-red-500/10 border-red-500/30')
+                                                                            : (isLightMode ? 'bg-yellow-50 border-yellow-200' : 'bg-yellow-500/10 border-yellow-500/30')
+                                                                    }`}>
+                                                                        <div className="flex items-center justify-between mb-2">
+                                                                            <span className={`font-semibold text-sm ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                                                {gap.area}
+                                                                            </span>
+                                                                            <span className={`text-xs px-2 py-0.5 rounded ${
+                                                                                gap.priority === 'high'
+                                                                                    ? (isLightMode ? 'bg-red-100 text-red-700' : 'bg-red-500/20 text-red-400')
+                                                                                    : (isLightMode ? 'bg-yellow-100 text-yellow-700' : 'bg-yellow-500/20 text-yellow-400')
+                                                                            }`}>
+                                                                                {gap.priority === 'high' ? 'High' : 'Medium'}
+                                                                            </span>
+                                                                        </div>
+                                                                        <div className={`text-xs mb-2 ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>
+                                                                            Authority: {gap.authorityScore}% • Content: {gap.contentCount} pieces
+                                                                        </div>
+                                                                        <p className={`text-xs ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>
+                                                                            {gap.recommendation}
+                                                                        </p>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {/* Content Type & Platform Gaps */}
+                                                    {(contentGaps.contentTypeGaps.length > 0 || contentGaps.platformGaps.length > 0) && (
+                                                        <div className={`${isLightMode ? 'bg-white/30' : 'bg-gray-800'} rounded-xl p-6 border ${isLightMode ? 'border-gray-200' : 'border-gray-700'}`}>
+                                                            <h3 className={`text-lg font-semibold mb-4 ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                                Diversification Opportunities
+                                                            </h3>
+                                                            <div className="space-y-3">
+                                                                {contentGaps.contentTypeGaps.map((gap, index) => (
+                                                                    <div key={`type-${index}`} className={`p-3 rounded-lg border ${isLightMode ? 'bg-blue-50 border-blue-200' : 'bg-blue-500/10 border-blue-500/30'}`}>
+                                                                        <div className="flex items-center justify-between mb-2">
+                                                                            <span className={`font-semibold text-sm ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                                                {gap.type}
+                                                                            </span>
+                                                                            <span className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>
+                                                                                {gap.currentPercentage.toFixed(0)}% of content
+                                                                            </span>
+                                                                        </div>
+                                                                        <p className={`text-xs ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>
+                                                                            {gap.recommendation}
+                                                                        </p>
+                                                                    </div>
+                                                                ))}
+                                                                {contentGaps.platformGaps.map((gap, index) => (
+                                                                    <div key={`platform-${index}`} className={`p-3 rounded-lg border ${isLightMode ? 'bg-purple-50 border-purple-200' : 'bg-purple-500/10 border-purple-500/30'}`}>
+                                                                        <div className="flex items-center justify-between mb-2">
+                                                                            <span className={`font-semibold text-sm ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                                                {gap.platform}
+                                                                            </span>
+                                                                            <span className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>
+                                                                                {gap.currentPercentage.toFixed(0)}% usage
+                                                                            </span>
+                                                                        </div>
+                                                                        <p className={`text-xs ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>
+                                                                            {gap.recommendation}
+                                                                        </p>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {/* Topic Gaps */}
+                                                {contentGaps.topicGaps.length > 0 && (
+                                                    <div className={`${isLightMode ? 'bg-white/30' : 'bg-gray-800'} rounded-xl p-6 border ${isLightMode ? 'border-gray-200' : 'border-gray-700'} mt-6`}>
+                                                        <h3 className={`text-lg font-semibold mb-4 ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                            Trending Topics to Cover
+                                                        </h3>
+                                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                                            {contentGaps.topicGaps.map((gap, index) => (
+                                                                <div key={index} className={`p-3 rounded-lg border ${isLightMode ? 'bg-green-50 border-green-200' : 'bg-green-500/10 border-green-500/30'}`}>
+                                                                    <div className="flex items-center justify-between mb-2">
+                                                                        <span className={`font-semibold text-xs ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                                            {gap.topic}
+                                                                        </span>
+                                                                        <span className={`text-xs px-2 py-0.5 rounded ${isLightMode ? 'bg-green-100 text-green-700' : 'bg-green-500/20 text-green-400'}`}>
+                                                                            {gap.engagementPotential}% potential
+                                                                        </span>
+                                                                    </div>
+                                                                    <p className={`text-xs ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>
+                                                                        {gap.recommendation}
+                                                                    </p>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
 
                                         {/* Top Performing Content */}
                                         {dashboardAnalytics.topPerformingContent && dashboardAnalytics.topPerformingContent.length > 0 && (
@@ -26371,6 +27653,83 @@ Generate the repurposed content:`;
                                     </div>
                                 </div>
 
+                                {/* Activity Feed */}
+                                {activityFeed.length > 0 && (
+                                    <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
+                                        <div className="flex items-center justify-between mb-4">
+                                            <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>Recent Activity</h3>
+                                            <span className={`text-xs px-2 py-1 rounded-full ${isLightMode ? 'bg-purple-100 text-purple-700' : 'bg-purple-500/20 text-purple-400'}`}>
+                                                {activityFeed.length}
+                                            </span>
+                                        </div>
+                                        <div className="space-y-3 max-h-96 overflow-y-auto">
+                                            {activityFeed.map((activity, index) => (
+                                                <div
+                                                    key={activity.id}
+                                                    className={`relative pl-8 pb-4 ${
+                                                        index < activityFeed.length - 1 
+                                                            ? `border-l-2 ${isLightMode ? 'border-gray-200' : 'border-gray-700'}` 
+                                                            : ''
+                                                    }`}
+                                                >
+                                                    {/* Timeline dot */}
+                                                    <div className={`absolute left-0 top-1 w-3 h-3 rounded-full ${
+                                                        activity.type === 'content-created' 
+                                                            ? (isLightMode ? 'bg-blue-500' : 'bg-blue-400')
+                                                            : activity.type === 'goal-completed'
+                                                            ? (isLightMode ? 'bg-green-500' : 'bg-green-400')
+                                                            : activity.type === 'achievement'
+                                                            ? (isLightMode ? 'bg-yellow-500' : 'bg-yellow-400')
+                                                            : activity.type === 'milestone'
+                                                            ? (isLightMode ? 'bg-purple-500' : 'bg-purple-400')
+                                                            : (isLightMode ? 'bg-orange-500' : 'bg-orange-400')
+                                                    }`}></div>
+                                                    
+                                                    <div className={`${isLightMode ? 'bg-white/30' : 'bg-gray-800'} rounded-lg p-3 border ${isLightMode ? 'border-gray-200' : 'border-gray-700'}`}>
+                                                        <div className="flex items-start gap-2 mb-1">
+                                                            <span className="text-lg">{activity.icon}</span>
+                                                            <div className="flex-1 min-w-0">
+                                                                <div className={`font-semibold text-sm ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                                    {activity.title}
+                                                                </div>
+                                                                <div className={`text-xs mt-1 ${isLightMode ? 'text-gray-600' : 'text-gray-400'} line-clamp-2`}>
+                                                                    {activity.description}
+                                                                </div>
+                                                                {activity.metadata && (
+                                                                    <div className="flex items-center gap-2 mt-2 flex-wrap">
+                                                                        {activity.metadata.contentType && (
+                                                                            <span className={`px-2 py-0.5 rounded text-xs ${
+                                                                                activity.metadata.contentType === 'article'
+                                                                                    ? (isLightMode ? 'bg-blue-100 text-blue-700' : 'bg-blue-500/20 text-blue-400')
+                                                                                    : (isLightMode ? 'bg-purple-100 text-purple-700' : 'bg-purple-500/20 text-purple-400')
+                                                                            }`}>
+                                                                                {activity.metadata.contentType}
+                                                                            </span>
+                                                                        )}
+                                                                        {activity.metadata.platforms && activity.metadata.platforms.length > 0 && (
+                                                                            <span className={`text-xs ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                                                {activity.metadata.platforms.join(', ')}
+                                                                            </span>
+                                                                        )}
+                                                                        {activity.metadata.expertiseArea && (
+                                                                            <span className={`px-2 py-0.5 rounded text-xs ${isLightMode ? 'bg-purple-50 text-purple-600' : 'bg-purple-500/10 text-purple-400'}`}>
+                                                                                {activity.metadata.expertiseArea}
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                        <div className={`text-xs mt-2 ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                            {activity.timeAgo}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
                                 {/* Quick Stats */}
                                 <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
                                     <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-4`}>Quick Stats</h3>
@@ -26405,6 +27764,164 @@ Generate the repurposed content:`;
                                         </div>
                                     </div>
                                 </div>
+
+                                {/* Engagement Insights */}
+                                {dashboardAnalytics && (
+                                    <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
+                                        <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-4`}>Engagement Insights</h3>
+                                        
+                                        {/* Response Rate */}
+                                        {responseRate !== null && (
+                                            <div className={`${isLightMode ? 'bg-white/30' : 'bg-gray-800'} rounded-lg p-4 border ${isLightMode ? 'border-gray-200' : 'border-gray-700'} mb-4`}>
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <span className={`text-sm ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>Response Rate</span>
+                                                    <span className={`text-lg font-bold ${
+                                                        responseRate >= 20 
+                                                            ? (isLightMode ? 'text-green-600' : 'text-green-400')
+                                                            : responseRate >= 10
+                                                            ? (isLightMode ? 'text-yellow-600' : 'text-yellow-400')
+                                                            : (isLightMode ? 'text-gray-600' : 'text-gray-400')
+                                                    }`}>
+                                                        {formatPercentage(responseRate)}
+                                                    </span>
+                                                </div>
+                                                <div className={`w-full ${isLightMode ? 'bg-gray-200' : 'bg-gray-700'} rounded-full h-2`}>
+                                                    <div
+                                                        className={`h-2 rounded-full ${
+                                                            responseRate >= 20 
+                                                                ? 'bg-gradient-to-r from-green-500 to-emerald-500'
+                                                                : responseRate >= 10
+                                                                ? 'bg-gradient-to-r from-yellow-500 to-orange-500'
+                                                                : 'bg-gradient-to-r from-gray-400 to-gray-500'
+                                                        }`}
+                                                        style={{ width: `${Math.min(100, responseRate * 5)}%` }}
+                                                    ></div>
+                                                </div>
+                                                <p className={`text-xs mt-2 ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                    Comments as % of total engagement
+                                                </p>
+                                            </div>
+                                        )}
+
+                                        {/* Best Time to Post */}
+                                        {calculateOptimalPostingTimes && (
+                                            <div className={`${isLightMode ? 'bg-white/30' : 'bg-gray-800'} rounded-lg p-4 border ${isLightMode ? 'border-gray-200' : 'border-gray-700'} mb-4`}>
+                                                <div className={`text-sm font-medium mb-3 ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>
+                                                    Best Time to Post
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <div className="flex items-center justify-between">
+                                                        <span className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>Best Day</span>
+                                                        <span className={`text-sm font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                            {calculateOptimalPostingTimes.bestDay}
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex items-center justify-between">
+                                                        <span className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>Best Time</span>
+                                                        <span className={`text-sm font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                            {calculateOptimalPostingTimes.bestTime}
+                                                        </span>
+                                                    </div>
+                                                    {calculateOptimalPostingTimes.bestDays && calculateOptimalPostingTimes.bestDays.length > 0 && (
+                                                        <div className={`flex items-center gap-2 mt-2 pt-2 border-t ${isLightMode ? 'border-gray-200' : 'border-gray-700'}`}>
+                                                            <span className={`text-xs ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>Top Days:</span>
+                                                            <div className="flex gap-1">
+                                                                {calculateOptimalPostingTimes.bestDays.slice(0, 3).map((day, idx) => (
+                                                                    <span key={idx} className={`px-2 py-0.5 rounded text-xs ${
+                                                                        isLightMode ? 'bg-blue-100 text-blue-700' : 'bg-blue-500/20 text-blue-400'
+                                                                    }`}>
+                                                                        {day.substring(0, 3)}
+                                                                    </span>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Audience Growth */}
+                                        {audienceGrowth && (
+                                            <div className={`${isLightMode ? 'bg-white/30' : 'bg-gray-800'} rounded-lg p-4 border ${isLightMode ? 'border-gray-200' : 'border-gray-700'}`}>
+                                                <div className={`text-sm font-medium mb-3 ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>
+                                                    Audience Growth
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <div className="flex items-center justify-between">
+                                                        <span className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>Trend</span>
+                                                        <span className={`text-sm font-semibold flex items-center gap-1 ${
+                                                            audienceGrowth.trend === 'growing'
+                                                                ? (isLightMode ? 'text-green-600' : 'text-green-400')
+                                                                : audienceGrowth.trend === 'stable'
+                                                                ? (isLightMode ? 'text-yellow-600' : 'text-yellow-400')
+                                                                : (isLightMode ? 'text-red-600' : 'text-red-400')
+                                                        }`}>
+                                                            {audienceGrowth.trend === 'growing' ? '📈' : audienceGrowth.trend === 'stable' ? '➡️' : '📉'}
+                                                            {audienceGrowth.trend.charAt(0).toUpperCase() + audienceGrowth.trend.slice(1)}
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex items-center justify-between">
+                                                        <span className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>Engagement Rate</span>
+                                                        <span className={`text-sm font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                            {formatPercentage(audienceGrowth.engagementRate)}
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex items-center justify-between">
+                                                        <span className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>Total Engagement</span>
+                                                        <span className={`text-sm font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                            {formatNumber(audienceGrowth.totalEngagement)}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* Engagement Notifications */}
+                                {engagementNotifications.length > 0 && (
+                                    <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
+                                        <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-4`}>Engagement Alerts</h3>
+                                        <div className="space-y-3">
+                                            {engagementNotifications.map((notification) => (
+                                                <div
+                                                    key={notification.id}
+                                                    className={`rounded-lg p-4 border ${
+                                                        notification.type === 'success'
+                                                            ? (isLightMode ? 'bg-green-50 border-green-200' : 'bg-green-500/10 border-green-500/30')
+                                                            : notification.type === 'warning'
+                                                            ? (isLightMode ? 'bg-yellow-50 border-yellow-200' : 'bg-yellow-500/10 border-yellow-500/30')
+                                                            : (isLightMode ? 'bg-blue-50 border-blue-200' : 'bg-blue-500/10 border-blue-500/30')
+                                                    }`}
+                                                >
+                                                    <div className="flex items-start gap-3">
+                                                        <span className="text-xl">{notification.icon}</span>
+                                                        <div className="flex-1">
+                                                            <h4 className={`font-semibold text-sm mb-1 ${
+                                                                notification.type === 'success'
+                                                                    ? (isLightMode ? 'text-green-800' : 'text-green-400')
+                                                                    : notification.type === 'warning'
+                                                                    ? (isLightMode ? 'text-yellow-800' : 'text-yellow-400')
+                                                                    : (isLightMode ? 'text-blue-800' : 'text-blue-400')
+                                                            }`}>
+                                                                {notification.title}
+                                                            </h4>
+                                                            <p className={`text-xs ${
+                                                                notification.type === 'success'
+                                                                    ? (isLightMode ? 'text-green-700' : 'text-green-300')
+                                                                    : notification.type === 'warning'
+                                                                    ? (isLightMode ? 'text-yellow-700' : 'text-yellow-300')
+                                                                    : (isLightMode ? 'text-blue-700' : 'text-blue-300')
+                                                            }`}>
+                                                                {notification.message}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
 
                                 {/* AI Insights */}
                                 <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
