@@ -20151,6 +20151,10 @@ Best regards,
             const [analyticsLoading, setAnalyticsLoading] = useState(false);
             const [analyticsError, setAnalyticsError] = useState(null);
             
+            // Goals state for dashboard
+            const [contentGoals, setContentGoals] = useState([]);
+            const [goalsLoading, setGoalsLoading] = useState(false);
+            
             // Check for light mode
             const isLightMode = !document.documentElement.classList.contains('dark');
 
@@ -20816,23 +20820,342 @@ Best regards,
             React.useEffect(() => {
                 if (activeTab === 'dashboard') {
                     loadDashboardAnalytics();
+                    loadContentGoals();
                 }
             }, [activeTab]);
 
-            const handleGenerateContent = (suggestion) => {
-                // Navigate to generator tab and pre-fill form
-                setActiveTab('generator');
-                setActiveGenerator('post-generator'); // Default to post generator
-                setSelectedTopic(suggestion);
-                setFormData({
-                    topic: suggestion.topic,
-                    angle: suggestion.angle,
-                    platforms: suggestion.platforms,
-                    contentType: suggestion.contentType,
-                    tone: 'professional'
+            // Reload goals when analytics data changes
+            React.useEffect(() => {
+                if (activeTab === 'dashboard' && dashboardAnalytics) {
+                    loadContentGoals();
+                }
+            }, [dashboardAnalytics, contentHistory]);
+
+            // Load content-related goals
+            const loadContentGoals = async () => {
+                try {
+                    setGoalsLoading(true);
+                    
+                    if (typeof supabase === 'undefined') {
+                        return;
+                    }
+                    
+                    const supabaseUrl = 'https://bialelscmftlquykreij.supabase.co';
+                    const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJpYWxlbHNjbWZ0bHF1eWtyZWlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk4NzgxMTgsImV4cCI6MjA3NTQ1NDExOH0.wUywvxuTxDlgwVi6y8KaT9E64D4iVRKFFoqUx8wAalI';
+                    const supabaseClient = supabase.createClient(supabaseUrl, supabaseKey);
+                    
+                    const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
+                    if (userError || !user) {
+                        return;
+                    }
+                    
+                    // Load content-related goals (content, engagement, visibility categories)
+                    const { data: goals, error } = await supabaseClient
+                        .from('brand_audit_goals')
+                        .select('*')
+                        .eq('user_id', user.id)
+                        .eq('status', 'active')
+                        .in('category', ['content', 'engagement', 'visibility', 'network'])
+                        .order('created_at', { ascending: false })
+                        .limit(5);
+                    
+                    if (error) {
+                        console.error('Error loading content goals:', error);
+                        return;
+                    }
+                    
+                    // Calculate current values based on content metrics
+                    const goalsWithProgress = (goals || []).map(goal => {
+                        let currentValue = goal.current_value || 0;
+                        
+                        // Update current value based on category and actual metrics
+                        if (goal.category === 'content') {
+                            // Count content generated this month
+                            const now = new Date();
+                            const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+                            currentValue = contentHistory.filter(item => {
+                                const itemDate = new Date(item.metadata?.timestamp || item.createdAt || 0);
+                                return itemDate >= thisMonth;
+                            }).length;
+                        } else if (goal.category === 'engagement') {
+                            // Use total engagement from analytics
+                            if (dashboardAnalytics) {
+                                currentValue = dashboardAnalytics.totalLikes + dashboardAnalytics.totalComments + dashboardAnalytics.totalShares;
+                            } else {
+                                // Fallback to calculated metrics
+                                const now = new Date();
+                                const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+                                const thisMonthContent = contentHistory.filter(item => {
+                                    const itemDate = new Date(item.metadata?.timestamp || item.createdAt || 0);
+                                    return itemDate >= thisMonth;
+                                });
+                                currentValue = thisMonthContent.reduce((sum, item) => {
+                                    const engagement = item.metadata?.engagement || item.metadata?.estimatedEngagement || 0;
+                                    return sum + (typeof engagement === 'number' ? engagement : 0);
+                                }, 0);
+                            }
+                        } else if (goal.category === 'visibility') {
+                            // Use total views from analytics
+                            currentValue = dashboardAnalytics ? dashboardAnalytics.totalViews : 0;
+                        }
+                        
+                        const progress = goal.target_value && goal.target_value > 0
+                            ? Math.min(100, Math.round((currentValue / goal.target_value) * 100))
+                            : 0;
+                        
+                        return {
+                            ...goal,
+                            current_value: currentValue,
+                            progress
+                        };
+                    });
+                    
+                    setContentGoals(goalsWithProgress);
+                } catch (err) {
+                    console.error('Error loading content goals:', err);
+                } finally {
+                    setGoalsLoading(false);
+                }
+            };
+
+            // Quick generation state
+            const [quickGenerateLoading, setQuickGenerateLoading] = useState(false);
+            const [batchGenerationQueue, setBatchGenerationQueue] = useState([]);
+            const [showBatchModal, setShowBatchModal] = useState(false);
+
+            const handleGenerateContent = (suggestion, quickGenerate = false) => {
+                if (quickGenerate) {
+                    // One-click quick generation
+                    handleQuickGenerate(suggestion);
+                } else {
+                    // Navigate to generator tab and pre-fill form
+                    setActiveTab('generator');
+                    setActiveGenerator('post-generator'); // Default to post generator
+                    setSelectedTopic(suggestion);
+                    setFormData({
+                        topic: suggestion.topic,
+                        angle: suggestion.angle,
+                        platforms: suggestion.platforms,
+                        contentType: suggestion.contentType,
+                        tone: 'professional',
+                        expertiseArea: suggestion.expertiseArea,
+                        optimalPostingTime: suggestion.optimalPostingTime
+                    });
+                    setSelectedPlatforms(suggestion.platforms);
+                    setContentType(suggestion.contentType.toLowerCase().includes('post') ? 'post' : 'article');
+                }
+            };
+
+            // Quick one-click content generation
+            const handleQuickGenerate = async (suggestion) => {
+                try {
+                    setQuickGenerateLoading(true);
+                    setError(null);
+                    
+                    const apiKey = window.getOpenAIKey ? window.getOpenAIKey() : null;
+                    if (!apiKey) {
+                        alert('OpenAI API key not found. Please set it in Settings > Integrations.');
+                        setQuickGenerateLoading(false);
+                        return;
+                    }
+
+                    // Determine content type
+                    const contentType = suggestion.contentType.toLowerCase().includes('article') ? 'article' : 'post';
+                    const isThread = suggestion.contentType.toLowerCase().includes('thread');
+                    
+                    // Build prompt based on suggestion
+                    const prompt = buildContentPrompt(suggestion, contentType, isThread);
+                    
+                    // Generate content
+                    const generatedContent = await callOpenAIForContent(prompt, {
+                        model: 'gpt-4o-mini',
+                        temperature: 0.7,
+                        maxTokens: contentType === 'article' ? 2000 : 1000,
+                        contentType
+                    });
+                    
+                    // Create content object
+                    const contentData = {
+                        type: contentType,
+                        title: suggestion.topic,
+                        content: generatedContent,
+                        metadata: {
+                            topic: suggestion.topic,
+                            angle: suggestion.angle,
+                            platforms: suggestion.platforms,
+                            tone: 'professional',
+                            expertiseArea: suggestion.expertiseArea,
+                            estimatedEngagement: suggestion.estimatedEngagement,
+                            optimalPostingTime: suggestion.optimalPostingTime,
+                            generatedFrom: 'quick-generate',
+                            timestamp: Date.now()
+                        }
+                    };
+                    
+                    // Save to history
+                    const savedContent = saveContentToHistory(contentData);
+                    
+                    // Record to analytics
+                    await recordContentToAnalytics({
+                        type: contentType,
+                        title: suggestion.topic,
+                        content: generatedContent,
+                        metadata: {
+                            platforms: suggestion.platforms,
+                            expertiseArea: suggestion.expertiseArea
+                        }
+                    });
+                    
+                    // Show success and navigate to view content
+                    setGeneratedContent(savedContent);
+                    setActiveTab('generator');
+                    setActiveGenerator(null);
+                    
+                    // Show success notification
+                    alert(`Content generated successfully! 🎉\n\n"${suggestion.topic}"\n\nView it in the Content History section.`);
+                    
+                } catch (error) {
+                    console.error('Error in quick generate:', error);
+                    setError(error.message || 'Failed to generate content. Please try again.');
+                    alert(`Error: ${error.message || 'Failed to generate content'}`);
+                } finally {
+                    setQuickGenerateLoading(false);
+                }
+            };
+
+            // Build content prompt from suggestion
+            const buildContentPrompt = (suggestion, contentType, isThread) => {
+                const basePrompt = `Create a ${contentType === 'article' ? 'professional article' : isThread ? 'Twitter/X thread' : 'LinkedIn post'} about: "${suggestion.topic}"
+
+${suggestion.angle ? `Angle/Perspective: ${suggestion.angle}` : ''}
+${suggestion.expertiseArea ? `Expertise Area: ${suggestion.expertiseArea}` : ''}
+
+Requirements:
+- ${contentType === 'article' ? 'Write a comprehensive, well-structured article (800-1200 words)' : isThread ? 'Create an engaging Twitter/X thread (5-10 tweets)' : 'Write an engaging LinkedIn post (200-300 words)'}
+- Professional yet engaging tone
+- Include actionable insights or takeaways
+- Make it shareable and valuable for the audience
+- ${suggestion.platforms && suggestion.platforms.length > 0 ? `Optimized for: ${suggestion.platforms.join(', ')}` : ''}
+
+Please generate the content now:`;
+
+                return basePrompt;
+            };
+
+            // Add to batch generation queue
+            const addToBatchQueue = (suggestion) => {
+                setBatchGenerationQueue(prev => {
+                    const exists = prev.find(s => s.id === suggestion.id);
+                    if (exists) return prev;
+                    return [...prev, suggestion];
                 });
-                setSelectedPlatforms(suggestion.platforms);
-                setContentType(suggestion.contentType.toLowerCase().includes('post') ? 'post' : 'article');
+            };
+
+            // Remove from batch queue
+            const removeFromBatchQueue = (suggestionId) => {
+                setBatchGenerationQueue(prev => prev.filter(s => s.id !== suggestionId));
+            };
+
+            // Clear batch queue
+            const clearBatchQueue = () => {
+                setBatchGenerationQueue([]);
+            };
+
+            // Generate batch content
+            const handleBatchGenerate = async () => {
+                if (batchGenerationQueue.length === 0) {
+                    alert('No suggestions in batch queue. Add suggestions to generate multiple pieces at once.');
+                    return;
+                }
+
+                try {
+                    setQuickGenerateLoading(true);
+                    setError(null);
+                    
+                    const apiKey = window.getOpenAIKey ? window.getOpenAIKey() : null;
+                    if (!apiKey) {
+                        alert('OpenAI API key not found. Please set it in Settings > Integrations.');
+                        setQuickGenerateLoading(false);
+                        return;
+                    }
+
+                    const results = [];
+                    const errors = [];
+
+                    // Generate content for each suggestion in queue
+                    for (let i = 0; i < batchGenerationQueue.length; i++) {
+                        const suggestion = batchGenerationQueue[i];
+                        try {
+                            const contentType = suggestion.contentType.toLowerCase().includes('article') ? 'article' : 'post';
+                            const isThread = suggestion.contentType.toLowerCase().includes('thread');
+                            const prompt = buildContentPrompt(suggestion, contentType, isThread);
+                            
+                            const generatedContent = await callOpenAIForContent(prompt, {
+                                model: 'gpt-4o-mini',
+                                temperature: 0.7,
+                                maxTokens: contentType === 'article' ? 2000 : 1000,
+                                contentType
+                            });
+                            
+                            const contentData = {
+                                type: contentType,
+                                title: suggestion.topic,
+                                content: generatedContent,
+                                metadata: {
+                                    topic: suggestion.topic,
+                                    angle: suggestion.angle,
+                                    platforms: suggestion.platforms,
+                                    tone: 'professional',
+                                    expertiseArea: suggestion.expertiseArea,
+                                    estimatedEngagement: suggestion.estimatedEngagement,
+                                    optimalPostingTime: suggestion.optimalPostingTime,
+                                    generatedFrom: 'batch-generate',
+                                    timestamp: Date.now()
+                                }
+                            };
+                            
+                            const savedContent = saveContentToHistory(contentData);
+                            await recordContentToAnalytics({
+                                type: contentType,
+                                title: suggestion.topic,
+                                content: generatedContent,
+                                metadata: {
+                                    platforms: suggestion.platforms,
+                                    expertiseArea: suggestion.expertiseArea
+                                }
+                            });
+                            
+                            results.push({ success: true, suggestion, content: savedContent });
+                            
+                            // Small delay between generations to avoid rate limits
+                            if (i < batchGenerationQueue.length - 1) {
+                                await new Promise(resolve => setTimeout(resolve, 2000));
+                            }
+                        } catch (error) {
+                            errors.push({ suggestion, error: error.message });
+                        }
+                    }
+                    
+                    // Clear queue
+                    clearBatchQueue();
+                    setShowBatchModal(false);
+                    
+                    // Show results
+                    const successCount = results.length;
+                    const errorCount = errors.length;
+                    alert(`Batch generation complete! ✅\n\nSuccessfully generated: ${successCount}\nErrors: ${errorCount}\n\nView generated content in Content History.`);
+                    
+                    // Navigate to generator to see results
+                    setActiveTab('generator');
+                    setActiveGenerator(null);
+                    
+                } catch (error) {
+                    console.error('Error in batch generate:', error);
+                    setError(error.message || 'Failed to generate batch content');
+                    alert(`Error: ${error.message || 'Failed to generate batch content'}`);
+                } finally {
+                    setQuickGenerateLoading(false);
+                }
             };
 
             const handleGeneratorSelect = (generator) => {
@@ -23427,54 +23750,256 @@ Generate the repurposed content:`;
                 };
             }, [contentHistory, authorityInsights]);
 
-            // Generate personalized content suggestions
-            const generatePersonalizedSuggestions = React.useMemo(() => {
-                if (expertiseAreas.length === 0) return contentSuggestions;
+            // Calculate optimal posting times based on past performance
+            const calculateOptimalPostingTimes = React.useMemo(() => {
+                if (!dashboardAnalytics || !dashboardAnalytics.timeSeriesData || dashboardAnalytics.timeSeriesData.length === 0) {
+                    // Default optimal times if no data
+                    return {
+                        bestDay: 'Tuesday',
+                        bestTime: '9:00 AM',
+                        bestDays: ['Tuesday', 'Wednesday', 'Thursday'],
+                        bestHours: [9, 10, 14, 15] // 9 AM, 10 AM, 2 PM, 3 PM
+                    };
+                }
                 
+                // Analyze time series data to find best performing days/hours
+                // This is a simplified version - in production, you'd analyze actual posting times
+                const dayPerformance = {};
+                const hourPerformance = {};
+                
+                dashboardAnalytics.timeSeriesData.forEach(data => {
+                    const date = new Date(data.date);
+                    const day = date.toLocaleDateString('en-US', { weekday: 'long' });
+                    const hour = date.getHours();
+                    
+                    dayPerformance[day] = (dayPerformance[day] || 0) + (data.engagement || 0);
+                    hourPerformance[hour] = (hourPerformance[hour] || 0) + (data.engagement || 0);
+                });
+                
+                const bestDay = Object.entries(dayPerformance).sort((a, b) => b[1] - a[1])[0]?.[0] || 'Tuesday';
+                const bestHour = Object.entries(hourPerformance).sort((a, b) => b[1] - a[1])[0]?.[0] || 9;
+                const bestDays = Object.entries(dayPerformance)
+                    .sort((a, b) => b[1] - a[1])
+                    .slice(0, 3)
+                    .map(([day]) => day);
+                const bestHours = Object.entries(hourPerformance)
+                    .sort((a, b) => b[1] - a[1])
+                    .slice(0, 4)
+                    .map(([hour]) => parseInt(hour));
+                
+                return {
+                    bestDay,
+                    bestTime: `${bestHour}:00 ${bestHour >= 12 ? 'PM' : 'AM'}`,
+                    bestDays,
+                    bestHours
+                };
+            }, [dashboardAnalytics]);
+
+            // Analyze past performance to identify successful content patterns
+            const analyzePastPerformance = React.useMemo(() => {
+                if (!dashboardAnalytics || !dashboardAnalytics.topPerformingContent || dashboardAnalytics.topPerformingContent.length === 0) {
+                    return {
+                        bestContentType: 'post',
+                        bestPlatform: 'LinkedIn',
+                        avgEngagementRate: 0,
+                        topTopics: []
+                    };
+                }
+                
+                const topContent = dashboardAnalytics.topPerformingContent.slice(0, 5);
+                const contentTypeCount = {};
+                const platformCount = {};
+                const topics = [];
+                let totalEngagementRate = 0;
+                
+                topContent.forEach(content => {
+                    // Count content types (would need to map from analytics)
+                    contentTypeCount['post'] = (contentTypeCount['post'] || 0) + 1;
+                    platformCount[content.platform || 'LinkedIn'] = (platformCount[content.platform || 'LinkedIn'] || 0) + 1;
+                    if (content.title) topics.push(content.title);
+                    totalEngagementRate += content.engagement_rate || 0;
+                });
+                
+                const bestContentType = Object.entries(contentTypeCount).sort((a, b) => b[1] - a[1])[0]?.[0] || 'post';
+                const bestPlatform = Object.entries(platformCount).sort((a, b) => b[1] - a[1])[0]?.[0] || 'LinkedIn';
+                const avgEngagementRate = totalEngagementRate / topContent.length;
+                
+                return {
+                    bestContentType,
+                    bestPlatform,
+                    avgEngagementRate,
+                    topTopics: topics.slice(0, 3)
+                };
+            }, [dashboardAnalytics]);
+
+            // Generate personalized content suggestions with AI-powered recommendations
+            const generatePersonalizedSuggestions = React.useMemo(() => {
                 const suggestions = [];
                 const recentTopics = contentHistory.slice(0, 10).map(item => 
                     item.metadata?.topic?.toLowerCase() || ''
                 );
                 
-                expertiseAreas.forEach((area, index) => {
-                    if (index >= 3) return; // Limit to 3 suggestions
+                // Calculate priority score for each suggestion
+                const calculatePriorityScore = (suggestion) => {
+                    let score = 0;
                     
-                    const areaName = area.name.toLowerCase();
-                    const matchingTopic = trendingTopics.find(topic => 
-                        topic.title.toLowerCase().includes(areaName.split(' ')[0]) ||
-                        areaName.includes(topic.keywords[0]?.toLowerCase() || '')
-                    );
-                    
-                    if (matchingTopic) {
-                        const contentType = area.authorityScore >= 70 ? 'Article' : 'LinkedIn Post';
-                        const estimatedEngagement = Math.round(
-                            (matchingTopic.engagementPotential || 75) * (area.authorityScore / 100) * 10
-                        );
-                        
-                        suggestions.push({
-                            id: `suggestion-${area.id}`,
-                            topic: `${area.name}: ${matchingTopic.title}`,
-                            angle: `Leverage your ${area.level.toLowerCase()} expertise in ${area.name}`,
-                            contentType,
-                            estimatedEngagement,
-                            difficulty: area.authorityScore >= 70 ? 'Easy' : 'Medium',
-                            timeToCreate: contentType === 'Article' ? '25 min' : '15 min',
-                            platforms: ['LinkedIn', 'Twitter'],
-                            expertiseArea: area.name
-                        });
+                    // Base score from trending topic relevance
+                    if (suggestion.trendingRelevance) {
+                        score += suggestion.trendingRelevance * 0.3;
                     }
-                });
+                    
+                    // Expertise alignment score
+                    if (suggestion.expertiseMatch) {
+                        score += suggestion.expertiseMatch * 0.25;
+                    }
+                    
+                    // Past performance alignment
+                    if (suggestion.performanceMatch) {
+                        score += suggestion.performanceMatch * 0.25;
+                    }
+                    
+                    // Engagement potential
+                    if (suggestion.estimatedEngagement) {
+                        const engagementScore = Math.min(100, (suggestion.estimatedEngagement / 500) * 100);
+                        score += engagementScore * 0.2;
+                    }
+                    
+                    return Math.round(score);
+                };
                 
-                // Fill remaining slots with default suggestions if needed
-                while (suggestions.length < 3 && suggestions.length < contentSuggestions.length) {
-                    const defaultSuggestion = contentSuggestions[suggestions.length];
-                    if (defaultSuggestion) {
-                        suggestions.push(defaultSuggestion);
-                    }
+                // Generate suggestions based on expertise areas
+                if (expertiseAreas.length > 0) {
+                    expertiseAreas.forEach((area, index) => {
+                        if (index >= 5) return; // Consider top 5 expertise areas
+                        
+                        const areaName = area.name.toLowerCase();
+                        
+                        // Find matching trending topics
+                        const matchingTopics = trendingTopics.filter(topic => {
+                            const topicLower = topic.title.toLowerCase();
+                            const keywords = topic.keywords || [];
+                            return topicLower.includes(areaName.split(' ')[0]) ||
+                                   areaName.includes(topicLower.split(' ')[0]) ||
+                                   keywords.some(kw => areaName.includes(kw.toLowerCase())) ||
+                                   keywords.some(kw => topicLower.includes(areaName.split(' ')[0]));
+                        });
+                        
+                        matchingTopics.forEach((matchingTopic, topicIndex) => {
+                            if (suggestions.length >= 5) return;
+                            
+                            // Determine content type based on authority and past performance
+                            let contentType = 'LinkedIn Post';
+                            if (area.authorityScore >= 80) {
+                                contentType = analyzePastPerformance.bestContentType === 'article' ? 'Article' : 'LinkedIn Post';
+                            } else if (area.authorityScore >= 60) {
+                                contentType = 'LinkedIn Post';
+                            }
+                            
+                            // Calculate estimated engagement based on multiple factors
+                            const baseEngagement = matchingTopic.engagementPotential || 75;
+                            const authorityMultiplier = area.authorityScore / 100;
+                            const performanceMultiplier = analyzePastPerformance.avgEngagementRate > 0 
+                                ? (analyzePastPerformance.avgEngagementRate / 10) 
+                                : 1;
+                            const estimatedEngagement = Math.round(
+                                baseEngagement * authorityMultiplier * performanceMultiplier * 8
+                            );
+                            
+                            // Determine difficulty
+                            let difficulty = 'Medium';
+                            if (area.authorityScore >= 80 && contentType === 'LinkedIn Post') {
+                                difficulty = 'Easy';
+                            } else if (area.authorityScore < 50 || contentType === 'Article') {
+                                difficulty = 'Hard';
+                            }
+                            
+                            // Determine best platform
+                            const platforms = analyzePastPerformance.bestPlatform === 'LinkedIn' 
+                                ? ['LinkedIn', 'Twitter']
+                                : ['Twitter', 'LinkedIn'];
+                            
+                            // Calculate optimal posting time
+                            const optimalTime = calculateOptimalPostingTimes.bestTime;
+                            const optimalDay = calculateOptimalPostingTimes.bestDay;
+                            
+                            const suggestion = {
+                                id: `suggestion-${area.id}-${topicIndex}`,
+                                topic: matchingTopic.title,
+                                angle: `Leverage your ${area.level.toLowerCase()} expertise in ${area.name} to discuss ${matchingTopic.title}`,
+                                contentType,
+                                estimatedEngagement,
+                                difficulty,
+                                timeToCreate: contentType === 'Article' ? '25 min' : '15 min',
+                                platforms,
+                                expertiseArea: area.name,
+                                trendingRelevance: matchingTopic.relevanceScore,
+                                expertiseMatch: area.authorityScore,
+                                performanceMatch: analyzePastPerformance.avgEngagementRate,
+                                optimalPostingTime: `${optimalDay} at ${optimalTime}`,
+                                priorityScore: 0 // Will be calculated below
+                            };
+                            
+                            suggestion.priorityScore = calculatePriorityScore(suggestion);
+                            suggestions.push(suggestion);
+                        });
+                    });
                 }
                 
-                return suggestions.slice(0, 3);
-            }, [expertiseAreas, trendingTopics, contentHistory]);
+                // Add suggestions based on past performance patterns
+                if (analyzePastPerformance.topTopics.length > 0 && suggestions.length < 5) {
+                    analyzePastPerformance.topTopics.forEach((topic, index) => {
+                        if (suggestions.length >= 5) return;
+                        
+                        // Check if we already have a similar suggestion
+                        const alreadyExists = suggestions.some(s => 
+                            s.topic.toLowerCase().includes(topic.toLowerCase().substring(0, 10))
+                        );
+                        
+                        if (!alreadyExists) {
+                            const suggestion = {
+                                id: `suggestion-performance-${index}`,
+                                topic: `Follow-up: ${topic.substring(0, 50)}`,
+                                angle: `Create a follow-up or related piece based on your top-performing content`,
+                                contentType: analyzePastPerformance.bestContentType === 'article' ? 'Article' : 'LinkedIn Post',
+                                estimatedEngagement: Math.round(analyzePastPerformance.avgEngagementRate * 1.2),
+                                difficulty: 'Easy',
+                                timeToCreate: '15 min',
+                                platforms: [analyzePastPerformance.bestPlatform, 'LinkedIn'],
+                                trendingRelevance: 70,
+                                expertiseMatch: 75,
+                                performanceMatch: 90,
+                                optimalPostingTime: `${calculateOptimalPostingTimes.bestDay} at ${calculateOptimalPostingTimes.bestTime}`,
+                                priorityScore: 0
+                            };
+                            
+                            suggestion.priorityScore = calculatePriorityScore(suggestion);
+                            suggestions.push(suggestion);
+                        }
+                    });
+                }
+                
+                // Fill with default suggestions if needed
+                if (suggestions.length < 3) {
+                    contentSuggestions.slice(0, 3 - suggestions.length).forEach((defaultSuggestion, index) => {
+                        const suggestion = {
+                            ...defaultSuggestion,
+                            id: `suggestion-default-${index}`,
+                            trendingRelevance: 60,
+                            expertiseMatch: 50,
+                            performanceMatch: 50,
+                            optimalPostingTime: `${calculateOptimalPostingTimes.bestDay} at ${calculateOptimalPostingTimes.bestTime}`,
+                            priorityScore: 0
+                        };
+                        suggestion.priorityScore = calculatePriorityScore(suggestion);
+                        suggestions.push(suggestion);
+                    });
+                }
+                
+                // Sort by priority score and return top 3
+                return suggestions
+                    .sort((a, b) => b.priorityScore - a.priorityScore)
+                    .slice(0, 3);
+            }, [expertiseAreas, trendingTopics, contentHistory, dashboardAnalytics, analyzePastPerformance, calculateOptimalPostingTimes]);
 
             // Generate smart insights
             const generateSmartInsights = React.useMemo(() => {
@@ -25016,6 +25541,123 @@ Generate the repurposed content:`;
                         }}
                     />
 
+                    {/* Batch Generation Modal */}
+                    {showBatchModal && (
+                        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                            <div className={`${isLightMode ? 'bg-white' : 'bg-gray-800'} rounded-2xl shadow-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col`}>
+                                <div className={`${isLightMode ? 'bg-gray-50' : 'bg-gray-900'} px-6 py-4 border-b ${isLightMode ? 'border-gray-200' : 'border-gray-700'} flex items-center justify-between`}>
+                                    <h2 className={`text-xl font-bold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                        Batch Generation Queue
+                                    </h2>
+                                    <button
+                                        onClick={() => setShowBatchModal(false)}
+                                        className={`p-2 rounded-lg ${isLightMode ? 'hover:bg-gray-200' : 'hover:bg-gray-700'} transition-colors`}
+                                    >
+                                        <svg className={`w-5 h-5 ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                        </svg>
+                                    </button>
+                                </div>
+                                
+                                <div className="flex-1 overflow-y-auto p-6">
+                                    {batchGenerationQueue.length === 0 ? (
+                                        <div className={`text-center py-12 ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                            <p className="text-lg mb-2">No items in queue</p>
+                                            <p className="text-sm">Add suggestions to the batch queue to generate multiple pieces at once.</p>
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-3">
+                                            {batchGenerationQueue.map((suggestion, index) => (
+                                                <div
+                                                    key={suggestion.id}
+                                                    className={`${isLightMode ? 'bg-gray-50' : 'bg-gray-700/50'} rounded-lg p-4 border ${isLightMode ? 'border-gray-200' : 'border-gray-600'}`}
+                                                >
+                                                    <div className="flex items-start justify-between">
+                                                        <div className="flex-1">
+                                                            <div className="flex items-center gap-2 mb-2">
+                                                                <span className={`text-sm font-medium ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                                    #{index + 1}
+                                                                </span>
+                                                                <h3 className={`font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                                    {suggestion.topic}
+                                                                </h3>
+                                                            </div>
+                                                            <div className="flex items-center gap-2 text-xs">
+                                                                <span className={`px-2 py-0.5 rounded-full ${
+                                                                    suggestion.contentType === 'Article'
+                                                                        ? (isLightMode ? 'bg-blue-100 text-blue-700' : 'bg-blue-500/20 text-blue-400')
+                                                                        : (isLightMode ? 'bg-purple-100 text-purple-700' : 'bg-purple-500/20 text-purple-400')
+                                                                }`}>
+                                                                    {suggestion.contentType}
+                                                                </span>
+                                                                {suggestion.platforms && suggestion.platforms.map((platform, idx) => (
+                                                                    <span key={idx} className={isLightMode ? 'text-gray-500' : 'text-gray-400'}>
+                                                                        {platform}
+                                                                    </span>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                        <button
+                                                            onClick={() => removeFromBatchQueue(suggestion.id)}
+                                                            className={`ml-4 p-2 rounded-lg ${isLightMode ? 'hover:bg-red-100 text-red-600' : 'hover:bg-red-500/20 text-red-400'} transition-colors`}
+                                                        >
+                                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                                            </svg>
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                                
+                                <div className={`${isLightMode ? 'bg-gray-50' : 'bg-gray-900'} px-6 py-4 border-t ${isLightMode ? 'border-gray-200' : 'border-gray-700'} flex items-center justify-between`}>
+                                    <div>
+                                        <p className={`text-sm ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>
+                                            {batchGenerationQueue.length} item{batchGenerationQueue.length !== 1 ? 's' : ''} in queue
+                                        </p>
+                                        <p className={`text-xs ${isLightMode ? 'text-gray-500' : 'text-gray-500'}`}>
+                                            Estimated time: ~{batchGenerationQueue.length * 2} minutes
+                                        </p>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                        <button
+                                            onClick={() => {
+                                                clearBatchQueue();
+                                                setShowBatchModal(false);
+                                            }}
+                                            className={`px-4 py-2 rounded-lg text-sm font-medium ${
+                                                isLightMode 
+                                                    ? 'bg-gray-200 text-gray-700 hover:bg-gray-300' 
+                                                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                                            } transition-colors`}
+                                        >
+                                            Clear All
+                                        </button>
+                                        <button
+                                            onClick={handleBatchGenerate}
+                                            disabled={batchGenerationQueue.length === 0 || quickGenerateLoading}
+                                            className="bg-gradient-to-r from-green-500 to-emerald-600 text-white px-6 py-2 rounded-lg font-medium hover:from-green-600 hover:to-emerald-700 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                                        >
+                                            {quickGenerateLoading ? (
+                                                <>
+                                                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                                    Generating...
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <span>⚡</span>
+                                                    Generate All ({batchGenerationQueue.length})
+                                                </>
+                                            )}
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Navigation Tabs */}
                     <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-2`}>
                         <div className="flex space-x-1 overflow-x-auto">
@@ -25045,58 +25687,161 @@ Generate the repurposed content:`;
                             <div className="lg:col-span-2 space-y-8">
                                 {/* Today's Content Suggestions */}
                                 <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-8`}>
-                                    <div className="flex items-center gap-3 mb-6">
-                                        <div className="w-10 h-10 bg-yellow-500 rounded-lg flex items-center justify-center">
-                                            <div className="w-5 h-5 text-white text-xl">💡</div>
+                                    <div className="flex items-center justify-between mb-6">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 bg-yellow-500 rounded-lg flex items-center justify-center">
+                                                <div className="w-5 h-5 text-white text-xl">💡</div>
+                                            </div>
+                                            <h2 className={`text-2xl font-bold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>Today's Content Suggestions</h2>
                                         </div>
-                                        <h2 className={`text-2xl font-bold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>Today's Content Suggestions</h2>
+                                        {batchGenerationQueue.length > 0 && (
+                                            <div className="flex items-center gap-2">
+                                                <span className={`text-sm ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>
+                                                    {batchGenerationQueue.length} in queue
+                                                </span>
+                                                <button
+                                                    onClick={() => setShowBatchModal(true)}
+                                                    className="bg-gradient-to-r from-green-500 to-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:from-green-600 hover:to-emerald-700 transition-all duration-200 flex items-center gap-2"
+                                                >
+                                                    <span>⚡</span>
+                                                    Generate Batch ({batchGenerationQueue.length})
+                                                </button>
+                                                <button
+                                                    onClick={clearBatchQueue}
+                                                    className={`px-3 py-2 rounded-lg text-sm font-medium ${
+                                                        isLightMode 
+                                                            ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' 
+                                                            : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                                                    }`}
+                                                >
+                                                    Clear
+                                                </button>
+                                            </div>
+                                        )}
                                     </div>
                                     
                                     <div className="space-y-4">
-                                        {generatePersonalizedSuggestions.map((suggestion) => (
-                                            <div key={suggestion.id} className={`${isLightMode ? 'bg-white/30 backdrop-blur-xl border-white/20' : 'bg-gray-800 border-gray-700'} border rounded-lg p-6 hover:border-purple-500/50 transition-all duration-300`}>
-                                                <div className="flex items-start justify-between mb-4">
-                                                    <div>
-                                                        <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-2`}>{suggestion.topic}</h3>
+                                        {generatePersonalizedSuggestions.map((suggestion, index) => (
+                                            <div key={suggestion.id} className={`${isLightMode ? 'bg-white/30 backdrop-blur-xl border-white/20' : 'bg-gray-800 border-gray-700'} border rounded-lg p-6 hover:border-purple-500/50 transition-all duration-300 relative`}>
+                                                {/* Priority Badge */}
+                                                {suggestion.priorityScore && (
+                                                    <div className="absolute top-4 right-4">
+                                                        <div className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                                                            suggestion.priorityScore >= 80
+                                                                ? (isLightMode ? 'bg-green-100 text-green-700' : 'bg-green-500/20 text-green-400')
+                                                                : suggestion.priorityScore >= 60
+                                                                ? (isLightMode ? 'bg-yellow-100 text-yellow-700' : 'bg-yellow-500/20 text-yellow-400')
+                                                                : (isLightMode ? 'bg-blue-100 text-blue-700' : 'bg-blue-500/20 text-blue-400')
+                                                        }`}>
+                                                            {suggestion.priorityScore}% Match
+                                                        </div>
+                                                    </div>
+                                                )}
+                                                
+                                                <div className="flex items-start justify-between mb-4 pr-20">
+                                                    <div className="flex-1">
+                                                        <div className="flex items-center gap-2 mb-2">
+                                                            <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>{suggestion.topic}</h3>
+                                                            {index === 0 && suggestion.priorityScore >= 80 && (
+                                                                <span className="text-yellow-500 text-sm">⭐ Top Pick</span>
+                                                            )}
+                                                        </div>
                                                         <p className={`${isLightMode ? 'text-gray-600' : 'text-gray-300'} mb-3`}>{suggestion.angle}</p>
-                                                        <div className="flex items-center gap-4 text-sm">
-                                                            <span className={isLightMode ? 'text-gray-500' : 'text-gray-400'}>{suggestion.contentType}</span>
-                                                            <span className={isLightMode ? 'text-gray-500' : 'text-gray-400'}>•</span>
+                                                        <div className="flex flex-wrap items-center gap-3 text-sm mb-2">
+                                                            <span className={`px-2 py-1 rounded-full ${
+                                                                suggestion.contentType === 'Article'
+                                                                    ? (isLightMode ? 'bg-blue-100 text-blue-700' : 'bg-blue-500/20 text-blue-400')
+                                                                    : (isLightMode ? 'bg-purple-100 text-purple-700' : 'bg-purple-500/20 text-purple-400')
+                                                            }`}>
+                                                                {suggestion.contentType}
+                                                            </span>
                                                             <span className={isLightMode ? 'text-gray-500' : 'text-gray-400'}>{suggestion.timeToCreate}</span>
-                                                            <span className={isLightMode ? 'text-gray-500' : 'text-gray-400'}>•</span>
                                                             <span className={`font-medium ${getDifficultyColor(suggestion.difficulty)}`}>
                                                                 {suggestion.difficulty}
                                                             </span>
+                                                            {suggestion.optimalPostingTime && (
+                                                                <>
+                                                                    <span className={isLightMode ? 'text-gray-400' : 'text-gray-500'}>•</span>
+                                                                    <span className={`flex items-center gap-1 ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>
+                                                                        <span>🕐</span>
+                                                                        <span className="text-xs">{suggestion.optimalPostingTime}</span>
+                                                                    </span>
+                                                                </>
+                                                            )}
                                                         </div>
+                                                        {suggestion.expertiseArea && (
+                                                            <div className="flex items-center gap-2 text-xs mb-2">
+                                                                <span className={`px-2 py-0.5 rounded-full ${
+                                                                    isLightMode ? 'bg-purple-50 text-purple-600' : 'bg-purple-500/10 text-purple-400'
+                                                                }`}>
+                                                                    {suggestion.expertiseArea}
+                                                                </span>
+                                                                {suggestion.trendingRelevance && (
+                                                                    <span className={isLightMode ? 'text-gray-500' : 'text-gray-400'}>
+                                                                        {suggestion.trendingRelevance}% trending match
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        )}
                                                     </div>
-                                                    <div className="text-right">
-                                                        <div className={`text-2xl font-bold ${isLightMode ? 'text-purple-600' : 'text-purple-400'} mb-1`}>{suggestion.estimatedEngagement}</div>
+                                                    <div className="text-right ml-4">
+                                                        <div className={`text-2xl font-bold ${isLightMode ? 'text-purple-600' : 'text-purple-400'} mb-1`}>
+                                                            {suggestion.estimatedEngagement}
+                                                        </div>
                                                         <div className={`text-sm ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>Est. Engagement</div>
                                                     </div>
                                                 </div>
                                                 
-                                                <div className="flex items-center justify-between">
-                                                    <div className="flex items-center gap-2">
+                                                <div className="flex items-center justify-between flex-wrap gap-3">
+                                                    <div className="flex items-center gap-2 flex-wrap">
                                                         {suggestion.platforms.map((platform, index) => (
                                                             <span key={index} className={`px-2 py-1 ${isLightMode ? 'bg-purple-100 text-purple-700' : 'bg-purple-500/20 text-purple-400'} text-xs rounded-full`}>
                                                                 {platform}
                                                             </span>
                                                         ))}
                                                     </div>
-                                                    <button
-                                                        onClick={() => handleGenerateContent(suggestion)}
-                                                        disabled={isLoading}
-                                                        className="bg-gradient-to-r from-purple-500 to-indigo-600 text-white px-6 py-2 rounded-lg font-medium hover:from-purple-600 hover:to-indigo-700 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                                                    >
-                                                        {isLoading ? (
-                                                            <div className="flex items-center gap-2">
-                                                                <div className="w-4 h-4 animate-spin">🔄</div>
-                                                                Generating...
-                                                            </div>
-                                                        ) : (
-                                                            'Generate'
-                                                        )}
-                                                    </button>
+                                                    <div className="flex items-center gap-2">
+                                                        <button
+                                                            onClick={() => addToBatchQueue(suggestion)}
+                                                            disabled={quickGenerateLoading || batchGenerationQueue.find(s => s.id === suggestion.id)}
+                                                            className={`px-3 py-2 rounded-lg text-xs font-medium transition-all duration-200 ${
+                                                                batchGenerationQueue.find(s => s.id === suggestion.id)
+                                                                    ? (isLightMode ? 'bg-green-100 text-green-700' : 'bg-green-500/20 text-green-400')
+                                                                    : (isLightMode ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' : 'bg-gray-500/20 text-gray-400 hover:bg-gray-500/30')
+                                                            } disabled:opacity-50 disabled:cursor-not-allowed`}
+                                                            title="Add to batch queue"
+                                                        >
+                                                            {batchGenerationQueue.find(s => s.id === suggestion.id) ? '✓ Added' : '+ Batch'}
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleGenerateContent(suggestion, true)}
+                                                            disabled={isLoading || quickGenerateLoading}
+                                                            className="bg-gradient-to-r from-purple-500 to-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:from-purple-600 hover:to-indigo-700 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                                                        >
+                                                            {quickGenerateLoading ? (
+                                                                <>
+                                                                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                                                    Generating...
+                                                                </>
+                                                            ) : (
+                                                                <>
+                                                                    <span>⚡</span>
+                                                                    Quick Generate
+                                                                </>
+                                                            )}
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleGenerateContent(suggestion, false)}
+                                                            disabled={isLoading || quickGenerateLoading}
+                                                            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                                                                isLightMode 
+                                                                    ? 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50' 
+                                                                    : 'bg-gray-800 border border-gray-700 text-gray-300 hover:bg-gray-700'
+                                                            } disabled:opacity-50 disabled:cursor-not-allowed`}
+                                                        >
+                                                            Customize
+                                                        </button>
+                                                    </div>
                                                 </div>
                                             </div>
                                         ))}
@@ -25733,6 +26478,220 @@ Generate the repurposed content:`;
                                         </div>
                                     </div>
                                 )}
+
+                                {/* Content Goals Progress */}
+                                <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
+                                    <div className="flex items-center justify-between mb-4">
+                                        <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>Content Goals</h3>
+                                        <button
+                                            onClick={() => {
+                                                const goalsTab = document.querySelector('[data-tab="goals"]');
+                                                if (goalsTab) goalsTab.click();
+                                            }}
+                                            className={`text-xs font-medium ${isLightMode ? 'text-purple-600 hover:text-purple-700' : 'text-purple-400 hover:text-purple-300'}`}
+                                        >
+                                            Manage →
+                                        </button>
+                                    </div>
+                                    
+                                    {goalsLoading ? (
+                                        <div className="text-center py-4">
+                                            <div className="w-5 h-5 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+                                            <p className={`text-xs ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>Loading goals...</p>
+                                        </div>
+                                    ) : contentGoals.length > 0 ? (
+                                        <div className="space-y-3">
+                                            {contentGoals.map((goal) => {
+                                                const isCompleted = goal.progress >= 100;
+                                                const isNearCompletion = goal.progress >= 80;
+                                                
+                                                return (
+                                                    <div
+                                                        key={goal.id}
+                                                        className={`${isLightMode ? 'bg-white/30' : 'bg-gray-800'} rounded-lg p-3 border ${isLightMode ? 'border-gray-200' : 'border-gray-700'}`}
+                                                    >
+                                                        <div className="flex items-start justify-between mb-2">
+                                                            <div className="flex-1 min-w-0">
+                                                                <h4 className={`font-semibold text-sm mb-1 ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                                    {goal.title}
+                                                                </h4>
+                                                                <div className="flex items-center gap-2 text-xs">
+                                                                    <span className={`px-2 py-0.5 rounded-full ${
+                                                                        goal.category === 'content'
+                                                                            ? (isLightMode ? 'bg-purple-100 text-purple-700' : 'bg-purple-500/20 text-purple-400')
+                                                                            : goal.category === 'engagement'
+                                                                            ? (isLightMode ? 'bg-green-100 text-green-700' : 'bg-green-500/20 text-green-400')
+                                                                            : (isLightMode ? 'bg-blue-100 text-blue-700' : 'bg-blue-500/20 text-blue-400')
+                                                                    }`}>
+                                                                        {goal.category}
+                                                                    </span>
+                                                                    {isCompleted && (
+                                                                        <span className="text-yellow-500">🏆</span>
+                                                                    )}
+                                                                    {isNearCompletion && !isCompleted && (
+                                                                        <span className="text-yellow-500">⭐</span>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        
+                                                        <div className="flex items-center justify-between text-xs mb-2">
+                                                            <span className={isLightMode ? 'text-gray-600' : 'text-gray-400'}>
+                                                                {goal.target_value 
+                                                                    ? `${formatNumber(goal.current_value)} / ${formatNumber(goal.target_value)}`
+                                                                    : `Current: ${formatNumber(goal.current_value)}`
+                                                                }
+                                                            </span>
+                                                            <span className={`font-semibold ${
+                                                                isCompleted
+                                                                    ? (isLightMode ? 'text-green-600' : 'text-green-400')
+                                                                    : isNearCompletion
+                                                                    ? (isLightMode ? 'text-yellow-600' : 'text-yellow-400')
+                                                                    : (isLightMode ? 'text-gray-600' : 'text-gray-400')
+                                                            }`}>
+                                                                {goal.progress}%
+                                                            </span>
+                                                        </div>
+                                                        
+                                                        <div className={`w-full ${isLightMode ? 'bg-gray-200' : 'bg-gray-700'} rounded-full h-2`}>
+                                                            <div
+                                                                className={`h-2 rounded-full transition-all duration-300 ${
+                                                                    isCompleted
+                                                                        ? 'bg-gradient-to-r from-green-500 to-emerald-500'
+                                                                        : isNearCompletion
+                                                                        ? 'bg-gradient-to-r from-yellow-500 to-orange-500'
+                                                                        : 'bg-gradient-to-r from-purple-500 to-indigo-500'
+                                                                }`}
+                                                                style={{ width: `${Math.min(100, goal.progress)}%` }}
+                                                            ></div>
+                                                        </div>
+                                                        
+                                                        {goal.target_date && (
+                                                            <div className={`text-xs mt-2 ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                                Target: {new Date(goal.target_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    ) : (
+                                        <div className={`text-center py-4 ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                            <p className="text-xs mb-2">No content goals set</p>
+                                            <button
+                                                onClick={() => {
+                                                    const goalsTab = document.querySelector('[data-tab="goals"]');
+                                                    if (goalsTab) goalsTab.click();
+                                                }}
+                                                className={`text-xs px-3 py-1.5 rounded-lg font-medium ${
+                                                    isLightMode 
+                                                        ? 'bg-purple-100 text-purple-700 hover:bg-purple-200' 
+                                                        : 'bg-purple-500/20 text-purple-400 hover:bg-purple-500/30'
+                                                }`}
+                                            >
+                                                Create Goal
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Weekly/Monthly Targets Summary */}
+                                {contentGoals.length > 0 && (
+                                    <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
+                                        <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-4`}>This Month</h3>
+                                        <div className="space-y-3">
+                                            <div className="flex items-center justify-between">
+                                                <span className={`text-sm ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>Content Generated</span>
+                                                <span className={`text-sm font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                    {calculateDashboardMetrics.postsThisMonth} posts
+                                                </span>
+                                            </div>
+                                            <div className="flex items-center justify-between">
+                                                <span className={`text-sm ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>Total Engagement</span>
+                                                <span className={`text-sm font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                    {formatNumber(calculateDashboardMetrics.totalEngagement)}
+                                                </span>
+                                            </div>
+                                            <div className="flex items-center justify-between">
+                                                <span className={`text-sm ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>Goals Completed</span>
+                                                <span className={`text-sm font-semibold ${
+                                                    contentGoals.filter(g => g.progress >= 100).length > 0
+                                                        ? (isLightMode ? 'text-green-600' : 'text-green-400')
+                                                        : (isLightMode ? 'text-gray-600' : 'text-gray-400')
+                                                }`}>
+                                                    {contentGoals.filter(g => g.progress >= 100).length} / {contentGoals.length}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Template Shortcuts */}
+                                <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
+                                    <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-4`}>Quick Templates</h3>
+                                    <div className="space-y-2">
+                                        <button
+                                            onClick={() => {
+                                                const template = {
+                                                    topic: 'Weekly Industry Insights',
+                                                    angle: 'Share key learnings and trends from this week',
+                                                    contentType: 'LinkedIn Post',
+                                                    platforms: ['LinkedIn'],
+                                                    tone: 'professional'
+                                                };
+                                                handleGenerateContent(template, false);
+                                            }}
+                                            className="w-full bg-gradient-to-r from-purple-500 to-indigo-600 text-white py-2 rounded-lg font-medium hover:from-purple-600 hover:to-indigo-700 transition-all duration-200 text-sm text-left px-4"
+                                        >
+                                            📝 Weekly Insights Post
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                const template = {
+                                                    topic: 'Thought Leadership Article',
+                                                    angle: 'Deep dive into a trending topic in your expertise area',
+                                                    contentType: 'Article',
+                                                    platforms: ['LinkedIn', 'Medium'],
+                                                    tone: 'professional'
+                                                };
+                                                handleGenerateContent(template, false);
+                                            }}
+                                            className="w-full bg-gradient-to-r from-blue-500 to-cyan-600 text-white py-2 rounded-lg font-medium hover:from-blue-600 hover:to-cyan-700 transition-all duration-200 text-sm text-left px-4"
+                                        >
+                                            📚 Thought Leadership Article
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                const template = {
+                                                    topic: 'Quick Tips Thread',
+                                                    angle: 'Share actionable tips in a thread format',
+                                                    contentType: 'Thread',
+                                                    platforms: ['Twitter', 'LinkedIn'],
+                                                    tone: 'conversational'
+                                                };
+                                                handleGenerateContent(template, false);
+                                            }}
+                                            className="w-full bg-gradient-to-r from-green-500 to-emerald-600 text-white py-2 rounded-lg font-medium hover:from-green-600 hover:to-emerald-700 transition-all duration-200 text-sm text-left px-4"
+                                        >
+                                            🧵 Tips Thread
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                const template = {
+                                                    topic: 'Case Study Post',
+                                                    angle: 'Share a real-world example or success story',
+                                                    contentType: 'LinkedIn Post',
+                                                    platforms: ['LinkedIn'],
+                                                    tone: 'professional'
+                                                };
+                                                handleGenerateContent(template, false);
+                                            }}
+                                            className="w-full bg-gradient-to-r from-orange-500 to-red-600 text-white py-2 rounded-lg font-medium hover:from-orange-600 hover:to-red-700 transition-all duration-200 text-sm text-left px-4"
+                                        >
+                                            📊 Case Study Post
+                                        </button>
+                                    </div>
+                                </div>
 
                                 {/* Quick Actions */}
                                 <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
