@@ -1689,6 +1689,866 @@ const PortfolioUtils = {
     };
   },
 
+  // Detect industry/field from portfolio content
+  detectIndustry(bodyText, doc) {
+    const industries = {
+      'Web Developer': {
+        keywords: ['javascript', 'react', 'vue', 'angular', 'node.js', 'html', 'css', 'frontend', 'backend', 'full stack', 'web development', 'api', 'rest'],
+        weight: 0
+      },
+      'Mobile Developer': {
+        keywords: ['ios', 'android', 'swift', 'kotlin', 'react native', 'flutter', 'mobile app', 'app development', 'xcode', 'android studio'],
+        weight: 0
+      },
+      'UI/UX Designer': {
+        keywords: ['ui design', 'ux design', 'user experience', 'user interface', 'figma', 'sketch', 'adobe xd', 'prototype', 'wireframe', 'design system', 'interaction design'],
+        weight: 0
+      },
+      'Data Scientist': {
+        keywords: ['python', 'machine learning', 'data science', 'data analysis', 'pandas', 'numpy', 'tensorflow', 'pytorch', 'jupyter', 'sql', 'data visualization'],
+        weight: 0
+      },
+      'DevOps Engineer': {
+        keywords: ['docker', 'kubernetes', 'ci/cd', 'aws', 'azure', 'gcp', 'terraform', 'ansible', 'jenkins', 'devops', 'infrastructure'],
+        weight: 0
+      },
+      'Software Engineer': {
+        keywords: ['java', 'c++', 'c#', '.net', 'software engineering', 'algorithm', 'data structure', 'system design'],
+        weight: 0
+      },
+      'Graphic Designer': {
+        keywords: ['photoshop', 'illustrator', 'indesign', 'graphic design', 'branding', 'logo design', 'print design', 'adobe creative suite'],
+        weight: 0
+      },
+      'Content Creator': {
+        keywords: ['content creation', 'blogging', 'writing', 'copywriting', 'content strategy', 'seo writing', 'social media content'],
+        weight: 0
+      }
+    };
+
+    const lowerBodyText = bodyText.toLowerCase();
+    
+    // Calculate weights for each industry
+    Object.keys(industries).forEach(industry => {
+      industries[industry].weight = industries[industry].keywords.filter(keyword =>
+        lowerBodyText.includes(keyword.toLowerCase())
+      ).length;
+    });
+
+    // Find the industry with highest weight
+    const sortedIndustries = Object.entries(industries)
+      .sort((a, b) => b[1].weight - a[1].weight);
+
+    const primaryIndustry = sortedIndustries[0][1].weight > 0 
+      ? sortedIndustries[0][0] 
+      : 'General';
+
+    return {
+      primary: primaryIndustry,
+      confidence: sortedIndustries[0][1].weight > 0 
+        ? Math.min((sortedIndustries[0][1].weight / sortedIndustries[0][1].keywords.length) * 100, 100)
+        : 0,
+      allIndustries: sortedIndustries.map(([name, data]) => ({
+        name,
+        weight: data.weight,
+        matchCount: data.weight
+      }))
+    };
+  },
+
+  // Get industry benchmarks
+  getIndustryBenchmarks(industry, overallScore) {
+    // Industry-specific benchmark scores (0-100)
+    const benchmarks = {
+      'Web Developer': {
+        average: 68,
+        top25Percent: 78,
+        top10Percent: 88,
+        excellent: 90,
+        good: 75,
+        needsImprovement: 60
+      },
+      'Mobile Developer': {
+        average: 65,
+        top25Percent: 75,
+        top10Percent: 85,
+        excellent: 88,
+        good: 72,
+        needsImprovement: 58
+      },
+      'UI/UX Designer': {
+        average: 72,
+        top25Percent: 82,
+        top10Percent: 92,
+        excellent: 90,
+        good: 80,
+        needsImprovement: 65
+      },
+      'Data Scientist': {
+        average: 63,
+        top25Percent: 73,
+        top10Percent: 83,
+        excellent: 85,
+        good: 70,
+        needsImprovement: 55
+      },
+      'DevOps Engineer': {
+        average: 60,
+        top25Percent: 70,
+        top10Percent: 80,
+        excellent: 82,
+        good: 68,
+        needsImprovement: 55
+      },
+      'Software Engineer': {
+        average: 65,
+        top25Percent: 75,
+        top10Percent: 85,
+        excellent: 87,
+        good: 72,
+        needsImprovement: 58
+      },
+      'Graphic Designer': {
+        average: 70,
+        top25Percent: 80,
+        top10Percent: 90,
+        excellent: 88,
+        good: 78,
+        needsImprovement: 63
+      },
+      'Content Creator': {
+        average: 66,
+        top25Percent: 76,
+        top10Percent: 86,
+        excellent: 88,
+        good: 73,
+        needsImprovement: 58
+      },
+      'General': {
+        average: 65,
+        top25Percent: 75,
+        top10Percent: 85,
+        excellent: 87,
+        good: 72,
+        needsImprovement: 58
+      }
+    };
+
+    const benchmark = benchmarks[industry] || benchmarks['General'];
+    
+    // Determine percentile
+    let percentile = 'below average';
+    if (overallScore >= benchmark.top10Percent) {
+      percentile = 'top 10%';
+    } else if (overallScore >= benchmark.top25Percent) {
+      percentile = 'top 25%';
+    } else if (overallScore >= benchmark.average) {
+      percentile = 'above average';
+    } else {
+      percentile = 'below average';
+    }
+
+    // Determine rating
+    let rating = 'needs improvement';
+    if (overallScore >= benchmark.excellent) {
+      rating = 'excellent';
+    } else if (overallScore >= benchmark.good) {
+      rating = 'good';
+    } else if (overallScore >= benchmark.needsImprovement) {
+      rating = 'fair';
+    }
+
+    return {
+      ...benchmark,
+      percentile,
+      rating,
+      score: overallScore,
+      gapToTop10: Math.max(0, benchmark.top10Percent - overallScore),
+      gapToTop25: Math.max(0, benchmark.top25Percent - overallScore),
+      gapToAverage: overallScore >= benchmark.average 
+        ? 0 
+        : benchmark.average - overallScore
+    };
+  },
+
+  // Identify unique differentiators
+  identifyDifferentiators(analysis, industry) {
+    const differentiators = {
+      strengths: [],
+      uniqueFeatures: [],
+      recommendations: []
+    };
+
+    // Check for unique strengths
+    if (analysis.visual && analysis.visual.score >= 85) {
+      differentiators.strengths.push({
+        category: 'Visual Design',
+        description: 'Exceptional visual design quality',
+        impact: 'high',
+        uniqueness: 'Above industry standard'
+      });
+    }
+
+    if (analysis.content && analysis.content.details?.projects?.links?.github >= 5) {
+      differentiators.strengths.push({
+        category: 'Code Portfolio',
+        description: 'Strong GitHub presence with multiple projects',
+        impact: 'high',
+        uniqueness: 'Demonstrates active development'
+      });
+    }
+
+    if (analysis.content && analysis.content.details?.caseStudy?.structure?.completeness === 'complete') {
+      differentiators.strengths.push({
+        category: 'Case Studies',
+        description: 'Well-structured case studies with problem-solution-impact',
+        impact: 'high',
+        uniqueness: 'Shows professional approach'
+      });
+    }
+
+    if (analysis.performance && analysis.performance.loadTime < 1000) {
+      differentiators.strengths.push({
+        category: 'Performance',
+        description: 'Fast loading times',
+        impact: 'medium',
+        uniqueness: 'Better than average'
+      });
+    }
+
+    if (analysis.accessibility && analysis.accessibility.score >= 85) {
+      differentiators.strengths.push({
+        category: 'Accessibility',
+        description: 'Excellent accessibility standards',
+        impact: 'high',
+        uniqueness: 'Inclusive design approach'
+      });
+    }
+
+    // Industry-specific differentiators
+    if (industry === 'UI/UX Designer') {
+      if (analysis.visual && analysis.visual.details?.colorScheme?.totalColors >= 3) {
+        differentiators.uniqueFeatures.push('Well-thought-out color palette');
+      }
+      if (analysis.content && analysis.content.details?.caseStudy?.hasBeforeAfter) {
+        differentiators.uniqueFeatures.push('Before/after design comparisons');
+      }
+    }
+
+    if (industry === 'Web Developer' || industry === 'Mobile Developer') {
+      if (analysis.content && analysis.content.details?.projects?.technologies?.length >= 8) {
+        differentiators.uniqueFeatures.push('Diverse technology stack');
+      }
+      if (analysis.performance && analysis.performance.details?.compression) {
+        differentiators.uniqueFeatures.push('Optimized performance');
+      }
+    }
+
+    if (industry === 'Data Scientist') {
+      if (analysis.content && analysis.content.details?.caseStudy?.metrics?.length >= 3) {
+        differentiators.uniqueFeatures.push('Data-driven case studies with metrics');
+      }
+    }
+
+    // Identify gaps compared to top performers
+    if (analysis.seo && analysis.seo.score < 70) {
+      differentiators.recommendations.push({
+        area: 'SEO',
+        priority: 'high',
+        description: 'Improve SEO to match top performers',
+        potentialImpact: 'Better discoverability and search rankings'
+      });
+    }
+
+    if (analysis.content && analysis.content.details?.callToAction?.ctaButtons < 2) {
+      differentiators.recommendations.push({
+        area: 'Call-to-Action',
+        priority: 'medium',
+        description: 'Add more CTA buttons for better conversion',
+        potentialImpact: 'Increased engagement and inquiries'
+      });
+    }
+
+    if (analysis.socialMedia && analysis.socialMedia.score < 60) {
+      differentiators.recommendations.push({
+        area: 'Social Media Integration',
+        priority: 'medium',
+        description: 'Enhance social media presence and sharing',
+        potentialImpact: 'Better social sharing and visibility'
+      });
+    }
+
+    return differentiators;
+  },
+
+  // Get industry-specific best practices
+  getIndustryBestPractices(industry, analysis) {
+    const practices = {
+      'Web Developer': [
+        {
+          practice: 'Show live demos',
+          description: 'Include working demos or links to deployed projects',
+          currentStatus: analysis.content?.details?.projects?.links?.live > 0 ? 'implemented' : 'missing',
+          priority: 'high'
+        },
+        {
+          practice: 'Display code quality',
+          description: 'Link to GitHub repositories with clean, documented code',
+          currentStatus: analysis.content?.details?.projects?.links?.github > 0 ? 'implemented' : 'missing',
+          priority: 'high'
+        },
+        {
+          practice: 'Technology stack visibility',
+          description: 'Clearly list technologies used in each project',
+          currentStatus: analysis.content?.details?.projects?.technologies?.length >= 5 ? 'implemented' : 'partial',
+          priority: 'medium'
+        },
+        {
+          practice: 'Performance optimization',
+          description: 'Demonstrate understanding of web performance best practices',
+          currentStatus: analysis.performance?.score >= 75 ? 'implemented' : 'needs improvement',
+          priority: 'medium'
+        }
+      ],
+      'UI/UX Designer': [
+        {
+          practice: 'Design process documentation',
+          description: 'Show your design thinking and process',
+          currentStatus: analysis.content?.details?.caseStudy?.structure?.completeness === 'complete' ? 'implemented' : 'missing',
+          priority: 'high'
+        },
+        {
+          practice: 'Visual design quality',
+          description: 'Ensure portfolio itself demonstrates excellent design',
+          currentStatus: analysis.visual?.score >= 80 ? 'implemented' : 'needs improvement',
+          priority: 'high'
+        },
+        {
+          practice: 'Before/after comparisons',
+          description: 'Show design improvements and iterations',
+          currentStatus: analysis.content?.details?.caseStudy?.hasBeforeAfter ? 'implemented' : 'missing',
+          priority: 'medium'
+        },
+        {
+          practice: 'User research insights',
+          description: 'Include user research and testing results',
+          currentStatus: 'not checked',
+          priority: 'low'
+        }
+      ],
+      'Mobile Developer': [
+        {
+          practice: 'App store links',
+          description: 'Link to published apps in App Store/Play Store',
+          currentStatus: 'not checked',
+          priority: 'high'
+        },
+        {
+          practice: 'Platform coverage',
+          description: 'Show both iOS and Android projects if applicable',
+          currentStatus: 'not checked',
+          priority: 'medium'
+        },
+        {
+          practice: 'Performance metrics',
+          description: 'Include app performance and user metrics',
+          currentStatus: analysis.content?.details?.caseStudy?.metrics?.length >= 2 ? 'implemented' : 'missing',
+          priority: 'medium'
+        }
+      ],
+      'Data Scientist': [
+        {
+          practice: 'Data visualizations',
+          description: 'Showcase data visualization skills',
+          currentStatus: analysis.visual?.details?.images?.total > 0 ? 'implemented' : 'missing',
+          priority: 'high'
+        },
+        {
+          practice: 'Quantifiable results',
+          description: 'Include metrics and measurable outcomes',
+          currentStatus: analysis.content?.details?.caseStudy?.metrics?.length >= 3 ? 'implemented' : 'partial',
+          priority: 'high'
+        },
+        {
+          practice: 'Technical depth',
+          description: 'Explain methodologies and algorithms used',
+          currentStatus: analysis.content?.details?.writing?.wordCount >= 500 ? 'implemented' : 'needs improvement',
+          priority: 'medium'
+        }
+      ],
+      'General': [
+        {
+          practice: 'Clear value proposition',
+          description: 'Clearly state what you offer and your unique value',
+          currentStatus: analysis.content?.details?.branding?.hasValueProposition ? 'implemented' : 'missing',
+          priority: 'high'
+        },
+        {
+          practice: 'Professional presentation',
+          description: 'Ensure portfolio reflects professionalism',
+          currentStatus: analysis.overallScore >= 70 ? 'implemented' : 'needs improvement',
+          priority: 'high'
+        },
+        {
+          practice: 'Easy contact',
+          description: 'Make it easy for potential clients/employers to reach you',
+          currentStatus: analysis.content?.details?.callToAction?.hasContactForm || analysis.content?.details?.callToAction?.emailLinks > 0 ? 'implemented' : 'missing',
+          priority: 'high'
+        }
+      ]
+    };
+
+    const industryPractices = practices[industry] || practices['General'];
+    
+    return {
+      industry,
+      practices: industryPractices,
+      implementedCount: industryPractices.filter(p => p.currentStatus === 'implemented').length,
+      totalCount: industryPractices.length,
+      implementationRate: Math.round((industryPractices.filter(p => p.currentStatus === 'implemented').length / industryPractices.length) * 100)
+    };
+  },
+
+  // Combined competitive benchmarking
+  performCompetitiveBenchmarking(analysis, bodyText, doc) {
+    const industry = this.detectIndustry(bodyText, doc);
+    const benchmarks = this.getIndustryBenchmarks(industry.primary, analysis.overallScore);
+    const differentiators = this.identifyDifferentiators(analysis, industry.primary);
+    const bestPractices = this.getIndustryBestPractices(industry.primary, analysis);
+
+    return {
+      industry: industry.primary,
+      industryConfidence: industry.confidence,
+      benchmarks,
+      differentiators,
+      bestPractices,
+      competitivePosition: {
+        percentile: benchmarks.percentile,
+        rating: benchmarks.rating,
+        score: benchmarks.score,
+        industryAverage: benchmarks.average,
+        top25Threshold: benchmarks.top25Percent,
+        top10Threshold: benchmarks.top10Percent
+      }
+    };
+  },
+
+  // Generate actionable recommendations
+  generateActionableRecommendations(analysis, competitive) {
+    const recommendations = {
+      quickWins: [],
+      longTerm: [],
+      highPriority: [],
+      mediumPriority: [],
+      lowPriority: [],
+      byCategory: {
+        seo: [],
+        accessibility: [],
+        performance: [],
+        security: [],
+        design: [],
+        content: [],
+        social: []
+      }
+    };
+
+    // SEO Recommendations
+    if (analysis.seo) {
+      if (!analysis.seo.details.title || analysis.seo.details.title.length < 30) {
+        recommendations.quickWins.push({
+          id: 'seo-title',
+          category: 'SEO',
+          title: 'Optimize Title Tag',
+          description: 'Add a descriptive title tag between 30-60 characters',
+          priority: 'high',
+          impact: 'high',
+          effort: 'low',
+          estimatedTime: '5 minutes',
+          codeExample: '<title>Your Name - Web Developer | Portfolio</title>',
+          instructions: 'Update the <title> tag in your HTML head section with a descriptive title that includes your name and profession.',
+          expectedImprovement: '+5-10 points on SEO score'
+        });
+        recommendations.byCategory.seo.push('seo-title');
+      }
+
+      if (!analysis.seo.details.metaDescription) {
+        recommendations.quickWins.push({
+          id: 'seo-meta-desc',
+          category: 'SEO',
+          title: 'Add Meta Description',
+          description: 'Add a meta description tag (120-160 characters)',
+          priority: 'high',
+          impact: 'high',
+          effort: 'low',
+          estimatedTime: '5 minutes',
+          codeExample: '<meta name="description" content="Professional web developer specializing in React and Node.js. View my portfolio of projects and case studies.">',
+          instructions: 'Add a <meta name="description"> tag in your HTML head section describing your portfolio.',
+          expectedImprovement: '+5-10 points on SEO score'
+        });
+        recommendations.byCategory.seo.push('seo-meta-desc');
+      }
+
+      if (!analysis.seo.details.openGraph) {
+        recommendations.quickWins.push({
+          id: 'seo-og-tags',
+          category: 'SEO',
+          title: 'Add Open Graph Tags',
+          description: 'Add Open Graph meta tags for better social media sharing',
+          priority: 'medium',
+          impact: 'medium',
+          effort: 'low',
+          estimatedTime: '10 minutes',
+          codeExample: `<meta property="og:title" content="Your Name - Portfolio">
+<meta property="og:description" content="Professional web developer portfolio">
+<meta property="og:image" content="https://yoursite.com/og-image.jpg">
+<meta property="og:url" content="https://yoursite.com">`,
+          instructions: 'Add Open Graph meta tags in your HTML head section for better social media previews.',
+          expectedImprovement: '+5 points on SEO and Social Media scores'
+        });
+        recommendations.byCategory.seo.push('seo-og-tags');
+      }
+
+      if (analysis.seo.details.imageAltText && analysis.seo.details.imageAltText.percentage < 90) {
+        recommendations.mediumPriority.push({
+          id: 'seo-alt-text',
+          category: 'SEO',
+          title: 'Add Alt Text to Images',
+          description: `Add descriptive alt text to ${100 - analysis.seo.details.imageAltText.percentage}% of images`,
+          priority: 'medium',
+          impact: 'medium',
+          effort: 'medium',
+          estimatedTime: '15-30 minutes',
+          codeExample: '<img src="project.jpg" alt="E-commerce website homepage showing product catalog">',
+          instructions: 'Add descriptive alt attributes to all <img> tags describing what the image shows.',
+          expectedImprovement: '+5-10 points on SEO and Accessibility scores'
+        });
+        recommendations.byCategory.seo.push('seo-alt-text');
+        recommendations.byCategory.accessibility.push('seo-alt-text');
+      }
+    }
+
+    // Accessibility Recommendations
+    if (analysis.accessibility) {
+      if (!analysis.accessibility.details.language) {
+        recommendations.quickWins.push({
+          id: 'a11y-lang',
+          category: 'Accessibility',
+          title: 'Add Language Attribute',
+          description: 'Add lang attribute to HTML element',
+          priority: 'high',
+          impact: 'medium',
+          effort: 'low',
+          estimatedTime: '1 minute',
+          codeExample: '<html lang="en">',
+          instructions: 'Add lang="en" (or your language code) to the <html> tag.',
+          expectedImprovement: '+5 points on Accessibility score'
+        });
+        recommendations.byCategory.accessibility.push('a11y-lang');
+      }
+
+      if (analysis.accessibility.details.headings && analysis.accessibility.details.headings.h1 !== 1) {
+        const issue = analysis.accessibility.details.headings.h1 === 0 
+          ? 'Add a single H1 heading'
+          : `Reduce H1 headings from ${analysis.accessibility.details.headings.h1} to 1`;
+        recommendations.mediumPriority.push({
+          id: 'a11y-h1',
+          category: 'Accessibility',
+          title: 'Fix H1 Heading Structure',
+          description: issue,
+          priority: 'medium',
+          impact: 'medium',
+          effort: 'low',
+          estimatedTime: '5-10 minutes',
+          codeExample: '<h1>Your Name - Professional Developer</h1>',
+          instructions: 'Ensure you have exactly one H1 tag on your homepage, typically for your main heading.',
+          expectedImprovement: '+5 points on Accessibility and SEO scores'
+        });
+        recommendations.byCategory.accessibility.push('a11y-h1');
+      }
+    }
+
+    // Performance Recommendations
+    if (analysis.performance) {
+      if (!analysis.performance.details.compression) {
+        recommendations.longTerm.push({
+          id: 'perf-compression',
+          category: 'Performance',
+          title: 'Enable Content Compression',
+          description: 'Enable gzip or brotli compression on your server',
+          priority: 'high',
+          impact: 'high',
+          effort: 'medium',
+          estimatedTime: '30-60 minutes',
+          codeExample: '// For Apache: Add to .htaccess\n<IfModule mod_deflate.c>\n  AddOutputFilterByType DEFLATE text/html text/plain text/xml text/css text/javascript application/javascript\n</IfModule>',
+          instructions: 'Configure your web server (Apache/Nginx) to enable gzip or brotli compression. This reduces file sizes significantly.',
+          expectedImprovement: '+10-15 points on Performance score, faster load times'
+        });
+        recommendations.byCategory.performance.push('perf-compression');
+      }
+
+      if (analysis.performance.details.images && analysis.performance.details.images.total > 5 && 
+          analysis.performance.details.images.withSrcset < analysis.performance.details.images.total * 0.5) {
+        recommendations.mediumPriority.push({
+          id: 'perf-responsive-images',
+          category: 'Performance',
+          title: 'Add Responsive Images',
+          description: 'Add srcset attributes to images for responsive loading',
+          priority: 'medium',
+          impact: 'medium',
+          effort: 'medium',
+          estimatedTime: '1-2 hours',
+          codeExample: '<img src="image.jpg" srcset="image-small.jpg 480w, image-medium.jpg 768w, image-large.jpg 1200w" sizes="(max-width: 768px) 100vw, 50vw" alt="Description">',
+          instructions: 'Add srcset and sizes attributes to your images to serve appropriately sized images based on device.',
+          expectedImprovement: '+5-10 points on Performance score, better mobile experience'
+        });
+        recommendations.byCategory.performance.push('perf-responsive-images');
+      }
+
+      if (analysis.performance.details.scripts && analysis.performance.details.scripts.async < analysis.performance.details.scripts.total) {
+        recommendations.quickWins.push({
+          id: 'perf-async-scripts',
+          category: 'Performance',
+          title: 'Add Async/Defer to Scripts',
+          description: 'Add async or defer attributes to script tags',
+          priority: 'medium',
+          impact: 'medium',
+          effort: 'low',
+          estimatedTime: '10 minutes',
+          codeExample: '<script src="script.js" defer></script>\n<script src="analytics.js" async></script>',
+          instructions: 'Add defer attribute to scripts that need to run after DOM loads, and async to independent scripts.',
+          expectedImprovement: '+5 points on Performance score, faster initial page load'
+        });
+        recommendations.byCategory.performance.push('perf-async-scripts');
+      }
+    }
+
+    // Security Recommendations
+    if (analysis.security) {
+      if (!analysis.security.details.https) {
+        recommendations.highPriority.push({
+          id: 'sec-https',
+          category: 'Security',
+          title: 'Enable HTTPS',
+          description: 'Switch from HTTP to HTTPS (critical security issue)',
+          priority: 'critical',
+          impact: 'critical',
+          effort: 'medium',
+          estimatedTime: '1-2 hours',
+          codeExample: '// Get SSL certificate from Let\'s Encrypt, Cloudflare, or your hosting provider',
+          instructions: 'Obtain an SSL certificate and configure your server to serve content over HTTPS. Many hosting providers offer free SSL certificates.',
+          expectedImprovement: '+30 points on Security score, required for modern web'
+        });
+        recommendations.byCategory.security.push('sec-https');
+      }
+
+      if (!analysis.security.details.headers || !analysis.security.details.headers['content-security-policy']) {
+        recommendations.longTerm.push({
+          id: 'sec-csp',
+          category: 'Security',
+          title: 'Add Content Security Policy',
+          description: 'Implement Content Security Policy header',
+          priority: 'high',
+          impact: 'high',
+          effort: 'high',
+          estimatedTime: '2-4 hours',
+          codeExample: "Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';",
+          instructions: 'Add CSP header to your server configuration to prevent XSS attacks. Start with a permissive policy and tighten gradually.',
+          expectedImprovement: '+15 points on Security score, better protection against attacks'
+        });
+        recommendations.byCategory.security.push('sec-csp');
+      }
+    }
+
+    // Design Recommendations
+    if (analysis.visual) {
+      if (analysis.visual.details.colorScheme && !analysis.visual.details.colorScheme.darkMode) {
+        recommendations.mediumPriority.push({
+          id: 'design-dark-mode',
+          category: 'Design',
+          title: 'Add Dark Mode Support',
+          description: 'Implement dark mode for better user experience',
+          priority: 'medium',
+          impact: 'medium',
+          effort: 'medium',
+          estimatedTime: '2-4 hours',
+          codeExample: '@media (prefers-color-scheme: dark) {\n  body { background: #1a1a1a; color: #fff; }\n}',
+          instructions: 'Add CSS media queries for prefers-color-scheme: dark to support dark mode.',
+          expectedImprovement: '+10 points on Visual Design score, better UX'
+        });
+        recommendations.byCategory.design.push('design-dark-mode');
+      }
+
+      if (analysis.visual.details.typography && !analysis.visual.details.typography.webFonts) {
+        recommendations.quickWins.push({
+          id: 'design-webfonts',
+          category: 'Design',
+          title: 'Add Web Fonts',
+          description: 'Use web fonts (Google Fonts) for better typography',
+          priority: 'low',
+          impact: 'medium',
+          effort: 'low',
+          estimatedTime: '15 minutes',
+          codeExample: '<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">',
+          instructions: 'Add Google Fonts or other web fonts to improve typography. Link in head and use in CSS.',
+          expectedImprovement: '+5-10 points on Visual Design score'
+        });
+        recommendations.byCategory.design.push('design-webfonts');
+      }
+    }
+
+    // Content Recommendations
+    if (analysis.content) {
+      if (!analysis.content.details.callToAction || analysis.content.details.callToAction.ctaButtons < 2) {
+        recommendations.quickWins.push({
+          id: 'content-cta',
+          category: 'Content',
+          title: 'Add More Call-to-Action Buttons',
+          description: 'Add prominent CTA buttons for contact/engagement',
+          priority: 'high',
+          impact: 'high',
+          effort: 'low',
+          estimatedTime: '30 minutes',
+          codeExample: '<a href="#contact" class="cta-button">Get In Touch</a>\n<a href="/projects" class="cta-button">View My Work</a>',
+          instructions: 'Add clear, prominent call-to-action buttons throughout your portfolio, especially in the hero section and after project showcases.',
+          expectedImprovement: '+10-15 points on Content score, better conversion'
+        });
+        recommendations.byCategory.content.push('content-cta');
+      }
+
+      if (!analysis.content.details.callToAction || !analysis.content.details.callToAction.hasContactForm) {
+        recommendations.mediumPriority.push({
+          id: 'content-contact-form',
+          category: 'Content',
+          title: 'Add Contact Form',
+          description: 'Add a contact form for easy inquiries',
+          priority: 'high',
+          impact: 'high',
+          effort: 'medium',
+          estimatedTime: '1-2 hours',
+          codeExample: '<form action="/contact" method="POST">\n  <input type="email" name="email" placeholder="Your Email" required>\n  <textarea name="message" placeholder="Your Message" required></textarea>\n  <button type="submit">Send Message</button>\n</form>',
+          instructions: 'Create a contact form with email, name, and message fields. Use a service like Formspree, Netlify Forms, or build a backend endpoint.',
+          expectedImprovement: '+15 points on Content score, easier for clients to reach you'
+        });
+        recommendations.byCategory.content.push('content-contact-form');
+      }
+
+      if (analysis.content.details.projects && analysis.content.details.projects.links && 
+          analysis.content.details.projects.links.github === 0) {
+        recommendations.highPriority.push({
+          id: 'content-github',
+          category: 'Content',
+          title: 'Link to GitHub Repositories',
+          description: 'Add links to your GitHub repositories',
+          priority: 'high',
+          impact: 'high',
+          effort: 'low',
+          estimatedTime: '15 minutes',
+          codeExample: '<a href="https://github.com/yourusername" target="_blank" rel="noopener">View on GitHub</a>',
+          instructions: 'Add links to your GitHub profile and individual project repositories to showcase your code quality.',
+          expectedImprovement: '+10-15 points on Content score, demonstrates code skills'
+        });
+        recommendations.byCategory.content.push('content-github');
+      }
+
+      if (analysis.content.details.writing && analysis.content.details.writing.wordCount < 200) {
+        recommendations.mediumPriority.push({
+          id: 'content-more-text',
+          category: 'Content',
+          title: 'Add More Content',
+          description: `Expand content from ${analysis.content.details.writing.wordCount} to 500+ words`,
+          priority: 'medium',
+          impact: 'medium',
+          effort: 'medium',
+          estimatedTime: '2-3 hours',
+          codeExample: '// Add detailed project descriptions, about section, case studies',
+          instructions: 'Expand your portfolio content with detailed project descriptions, a comprehensive about section, and case studies explaining your process.',
+          expectedImprovement: '+10 points on Content score, better SEO, more engaging'
+        });
+        recommendations.byCategory.content.push('content-more-text');
+      }
+    }
+
+    // Social Media Recommendations
+    if (analysis.socialMedia && analysis.socialMedia.score < 60) {
+      recommendations.quickWins.push({
+        id: 'social-og-tags',
+        category: 'Social Media',
+        title: 'Improve Social Media Sharing',
+        description: 'Add complete Open Graph and Twitter Card tags',
+        priority: 'medium',
+        impact: 'medium',
+        effort: 'low',
+        estimatedTime: '20 minutes',
+        codeExample: `<meta property="og:title" content="Your Name - Portfolio">
+<meta property="og:description" content="Description">
+<meta property="og:image" content="https://yoursite.com/image.jpg">
+<meta name="twitter:card" content="summary_large_image">`,
+        instructions: 'Add complete Open Graph and Twitter Card meta tags for better social media previews when your portfolio is shared.',
+        expectedImprovement: '+10-15 points on Social Media score'
+      });
+      recommendations.byCategory.social.push('social-og-tags');
+    }
+
+    // Categorize by priority
+    recommendations.quickWins.forEach(rec => {
+      if (rec.priority === 'high' || rec.priority === 'critical') {
+        recommendations.highPriority.push(rec);
+      }
+    });
+
+    recommendations.mediumPriority.forEach(rec => {
+      if (rec.priority === 'high') {
+        recommendations.highPriority.push(rec);
+      }
+    });
+
+    // Remove duplicates from highPriority
+    recommendations.highPriority = recommendations.highPriority.filter((rec, index, self) =>
+      index === self.findIndex(r => r.id === rec.id)
+    );
+
+    // Sort by priority and impact
+    const sortRecommendations = (recs) => {
+      const priorityOrder = { critical: 0, high: 1, medium: 2, low: 3 };
+      const impactOrder = { critical: 0, high: 1, medium: 2, low: 3 };
+      return recs.sort((a, b) => {
+        if (priorityOrder[a.priority] !== priorityOrder[b.priority]) {
+          return priorityOrder[a.priority] - priorityOrder[b.priority];
+        }
+        return impactOrder[a.impact] - impactOrder[b.impact];
+      });
+    };
+
+    recommendations.quickWins = sortRecommendations(recommendations.quickWins);
+    recommendations.longTerm = sortRecommendations(recommendations.longTerm);
+    recommendations.highPriority = sortRecommendations(recommendations.highPriority);
+    recommendations.mediumPriority = sortRecommendations(recommendations.mediumPriority);
+
+    // Calculate potential score improvement
+    const quickWinsPotential = recommendations.quickWins.reduce((sum, rec) => {
+      const match = rec.expectedImprovement?.match(/(\d+)/);
+      return sum + (match ? parseInt(match[1]) : 0);
+    }, 0);
+
+    const longTermPotential = recommendations.longTerm.reduce((sum, rec) => {
+      const match = rec.expectedImprovement?.match(/(\d+)/);
+      return sum + (match ? parseInt(match[1]) : 0);
+    }, 0);
+
+    return {
+      ...recommendations,
+      summary: {
+        totalRecommendations: recommendations.quickWins.length + recommendations.longTerm.length,
+        quickWinsCount: recommendations.quickWins.length,
+        longTermCount: recommendations.longTerm.length,
+        highPriorityCount: recommendations.highPriority.length,
+        quickWinsPotentialScore: quickWinsPotential,
+        longTermPotentialScore: longTermPotential,
+        totalPotentialScore: quickWinsPotential + longTermPotential
+      }
+    };
+  },
+
   async analyzePortfolio(url) {
     if (!this.validateUrl(url)) {
       throw new Error('Invalid portfolio URL');
@@ -1728,6 +2588,18 @@ const PortfolioUtils = {
       const socialMediaAnalysis = this.analyzeSocialMedia(doc);
       const visualAnalysis = this.analyzeVisualDesign(doc, html, url);
       const contentAnalysis = this.analyzeContent(doc, bodyText, url);
+      
+      // Prepare analysis object for benchmarking
+      const analysisForBenchmarking = {
+        overallScore: 0, // Will be calculated below
+        seo: seoAnalysis,
+        accessibility: accessibilityAnalysis,
+        performance: performanceAnalysis,
+        security: securityAnalysis,
+        socialMedia: socialMediaAnalysis,
+        visual: visualAnalysis,
+        content: contentAnalysis
+      };
 
       // Enhanced scoring
       let score = 50;
@@ -1752,6 +2624,15 @@ const PortfolioUtils = {
 
       // Combine basic and enhanced scores
       const overallScore = Math.min(Math.round((score + enhancedScore) / 2), 100);
+      
+      // Update analysis object with overall score for benchmarking
+      analysisForBenchmarking.overallScore = overallScore;
+      
+      // Perform competitive benchmarking
+      const competitiveAnalysis = this.performCompetitiveBenchmarking(analysisForBenchmarking, bodyText, doc);
+      
+      // Generate actionable recommendations
+      const recommendations = this.generateActionableRecommendations(analysisForBenchmarking, competitiveAnalysis);
 
       // Combine all issues and strengths
       const allIssues = [
@@ -1799,7 +2680,9 @@ const PortfolioUtils = {
         security: securityAnalysis,
         socialMedia: socialMediaAnalysis,
         visual: visualAnalysis,
-        content: contentAnalysis
+        content: contentAnalysis,
+        competitive: competitiveAnalysis,
+        recommendations: recommendations
       };
     } catch (error) {
       if (error.message.includes('CORS')) {
@@ -1824,7 +2707,9 @@ const PortfolioUtils = {
           security: null,
           socialMedia: null,
           visual: null,
-          content: null
+          content: null,
+          competitive: null,
+          recommendations: null
         };
       }
       throw error;
