@@ -22192,27 +22192,70 @@ Generate the repurposed content:`;
                 const [formData, setFormData] = React.useState({
                     name: '',
                     level: 'Intermediate',
-                    authorityScore: 50
+                    authorityScore: 50,
+                    tags: []
                 });
+                const [tagInput, setTagInput] = React.useState('');
                 const [validationError, setValidationError] = React.useState(null);
                 const [isSaving, setIsSaving] = React.useState(false);
+                
+                // Get all existing tags for suggestions
+                const existingTags = React.useMemo(() => {
+                    const tagSet = new Set();
+                    expertiseAreas.forEach(area => {
+                        if (area.tags && Array.isArray(area.tags)) {
+                            area.tags.forEach(tag => tagSet.add(tag));
+                        }
+                    });
+                    return Array.from(tagSet).sort();
+                }, [expertiseAreas]);
 
                 React.useEffect(() => {
                     if (editingExpertise) {
                         setFormData({
                             name: editingExpertise.name || '',
                             level: editingExpertise.level || 'Intermediate',
-                            authorityScore: editingExpertise.authorityScore || 50
+                            authorityScore: editingExpertise.authorityScore || 50,
+                            tags: editingExpertise.tags || []
                         });
                     } else {
                         setFormData({
                             name: '',
                             level: 'Intermediate',
-                            authorityScore: 50
+                            authorityScore: 50,
+                            tags: []
                         });
                     }
+                    setTagInput('');
                     setValidationError(null);
                 }, [editingExpertise, isOpen]);
+                
+                const addTag = (tag) => {
+                    const trimmedTag = tag.trim();
+                    if (trimmedTag && !formData.tags.includes(trimmedTag) && trimmedTag.length <= 20) {
+                        setFormData({
+                            ...formData,
+                            tags: [...formData.tags, trimmedTag]
+                        });
+                        setTagInput('');
+                    }
+                };
+                
+                const removeTag = (tagToRemove) => {
+                    setFormData({
+                        ...formData,
+                        tags: formData.tags.filter(tag => tag !== tagToRemove)
+                    });
+                };
+                
+                const handleTagInputKeyDown = (e) => {
+                    if (e.key === 'Enter' && tagInput.trim()) {
+                        e.preventDefault();
+                        addTag(tagInput);
+                    } else if (e.key === 'Enter') {
+                        e.preventDefault();
+                    }
+                };
 
                 if (!isOpen) return null;
 
@@ -22357,6 +22400,101 @@ Generate the repurposed content:`;
                                             <span className="font-medium">{formData.authorityScore}</span>
                                             <span>100</span>
                                         </div>
+                                    </div>
+                                </div>
+
+                                {/* Tags Section */}
+                                <div>
+                                    <label className={`block text-sm font-medium ${isLightMode ? 'text-gray-700' : 'text-gray-300'} mb-2`}>
+                                        Tags
+                                    </label>
+                                    <div className={`${isLightMode ? 'bg-white border-gray-300' : 'bg-gray-700 border-gray-600'} border rounded-lg p-3 min-h-[60px]`}>
+                                        {/* Existing Tags */}
+                                        {formData.tags.length > 0 && (
+                                            <div className="flex flex-wrap gap-2 mb-2">
+                                                {formData.tags.map((tag, idx) => (
+                                                    <span
+                                                        key={idx}
+                                                        className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
+                                                            isLightMode
+                                                                ? 'bg-purple-100 text-purple-700'
+                                                                : 'bg-purple-500/30 text-purple-300'
+                                                        }`}
+                                                    >
+                                                        {tag}
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => removeTag(tag)}
+                                                            className={`hover:${isLightMode ? 'bg-purple-200' : 'bg-purple-500/50'} rounded-full p-0.5 transition-colors`}
+                                                            disabled={isSaving}
+                                                        >
+                                                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                                <line x1="18" y1="6" x2="6" y2="18"></line>
+                                                                <line x1="6" y1="6" x2="18" y2="18"></line>
+                                                            </svg>
+                                                        </button>
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        )}
+                                        
+                                        {/* Tag Input */}
+                                        <div className="flex gap-2">
+                                            <input
+                                                type="text"
+                                                value={tagInput}
+                                                onChange={(e) => setTagInput(e.target.value)}
+                                                onKeyDown={handleTagInputKeyDown}
+                                                placeholder="Add a tag (press Enter)"
+                                                maxLength={20}
+                                                className={`flex-1 px-3 py-1.5 rounded text-sm ${isLightMode ? 'bg-gray-50 border-gray-200 text-gray-900' : 'bg-gray-800 border-gray-600 text-gray-50'} border focus:outline-none focus:ring-2 focus:ring-purple-500`}
+                                                disabled={isSaving}
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => tagInput.trim() && addTag(tagInput)}
+                                                disabled={isSaving || !tagInput.trim()}
+                                                className={`px-3 py-1.5 rounded text-sm font-medium transition-all ${
+                                                    isLightMode
+                                                        ? 'bg-purple-500 text-white hover:bg-purple-600 disabled:bg-gray-300'
+                                                        : 'bg-purple-600 text-white hover:bg-purple-700 disabled:bg-gray-600'
+                                                } disabled:cursor-not-allowed`}
+                                            >
+                                                Add
+                                            </button>
+                                        </div>
+                                        
+                                        {/* Tag Suggestions */}
+                                        {existingTags.length > 0 && tagInput && (
+                                            <div className={`mt-2 ${isLightMode ? 'bg-gray-50' : 'bg-gray-800'} rounded-lg p-2 max-h-32 overflow-y-auto`}>
+                                                <div className={`text-xs font-medium mb-1 ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>
+                                                    Suggestions:
+                                                </div>
+                                                <div className="flex flex-wrap gap-1">
+                                                    {existingTags
+                                                        .filter(tag => 
+                                                            tag.toLowerCase().includes(tagInput.toLowerCase()) && 
+                                                            !formData.tags.includes(tag)
+                                                        )
+                                                        .slice(0, 5)
+                                                        .map((tag, idx) => (
+                                                            <button
+                                                                key={idx}
+                                                                type="button"
+                                                                onClick={() => addTag(tag)}
+                                                                className={`px-2 py-0.5 rounded text-xs ${isLightMode ? 'bg-blue-100 text-blue-700 hover:bg-blue-200' : 'bg-blue-500/30 text-blue-300 hover:bg-blue-500/50'} transition-colors`}
+                                                                disabled={isSaving}
+                                                            >
+                                                                {tag}
+                                                            </button>
+                                                        ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                        
+                                        <p className={`mt-2 text-xs ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                            💡 Tags help organize and filter your expertise areas (e.g., "Frontend", "AI", "Design")
+                                        </p>
                                     </div>
                                 </div>
 
@@ -23723,6 +23861,28 @@ Generate the repurposed content:`;
             const [filterScoreMin, setFilterScoreMin] = useState(0);
             const [filterScoreMax, setFilterScoreMax] = useState(100);
             const [searchQuery, setSearchQuery] = useState('');
+            const [selectedTags, setSelectedTags] = useState(new Set()); // Selected tags for filtering
+            
+            // Get all available tags from expertise areas
+            const availableTags = React.useMemo(() => {
+                const tagSet = new Set();
+                expertiseAreas.forEach(area => {
+                    if (area.tags && Array.isArray(area.tags)) {
+                        area.tags.forEach(tag => tagSet.add(tag));
+                    }
+                });
+                return Array.from(tagSet).sort();
+            }, [expertiseAreas]);
+            
+            const toggleTagFilter = (tag) => {
+                const newSelected = new Set(selectedTags);
+                if (newSelected.has(tag)) {
+                    newSelected.delete(tag);
+                } else {
+                    newSelected.add(tag);
+                }
+                setSelectedTags(newSelected);
+            };
             
             // Comparison view state
             const [selectedForComparison, setSelectedForComparison] = useState(new Set());
@@ -23752,6 +23912,7 @@ Generate the repurposed content:`;
             const [bulkSelectionMode, setBulkSelectionMode] = useState(false);
             const [selectedForBulk, setSelectedForBulk] = useState(new Set());
             const [showLevelDropdown, setShowLevelDropdown] = useState(false);
+            const [showExportDropdown, setShowExportDropdown] = useState(false);
             
             const toggleBulkSelection = (areaId) => {
                 const newSelected = new Set(selectedForBulk);
@@ -23824,6 +23985,166 @@ Generate the repurposed content:`;
                 setShowLevelDropdown(false);
             };
 
+            // Export and Sharing Functions
+            const exportExpertiseToJSON = () => {
+                try {
+                    const exportData = {
+                        exportDate: new Date().toISOString(),
+                        expertiseAreas: expertiseAreas.map(area => ({
+                            name: area.name,
+                            level: area.level,
+                            authorityScore: area.authorityScore,
+                            contentCount: area.contentCount,
+                            tags: area.tags || [],
+                            lastUpdated: area.lastUpdated ? new Date(area.lastUpdated).toISOString() : null
+                        })),
+                        summary: {
+                            totalAreas: expertiseAreas.length,
+                            averageAuthorityScore: expertiseAreas.length > 0 
+                                ? (expertiseAreas.reduce((sum, a) => sum + a.authorityScore, 0) / expertiseAreas.length).toFixed(2)
+                                : 0,
+                            totalContent: expertiseAreas.reduce((sum, a) => sum + (a.contentCount || 0), 0)
+                        }
+                    };
+                    
+                    const dataStr = JSON.stringify(exportData, null, 2);
+                    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+                    const url = URL.createObjectURL(dataBlob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = `expertise-areas-${new Date().toISOString().split('T')[0]}.json`;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    URL.revokeObjectURL(url);
+                    alert('Expertise areas exported to JSON successfully!');
+                } catch (error) {
+                    alert(`Error exporting: ${error.message}`);
+                }
+            };
+
+            const exportExpertiseToCSV = () => {
+                try {
+                    const headers = ['Name', 'Level', 'Authority Score', 'Content Count', 'Tags', 'Last Updated'];
+                    const rows = expertiseAreas.map(area => [
+                        area.name,
+                        area.level,
+                        area.authorityScore,
+                        area.contentCount || 0,
+                        (area.tags || []).join('; '),
+                        area.lastUpdated ? new Date(area.lastUpdated).toLocaleDateString() : 'N/A'
+                    ]);
+                    
+                    const csvContent = [
+                        headers.join(','),
+                        ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+                    ].join('\n');
+                    
+                    const dataBlob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                    const url = URL.createObjectURL(dataBlob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = `expertise-areas-${new Date().toISOString().split('T')[0]}.csv`;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    URL.revokeObjectURL(url);
+                    alert('Expertise areas exported to CSV successfully!');
+                } catch (error) {
+                    alert(`Error exporting: ${error.message}`);
+                }
+            };
+
+            const generateExpertiseReport = () => {
+                try {
+                    const reportData = expertiseAreas.map(area => {
+                        const analytics = getExpertiseAreaAnalytics(area.name);
+                        return {
+                            name: area.name,
+                            level: area.level,
+                            authorityScore: area.authorityScore,
+                            contentCount: analytics.contentCount,
+                            totalEngagement: analytics.totalEngagement,
+                            avgEngagement: analytics.avgEngagement,
+                            engagementRate: analytics.engagementRate,
+                            totalViews: analytics.totalViews,
+                            tags: area.tags || []
+                        };
+                    });
+                    
+                    const report = {
+                        generatedDate: new Date().toISOString(),
+                        summary: {
+                            totalExpertiseAreas: expertiseAreas.length,
+                            averageAuthorityScore: expertiseAreas.length > 0
+                                ? (expertiseAreas.reduce((sum, a) => sum + a.authorityScore, 0) / expertiseAreas.length).toFixed(2)
+                                : 0,
+                            totalContent: reportData.reduce((sum, r) => sum + r.contentCount, 0),
+                            totalEngagement: reportData.reduce((sum, r) => sum + r.totalEngagement, 0),
+                            totalViews: reportData.reduce((sum, r) => sum + r.totalViews, 0)
+                        },
+                        expertiseAreas: reportData.sort((a, b) => b.authorityScore - a.authorityScore)
+                    };
+                    
+                    const dataStr = JSON.stringify(report, null, 2);
+                    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+                    const url = URL.createObjectURL(dataBlob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = `expertise-report-${new Date().toISOString().split('T')[0]}.json`;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    URL.revokeObjectURL(url);
+                    alert('Expertise report generated and downloaded successfully!');
+                } catch (error) {
+                    alert(`Error generating report: ${error.message}`);
+                }
+            };
+
+            const shareExpertiseProfile = () => {
+                try {
+                    const profileData = {
+                        expertiseAreas: expertiseAreas.map(area => ({
+                            name: area.name,
+                            level: area.level,
+                            authorityScore: area.authorityScore,
+                            tags: area.tags || []
+                        })),
+                        summary: {
+                            totalAreas: expertiseAreas.length,
+                            averageAuthorityScore: expertiseAreas.length > 0
+                                ? (expertiseAreas.reduce((sum, a) => sum + a.authorityScore, 0) / expertiseAreas.length).toFixed(2)
+                                : 0
+                        }
+                    };
+                    
+                    // Create a shareable text summary
+                    const shareText = `My Expertise Profile:\n\n` +
+                        `Total Expertise Areas: ${profileData.summary.totalAreas}\n` +
+                        `Average Authority Score: ${profileData.summary.averageAuthorityScore}\n\n` +
+                        `Expertise Areas:\n` +
+                        profileData.expertiseAreas.map(area => 
+                            `• ${area.name} (${area.level}) - Authority: ${area.authorityScore}${area.tags.length > 0 ? ` - Tags: ${area.tags.join(', ')}` : ''}`
+                        ).join('\n');
+                    
+                    // Copy to clipboard
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        navigator.clipboard.writeText(shareText).then(() => {
+                            alert('Expertise profile copied to clipboard! You can now paste it anywhere.');
+                        }).catch(() => {
+                            // Fallback: show in prompt
+                            prompt('Copy this expertise profile:', shareText);
+                        });
+                    } else {
+                        // Fallback: show in prompt
+                        prompt('Copy this expertise profile:', shareText);
+                    }
+                } catch (error) {
+                    alert(`Error sharing profile: ${error.message}`);
+                }
+            };
+
             // Analytics integration state
             const [analyticsFilter, setAnalyticsFilter] = useState(null); // { type: 'expertise', value: areaName }
             
@@ -23835,6 +24156,196 @@ Generate the repurposed content:`;
                     window.scrollTo({ top: 0, behavior: 'smooth' });
                 }, 100);
             };
+
+            // Gamification state
+            const [unlockedAchievements, setUnlockedAchievements] = useState(() => {
+                try {
+                    const stored = localStorage.getItem('expertise_achievements');
+                    return stored ? JSON.parse(stored) : [];
+                } catch {
+                    return [];
+                }
+            });
+            const [showAchievementNotification, setShowAchievementNotification] = useState(null);
+            const [userLevel, setUserLevel] = useState(() => {
+                try {
+                    const stored = localStorage.getItem('expertise_user_level');
+                    return stored ? parseInt(stored) : 1;
+                } catch {
+                    return 1;
+                }
+            });
+            const [userXP, setUserXP] = useState(() => {
+                try {
+                    const stored = localStorage.getItem('expertise_user_xp');
+                    return stored ? parseInt(stored) : 0;
+                } catch {
+                    return 0;
+                }
+            });
+            const [contentStreak, setContentStreak] = useState(() => {
+                try {
+                    const stored = localStorage.getItem('expertise_content_streak');
+                    const data = stored ? JSON.parse(stored) : { days: 0, lastDate: null };
+                    // Check if streak is still valid (within 24 hours)
+                    if (data.lastDate) {
+                        const lastDate = new Date(data.lastDate);
+                        const now = new Date();
+                        const daysDiff = Math.floor((now - lastDate) / (1000 * 60 * 60 * 24));
+                        if (daysDiff > 1) {
+                            return { days: 0, lastDate: null };
+                        }
+                    }
+                    return data;
+                } catch {
+                    return { days: 0, lastDate: null };
+                }
+            });
+
+            // Achievement definitions
+            const expertiseAchievements = [
+                { id: 'first_expertise', name: 'Getting Started', description: 'Add your first expertise area', icon: '🎯', rarity: 'common', xp: 10 },
+                { id: 'five_expertise', name: 'Expertise Collector', description: 'Add 5 expertise areas', icon: '⭐', rarity: 'common', xp: 25 },
+                { id: 'ten_expertise', name: 'Expertise Master', description: 'Add 10 expertise areas', icon: '🌟', rarity: 'rare', xp: 50 },
+                { id: 'authority_50', name: 'Rising Authority', description: 'Reach 50 authority score in any area', icon: '📈', rarity: 'common', xp: 15 },
+                { id: 'authority_80', name: 'Authority Expert', description: 'Reach 80 authority score in any area', icon: '🏆', rarity: 'rare', xp: 40 },
+                { id: 'authority_100', name: 'Authority Legend', description: 'Reach 100 authority score in any area', icon: '👑', rarity: 'legendary', xp: 100 },
+                { id: 'content_10', name: 'Content Creator', description: 'Create 10 pieces of content', icon: '✍️', rarity: 'common', xp: 20 },
+                { id: 'content_50', name: 'Content Master', description: 'Create 50 pieces of content', icon: '📝', rarity: 'rare', xp: 60 },
+                { id: 'content_100', name: 'Content Legend', description: 'Create 100 pieces of content', icon: '📚', rarity: 'epic', xp: 150 },
+                { id: 'streak_7', name: 'Week Warrior', description: 'Maintain 7-day content streak', icon: '🔥', rarity: 'rare', xp: 50 },
+                { id: 'streak_30', name: 'Month Master', description: 'Maintain 30-day content streak', icon: '💪', rarity: 'epic', xp: 200 },
+                { id: 'expert_level', name: 'Expert Level', description: 'Have 3 expertise areas at Expert level', icon: '🎓', rarity: 'rare', xp: 75 },
+                { id: 'tag_master', name: 'Tag Master', description: 'Use tags on 5+ expertise areas', icon: '🏷️', rarity: 'common', xp: 20 },
+                { id: 'engagement_1000', name: 'Engagement Star', description: 'Reach 1000 total engagement', icon: '⭐', rarity: 'rare', xp: 80 }
+            ];
+
+            // Check and unlock achievements
+            const checkAchievements = React.useCallback(() => {
+                const newAchievements = [];
+                const totalContent = contentHistory.length;
+                const totalEngagement = contentHistory.reduce((sum, item) => 
+                    sum + (item.metadata?.engagement || item.metadata?.estimatedEngagement || 0), 0
+                );
+                const expertCount = expertiseAreas.filter(a => a.level === 'Expert').length;
+                const taggedCount = expertiseAreas.filter(a => a.tags && a.tags.length > 0).length;
+                const maxAuthority = expertiseAreas.length > 0 
+                    ? Math.max(...expertiseAreas.map(a => a.authorityScore))
+                    : 0;
+
+                expertiseAchievements.forEach(achievement => {
+                    if (unlockedAchievements.includes(achievement.id)) return;
+
+                    let unlocked = false;
+                    switch(achievement.id) {
+                        case 'first_expertise':
+                            unlocked = expertiseAreas.length >= 1;
+                            break;
+                        case 'five_expertise':
+                            unlocked = expertiseAreas.length >= 5;
+                            break;
+                        case 'ten_expertise':
+                            unlocked = expertiseAreas.length >= 10;
+                            break;
+                        case 'authority_50':
+                            unlocked = maxAuthority >= 50;
+                            break;
+                        case 'authority_80':
+                            unlocked = maxAuthority >= 80;
+                            break;
+                        case 'authority_100':
+                            unlocked = maxAuthority >= 100;
+                            break;
+                        case 'content_10':
+                            unlocked = totalContent >= 10;
+                            break;
+                        case 'content_50':
+                            unlocked = totalContent >= 50;
+                            break;
+                        case 'content_100':
+                            unlocked = totalContent >= 100;
+                            break;
+                        case 'streak_7':
+                            unlocked = contentStreak.days >= 7;
+                            break;
+                        case 'streak_30':
+                            unlocked = contentStreak.days >= 30;
+                            break;
+                        case 'expert_level':
+                            unlocked = expertCount >= 3;
+                            break;
+                        case 'tag_master':
+                            unlocked = taggedCount >= 5;
+                            break;
+                        case 'engagement_1000':
+                            unlocked = totalEngagement >= 1000;
+                            break;
+                    }
+
+                    if (unlocked) {
+                        newAchievements.push(achievement);
+                        setUnlockedAchievements(prev => {
+                            const updated = [...prev, achievement.id];
+                            localStorage.setItem('expertise_achievements', JSON.stringify(updated));
+                            return updated;
+                        });
+                        // Award XP
+                        setUserXP(prev => {
+                            const newXP = prev + achievement.xp;
+                            localStorage.setItem('expertise_user_xp', newXP.toString());
+                            // Check level up
+                            const newLevel = Math.floor(newXP / 100) + 1;
+                            if (newLevel > userLevel) {
+                                setUserLevel(newLevel);
+                                localStorage.setItem('expertise_user_level', newLevel.toString());
+                            }
+                            return newXP;
+                        });
+                    }
+                });
+
+                if (newAchievements.length > 0) {
+                    setShowAchievementNotification(newAchievements[0]);
+                    setTimeout(() => setShowAchievementNotification(null), 5000);
+                }
+            }, [expertiseAreas, contentHistory, contentStreak, unlockedAchievements, userLevel]);
+
+            // Update streak when content is created
+            React.useEffect(() => {
+                if (contentHistory.length > 0) {
+                    const lastContent = contentHistory[contentHistory.length - 1];
+                    const lastDate = new Date(lastContent.metadata?.timestamp || lastContent.createdAt || Date.now());
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    lastDate.setHours(0, 0, 0, 0);
+                    
+                    const daysDiff = Math.floor((today - lastDate) / (1000 * 60 * 60 * 24));
+                    
+                    if (daysDiff === 0) {
+                        // Content created today, check if we need to update streak
+                        const lastStreakDate = contentStreak.lastDate ? new Date(contentStreak.lastDate) : null;
+                        if (!lastStreakDate || lastStreakDate.getTime() !== today.getTime()) {
+                            const newStreak = lastStreakDate && 
+                                Math.floor((today - lastStreakDate) / (1000 * 60 * 60 * 24)) === 1
+                                ? contentStreak.days + 1
+                                : 1;
+                            const updatedStreak = { days: newStreak, lastDate: today.toISOString() };
+                            setContentStreak(updatedStreak);
+                            localStorage.setItem('expertise_content_streak', JSON.stringify(updatedStreak));
+                        }
+                    }
+                }
+            }, [contentHistory.length]);
+
+            // Check achievements when data changes
+            React.useEffect(() => {
+                checkAchievements();
+            }, [checkAchievements]);
+
+            // Calculate XP needed for next level
+            const xpForNextLevel = (userLevel * 100);
+            const xpProgress = userXP % 100;
+            const xpProgressPercent = (xpProgress / 100) * 100;
 
             // Get expertise-specific analytics summary
             const getExpertiseAnalyticsSummary = React.useCallback((areaName) => {
@@ -23903,6 +24414,17 @@ Generate the repurposed content:`;
                         return false;
                     }
                     
+                    // Filter by tags
+                    if (selectedTags.size > 0) {
+                        const areaTags = area.tags || [];
+                        const hasMatchingTag = Array.from(selectedTags).some(tag => 
+                            areaTags.includes(tag)
+                        );
+                        if (!hasMatchingTag) {
+                            return false;
+                        }
+                    }
+                    
                     return true;
                 });
                 
@@ -23923,7 +24445,7 @@ Generate the repurposed content:`;
                 });
                 
                 return filtered;
-            }, [expertiseAreas, sortBy, filterLevel, filterScoreMin, filterScoreMax, searchQuery]);
+            }, [expertiseAreas, sortBy, filterLevel, filterScoreMin, filterScoreMax, searchQuery, selectedTags]);
 
             // Mini Line Chart Component for expertise analytics
             const MiniLineChart = ({ data, color, height = 80 }) => {
@@ -24858,6 +25380,64 @@ Generate the repurposed content:`;
                                                             </button>
                                                         </>
                                                     )}
+                                                    {/* Export and Share Options */}
+                                                    {expertiseAreas.length > 0 && (
+                                                        <div className="relative">
+                                                            <button
+                                                                onClick={() => setShowExportDropdown(!showExportDropdown)}
+                                                                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                                                                    isLightMode
+                                                                        ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                                                                        : 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
+                                                                }`}
+                                                            >
+                                                                📥 Export ▼
+                                                            </button>
+                                                            {showExportDropdown && (
+                                                                <div className={`absolute right-0 mt-1 w-48 ${isLightMode ? 'bg-white' : 'bg-gray-800'} border ${isLightMode ? 'border-gray-200' : 'border-gray-700'} rounded-lg shadow-lg z-10`}>
+                                                                    <div className="py-1">
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                exportExpertiseToJSON();
+                                                                                setShowExportDropdown(false);
+                                                                            }}
+                                                                            className={`w-full text-left px-4 py-2 text-sm ${isLightMode ? 'hover:bg-gray-100 text-gray-700' : 'hover:bg-gray-700 text-gray-300'} transition-colors`}
+                                                                        >
+                                                                            📄 Export as JSON
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                exportExpertiseToCSV();
+                                                                                setShowExportDropdown(false);
+                                                                            }}
+                                                                            className={`w-full text-left px-4 py-2 text-sm ${isLightMode ? 'hover:bg-gray-100 text-gray-700' : 'hover:bg-gray-700 text-gray-300'} transition-colors`}
+                                                                        >
+                                                                            📊 Export as CSV
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                generateExpertiseReport();
+                                                                                setShowExportDropdown(false);
+                                                                            }}
+                                                                            className={`w-full text-left px-4 py-2 text-sm ${isLightMode ? 'hover:bg-gray-100 text-gray-700' : 'hover:bg-gray-700 text-gray-300'} transition-colors`}
+                                                                        >
+                                                                            📈 Generate Full Report
+                                                                        </button>
+                                                                        <div className={`border-t ${isLightMode ? 'border-gray-200' : 'border-gray-700'} my-1`}></div>
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                shareExpertiseProfile();
+                                                                                setShowExportDropdown(false);
+                                                                            }}
+                                                                            className={`w-full text-left px-4 py-2 text-sm ${isLightMode ? 'hover:bg-gray-100 text-gray-700' : 'hover:bg-gray-700 text-gray-300'} transition-colors`}
+                                                                        >
+                                                                            🔗 Share Profile
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
                                                     {/* Content Distribution Chart Toggle */}
                                                     {expertiseAreas.length > 0 && (
                                                         <button
@@ -25036,6 +25616,39 @@ Generate the repurposed content:`;
                                                 />
                                             </div>
                                             
+                                            {/* Tag Filters */}
+                                            {availableTags.length > 0 && (
+                                                <div>
+                                                    <label className={`block text-xs font-medium ${isLightMode ? 'text-gray-700' : 'text-gray-300'} mb-2`}>
+                                                        Filter by Tags
+                                                    </label>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {availableTags.map(tag => (
+                                                            <button
+                                                                key={tag}
+                                                                onClick={() => toggleTagFilter(tag)}
+                                                                className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                                                                    selectedTags.has(tag)
+                                                                        ? isLightMode
+                                                                            ? 'bg-purple-500 text-white'
+                                                                            : 'bg-purple-600 text-white'
+                                                                        : isLightMode
+                                                                            ? 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                                                            : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                                                                }`}
+                                                            >
+                                                                {selectedTags.has(tag) ? '✓ ' : ''}{tag}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                    {selectedTags.size > 0 && (
+                                                        <p className={`text-xs mt-2 ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                            {selectedTags.size} tag{selectedTags.size > 1 ? 's' : ''} selected
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            )}
+                                            
                                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
                                                 {/* Sort By */}
                                                 <div>
@@ -25104,13 +25717,14 @@ Generate the repurposed content:`;
                                             </div>
                                             
                                             {/* Clear Filters Button */}
-                                            {(filterLevel !== 'all' || filterScoreMin !== 0 || filterScoreMax !== 100 || searchQuery) && (
+                                            {(filterLevel !== 'all' || filterScoreMin !== 0 || filterScoreMax !== 100 || searchQuery || selectedTags.size > 0) && (
                                                 <button
                                                     onClick={() => {
                                                         setFilterLevel('all');
                                                         setFilterScoreMin(0);
                                                         setFilterScoreMax(100);
                                                         setSearchQuery('');
+                                                        setSelectedTags(new Set());
                                                     }}
                                                     className={`w-full py-2 rounded-lg text-sm font-medium transition-all ${
                                                         isLightMode
@@ -25124,6 +25738,105 @@ Generate the repurposed content:`;
                                         </div>
                                     )}
                                     
+                                    {/* Achievement Notification */}
+                                    {showAchievementNotification && (
+                                        <div className="fixed top-4 right-4 z-50 animate-bounce">
+                                            <div className={`${isLightMode ? 'bg-gradient-to-r from-yellow-400 to-orange-500' : 'bg-gradient-to-r from-yellow-600 to-orange-600'} rounded-xl p-6 shadow-2xl border-2 ${isLightMode ? 'border-yellow-300' : 'border-yellow-500'} max-w-sm`}>
+                                                <div className="flex items-center gap-4">
+                                                    <div className="text-5xl animate-pulse">
+                                                        {showAchievementNotification.icon}
+                                                    </div>
+                                                    <div className="flex-1">
+                                                        <div className="text-white font-bold text-lg mb-1">
+                                                            Achievement Unlocked!
+                                                        </div>
+                                                        <div className="text-white/90 font-semibold text-sm mb-1">
+                                                            {showAchievementNotification.name}
+                                                        </div>
+                                                        <div className="text-white/80 text-xs">
+                                                            {showAchievementNotification.description}
+                                                        </div>
+                                                        <div className="text-white/90 text-xs mt-2 font-semibold">
+                                                            +{showAchievementNotification.xp} XP
+                                                        </div>
+                                                    </div>
+                                                    <button
+                                                        onClick={() => setShowAchievementNotification(null)}
+                                                        className="text-white/80 hover:text-white"
+                                                    >
+                                                        ✕
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Achievements Section */}
+                                    <div id="achievements-section" className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6 mb-6`}>
+                                        <div className="flex items-center justify-between mb-6">
+                                            <h2 className={`text-2xl font-bold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} flex items-center gap-2`}>
+                                                🏆 Achievements
+                                            </h2>
+                                            <div className={`text-sm ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>
+                                                {unlockedAchievements.length} / {expertiseAchievements.length} Unlocked
+                                            </div>
+                                        </div>
+                                        
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                            {expertiseAchievements.map(achievement => {
+                                                const isUnlocked = unlockedAchievements.includes(achievement.id);
+                                                const rarityColors = {
+                                                    common: isLightMode ? 'bg-blue-50 border-blue-200' : 'bg-blue-500/10 border-blue-500/30',
+                                                    rare: isLightMode ? 'bg-purple-50 border-purple-200' : 'bg-purple-500/10 border-purple-500/30',
+                                                    epic: isLightMode ? 'bg-orange-50 border-orange-200' : 'bg-orange-500/10 border-orange-500/30',
+                                                    legendary: isLightMode ? 'bg-yellow-50 border-yellow-200' : 'bg-yellow-500/10 border-yellow-500/30'
+                                                };
+                                                
+                                                return (
+                                                    <div
+                                                        key={achievement.id}
+                                                        className={`border-2 rounded-xl p-4 transition-all ${
+                                                            isUnlocked
+                                                                ? rarityColors[achievement.rarity]
+                                                                : isLightMode
+                                                                    ? 'bg-gray-100 border-gray-300 opacity-60'
+                                                                    : 'bg-gray-800 border-gray-700 opacity-60'
+                                                        }`}
+                                                    >
+                                                        <div className="flex items-start gap-3">
+                                                            <div className={`text-3xl ${isUnlocked ? '' : 'grayscale opacity-50'}`}>
+                                                                {isUnlocked ? achievement.icon : '🔒'}
+                                                            </div>
+                                                            <div className="flex-1">
+                                                                <div className={`font-semibold mb-1 ${isUnlocked ? (isLightMode ? 'text-gray-900' : 'text-gray-50') : (isLightMode ? 'text-gray-500' : 'text-gray-500')}`}>
+                                                                    {achievement.name}
+                                                                </div>
+                                                                <div className={`text-sm mb-2 ${isUnlocked ? (isLightMode ? 'text-gray-600' : 'text-gray-300') : (isLightMode ? 'text-gray-400' : 'text-gray-600')}`}>
+                                                                    {achievement.description}
+                                                                </div>
+                                                                <div className="flex items-center justify-between">
+                                                                    <span className={`text-xs px-2 py-0.5 rounded-full ${
+                                                                        achievement.rarity === 'legendary' ? (isLightMode ? 'bg-yellow-200 text-yellow-800' : 'bg-yellow-500/30 text-yellow-300') :
+                                                                        achievement.rarity === 'epic' ? (isLightMode ? 'bg-orange-200 text-orange-800' : 'bg-orange-500/30 text-orange-300') :
+                                                                        achievement.rarity === 'rare' ? (isLightMode ? 'bg-purple-200 text-purple-800' : 'bg-purple-500/30 text-purple-300') :
+                                                                        (isLightMode ? 'bg-blue-200 text-blue-800' : 'bg-blue-500/30 text-blue-300')
+                                                                    }`}>
+                                                                        {achievement.rarity}
+                                                                    </span>
+                                                                    {isUnlocked && (
+                                                                        <span className={`text-xs font-semibold ${isLightMode ? 'text-green-600' : 'text-green-400'}`}>
+                                                                            +{achievement.xp} XP
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+
                                     <div className="space-y-4">
                                         {expertiseAreas.length === 0 ? (
                                             <div className={`${isLightMode ? 'bg-gradient-to-br from-purple-50 to-indigo-50' : 'bg-gradient-to-br from-purple-900/20 to-indigo-900/20'} border-2 ${isLightMode ? 'border-purple-200' : 'border-purple-500/30'} rounded-2xl p-12 text-center`}>
@@ -25211,7 +25924,7 @@ Generate the repurposed content:`;
                                                     </p>
                                                     
                                                     {/* Current Filters Display */}
-                                                    {(searchQuery || filterLevel !== 'all' || filterScoreMin > 0 || filterScoreMax < 100) && (
+                                                    {(searchQuery || filterLevel !== 'all' || filterScoreMin > 0 || filterScoreMax < 100 || selectedTags.size > 0) && (
                                                         <div className={`${isLightMode ? 'bg-white/60' : 'bg-gray-800/40'} rounded-lg p-4 mb-4 text-left`}>
                                                             <h4 className={`text-xs font-semibold mb-2 ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>
                                                                 Current Filters:
@@ -25232,6 +25945,11 @@ Generate the repurposed content:`;
                                                                         Score: {filterScoreMin}-{filterScoreMax}
                                                                     </span>
                                                                 )}
+                                                                {selectedTags.size > 0 && (
+                                                                    <span className={`px-2 py-1 rounded text-xs ${isLightMode ? 'bg-gray-200 text-gray-700' : 'bg-gray-700 text-gray-300'}`}>
+                                                                        Tags: {Array.from(selectedTags).join(', ')}
+                                                                    </span>
+                                                                )}
                                                             </div>
                                                         </div>
                                                     )}
@@ -25244,6 +25962,7 @@ Generate the repurposed content:`;
                                                                 setFilterLevel('all');
                                                                 setFilterScoreMin(0);
                                                                 setFilterScoreMax(100);
+                                                                setSelectedTags(new Set());
                                                             }}
                                                             className={`px-6 py-2 rounded-lg text-sm font-medium transition-all ${
                                                                 isLightMode
@@ -25323,7 +26042,7 @@ Generate the repurposed content:`;
                                                 <div className="flex items-start justify-between mb-4">
                                                         <div className="flex-1">
                                                             <div className="flex items-center justify-between mb-2">
-                                                                    <div className="flex items-center gap-2">
+                                                                    <div className="flex items-center gap-2 flex-wrap">
                                                                 <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>{area.name}</h3>
                                                                         <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
                                                                             area.level === 'Expert' ? (isLightMode ? 'bg-purple-100 text-purple-700' : 'bg-purple-500/30 text-purple-300') :
@@ -25333,6 +26052,37 @@ Generate the repurposed content:`;
                                                                         }`}>
                                                                             {area.level}
                                                                         </span>
+                                                                        {/* Tags Display */}
+                                                                        {area.tags && area.tags.length > 0 && (
+                                                                            <div className="flex flex-wrap gap-1">
+                                                                                {area.tags.slice(0, 3).map((tag, idx) => (
+                                                                                    <span
+                                                                                        key={idx}
+                                                                                        onClick={(e) => {
+                                                                                            e.stopPropagation();
+                                                                                            toggleTagFilter(tag);
+                                                                                        }}
+                                                                                        className={`px-2 py-0.5 rounded-full text-xs font-medium cursor-pointer transition-all ${
+                                                                                            selectedTags.has(tag)
+                                                                                                ? isLightMode
+                                                                                                    ? 'bg-purple-500 text-white'
+                                                                                                    : 'bg-purple-600 text-white'
+                                                                                                : isLightMode
+                                                                                                    ? 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                                                                                    : 'bg-gray-700/50 text-gray-400 hover:bg-gray-700'
+                                                                                        }`}
+                                                                                        title={`Click to filter by ${tag}`}
+                                                                                    >
+                                                                                        #{tag}
+                                                                                    </span>
+                                                                                ))}
+                                                                                {area.tags.length > 3 && (
+                                                                                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${isLightMode ? 'bg-gray-100 text-gray-600' : 'bg-gray-700/50 text-gray-400'}`}>
+                                                                                        +{area.tags.length - 3}
+                                                                                    </span>
+                                                                                )}
+                                                                            </div>
+                                                                        )}
                                                                     </div>
                                                                 <div className="flex items-center gap-2">
                                                                     <button
@@ -26408,6 +27158,125 @@ Generate the repurposed content:`;
                                         </button>
                                     </div>
                                 </div>
+
+                                {/* Gamification - User Level & Progress */}
+                                <div className={`${isLightMode ? 'bg-gradient-to-br from-purple-50 to-indigo-50' : 'bg-gradient-to-br from-purple-900/20 to-indigo-900/20'} border-2 ${isLightMode ? 'border-purple-200' : 'border-purple-500/30'} rounded-2xl p-6`}>
+                                    <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-4 flex items-center gap-2`}>
+                                        🏆 Level {userLevel}
+                                    </h3>
+                                    
+                                    {/* XP Progress Bar */}
+                                    <div className="mb-4">
+                                        <div className="flex justify-between text-xs mb-1">
+                                            <span className={isLightMode ? 'text-gray-600' : 'text-gray-400'}>
+                                                {xpProgress} / 100 XP
+                                            </span>
+                                            <span className={isLightMode ? 'text-gray-600' : 'text-gray-400'}>
+                                                Level {userLevel + 1} in {100 - xpProgress} XP
+                                            </span>
+                                        </div>
+                                        <div className={`w-full ${isLightMode ? 'bg-gray-200' : 'bg-gray-700'} rounded-full h-3 overflow-hidden`}>
+                                            <div 
+                                                className="h-full bg-gradient-to-r from-purple-500 to-indigo-600 transition-all duration-500"
+                                                style={{ width: `${xpProgressPercent}%` }}
+                                            ></div>
+                                        </div>
+                                    </div>
+
+                                    {/* Content Streak */}
+                                    {contentStreak.days > 0 && (
+                                        <div className={`${isLightMode ? 'bg-orange-100' : 'bg-orange-500/20'} rounded-lg p-3 mb-4`}>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-2xl">🔥</span>
+                                                <div>
+                                                    <div className={`text-sm font-semibold ${isLightMode ? 'text-orange-900' : 'text-orange-300'}`}>
+                                                        {contentStreak.days} Day Streak!
+                                                    </div>
+                                                    <div className={`text-xs ${isLightMode ? 'text-orange-700' : 'text-orange-400'}`}>
+                                                        Keep creating content to maintain your streak
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Achievements Summary */}
+                                    <div className="mt-4">
+                                        <div className="flex justify-between items-center mb-2">
+                                            <span className={`text-sm font-medium ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>
+                                                Achievements
+                                            </span>
+                                            <span className={`text-sm ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                {unlockedAchievements.length} / {expertiseAchievements.length}
+                                            </span>
+                                        </div>
+                                        <div className="flex flex-wrap gap-2">
+                                            {expertiseAchievements.slice(0, 6).map(achievement => (
+                                                <div
+                                                    key={achievement.id}
+                                                    className={`w-10 h-10 rounded-lg flex items-center justify-center text-lg ${
+                                                        unlockedAchievements.includes(achievement.id)
+                                                            ? isLightMode
+                                                                ? 'bg-yellow-100 border-2 border-yellow-400'
+                                                                : 'bg-yellow-500/30 border-2 border-yellow-500'
+                                                            : isLightMode
+                                                                ? 'bg-gray-200 border border-gray-300 opacity-50'
+                                                                : 'bg-gray-700 border border-gray-600 opacity-50'
+                                                    }`}
+                                                    title={unlockedAchievements.includes(achievement.id) ? achievement.name : 'Locked'}
+                                                >
+                                                    {unlockedAchievements.includes(achievement.id) ? achievement.icon : '🔒'}
+                                                </div>
+                                            ))}
+                                        </div>
+                                        {unlockedAchievements.length < expertiseAchievements.length && (
+                                            <button
+                                                onClick={() => {
+                                                    const achievementsSection = document.getElementById('achievements-section');
+                                                    if (achievementsSection) {
+                                                        achievementsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                                    }
+                                                }}
+                                                className={`mt-2 text-xs ${isLightMode ? 'text-purple-600 hover:text-purple-700' : 'text-purple-400 hover:text-purple-300'} transition-colors`}
+                                            >
+                                                View all achievements →
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Export & Share */}
+                                {expertiseAreas.length > 0 && (
+                                    <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
+                                        <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-4`}>Export & Share</h3>
+                                        <div className="space-y-2">
+                                            <button
+                                                onClick={exportExpertiseToJSON}
+                                                className="w-full bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700 transition-colors duration-200 text-sm flex items-center justify-center gap-2"
+                                            >
+                                                📄 Export JSON
+                                            </button>
+                                            <button
+                                                onClick={exportExpertiseToCSV}
+                                                className="w-full bg-green-600 text-white py-2 rounded-lg font-medium hover:bg-green-700 transition-colors duration-200 text-sm flex items-center justify-center gap-2"
+                                            >
+                                                📊 Export CSV
+                                            </button>
+                                            <button
+                                                onClick={generateExpertiseReport}
+                                                className="w-full bg-purple-600 text-white py-2 rounded-lg font-medium hover:bg-purple-700 transition-colors duration-200 text-sm flex items-center justify-center gap-2"
+                                            >
+                                                📈 Full Report
+                                            </button>
+                                            <button
+                                                onClick={shareExpertiseProfile}
+                                                className="w-full bg-indigo-600 text-white py-2 rounded-lg font-medium hover:bg-indigo-700 transition-colors duration-200 text-sm flex items-center justify-center gap-2"
+                                            >
+                                                🔗 Share Profile
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
 
                                 {/* Comparison View */}
                                 {showComparisonView && selectedForComparison.size > 0 && (() => {
