@@ -2549,6 +2549,3254 @@ const PortfolioUtils = {
     };
   },
 
+  // Generate AI portfolio suggestions
+  async generatePortfolioSuggestions(analysis, industry) {
+    const apiKey = localStorage.getItem('openai_api_key');
+    if (!apiKey) {
+      return {
+        suggestions: [],
+        error: 'OpenAI API key not found'
+      };
+    }
+
+    const suggestions = [];
+
+    // Generate suggestions based on analysis gaps
+    const gaps = [];
+    if (analysis.seo && analysis.seo.score < 70) gaps.push('SEO optimization');
+    if (analysis.content && analysis.content.details?.callToAction?.ctaButtons < 2) gaps.push('call-to-action buttons');
+    if (analysis.content && !analysis.content.details?.callToAction?.hasContactForm) gaps.push('contact form');
+    if (analysis.visual && analysis.visual.score < 75) gaps.push('visual design improvements');
+    if (analysis.content && analysis.content.details?.projects?.links?.github === 0) gaps.push('GitHub repository links');
+
+    try {
+      const prompt = `Based on this portfolio analysis, generate 3-5 specific, actionable suggestions for improving the portfolio. 
+      
+Industry: ${industry}
+Current Score: ${analysis.overallScore}/100
+Key Gaps: ${gaps.join(', ') || 'None identified'}
+
+Generate suggestions in this JSON format:
+[
+  {
+    "title": "Suggestion title",
+    "description": "Detailed description",
+    "category": "SEO|Design|Content|Performance|Accessibility",
+    "priority": "high|medium|low",
+    "impact": "high|medium|low",
+    "specificAction": "Specific action to take",
+    "example": "Example implementation"
+  }
+]
+
+Return ONLY valid JSON array, no additional text.`;
+
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: [{ role: 'user', content: prompt }],
+          temperature: 0.7,
+          max_tokens: 1000
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const content = data.choices[0]?.message?.content;
+        const jsonMatch = content.match(/\[[\s\S]*\]/);
+        if (jsonMatch) {
+          const aiSuggestions = JSON.parse(jsonMatch[0]);
+          suggestions.push(...aiSuggestions.map((s, i) => ({
+            id: `ai-suggestion-${i}`,
+            ...s,
+            source: 'AI Generated'
+          })));
+        }
+      }
+    } catch (error) {
+      console.error('Error generating AI suggestions:', error);
+    }
+
+    return { suggestions };
+  },
+
+  // Get template recommendations based on industry
+  getTemplateRecommendations(industry, analysis) {
+    const templates = {
+      'Web Developer': [
+        {
+          name: 'Minimal Developer Portfolio',
+          description: 'Clean, code-focused design perfect for showcasing projects',
+          features: ['Project showcase', 'GitHub integration', 'Tech stack display', 'Code snippets'],
+          bestFor: 'Frontend/Full-stack developers',
+          difficulty: 'Easy',
+          score: 85
+        },
+        {
+          name: 'Interactive Developer Portfolio',
+          description: 'Modern, interactive design with animations',
+          features: ['Interactive elements', 'Smooth animations', 'Dark mode', 'Responsive design'],
+          bestFor: 'Creative developers',
+          difficulty: 'Medium',
+          score: 90
+        }
+      ],
+      'UI/UX Designer': [
+        {
+          name: 'Design Portfolio Showcase',
+          description: 'Visual-first design perfect for showcasing design work',
+          features: ['Large image galleries', 'Case study layouts', 'Before/after comparisons', 'Design process'],
+          bestFor: 'UI/UX designers',
+          difficulty: 'Easy',
+          score: 88
+        },
+        {
+          name: 'Creative Designer Portfolio',
+          description: 'Bold, creative design that reflects your style',
+          features: ['Unique layouts', 'Custom animations', 'Portfolio grid', 'Project details'],
+          bestFor: 'Creative designers',
+          difficulty: 'Medium',
+          score: 92
+        }
+      ],
+      'Mobile Developer': [
+        {
+          name: 'Mobile-First Portfolio',
+          description: 'Optimized for mobile with app showcase',
+          features: ['App screenshots', 'App store links', 'Platform badges', 'Download CTAs'],
+          bestFor: 'iOS/Android developers',
+          difficulty: 'Easy',
+          score: 87
+        }
+      ],
+      'Data Scientist': [
+        {
+          name: 'Data Portfolio Template',
+          description: 'Perfect for showcasing data projects and visualizations',
+          features: ['Data visualization showcase', 'Project metrics', 'Technical details', 'Research papers'],
+          bestFor: 'Data scientists, analysts',
+          difficulty: 'Medium',
+          score: 85
+        }
+      ],
+      'General': [
+        {
+          name: 'Professional Portfolio',
+          description: 'Versatile template suitable for any profession',
+          features: ['About section', 'Projects/work', 'Contact form', 'Responsive design'],
+          bestFor: 'All professionals',
+          difficulty: 'Easy',
+          score: 80
+        }
+      ]
+    };
+
+    const industryTemplates = templates[industry] || templates['General'];
+    
+    // Score templates based on current portfolio needs
+    const scoredTemplates = industryTemplates.map(template => {
+      let matchScore = template.score;
+      
+      // Boost score if template addresses current gaps
+      if (analysis.content && !analysis.content.details?.callToAction?.hasContactForm && 
+          template.features.includes('Contact form')) {
+        matchScore += 5;
+      }
+      
+      if (analysis.content && analysis.content.details?.projects?.links?.github === 0 && 
+          template.features.includes('GitHub integration')) {
+        matchScore += 5;
+      }
+      
+      if (analysis.visual && analysis.visual.score < 75 && 
+          template.features.includes('Responsive design')) {
+        matchScore += 5;
+      }
+
+      return {
+        ...template,
+        matchScore: Math.min(matchScore, 100),
+        recommended: matchScore >= 90
+      };
+    });
+
+    return scoredTemplates.sort((a, b) => b.matchScore - a.matchScore);
+  },
+
+  // Generate content for missing sections
+  async generateContentForSection(sectionType, industry, existingContent) {
+    const apiKey = localStorage.getItem('openai_api_key');
+    if (!apiKey) {
+      return {
+        content: null,
+        error: 'OpenAI API key not found'
+      };
+    }
+
+    const sectionPrompts = {
+      'about': `Write a professional "About Me" section for a ${industry} portfolio. Include:
+- Brief introduction
+- Professional background
+- Key skills and expertise
+- What makes you unique
+- Your passion/mission
+
+Keep it concise (150-200 words), professional, and engaging.`,
+      
+      'project-description': `Write a compelling project description for a ${industry} portfolio project. Include:
+- Project overview
+- Technologies used
+- Key features
+- Challenges solved
+- Results/impact
+
+Make it engaging and highlight technical skills.`,
+      
+      'case-study': `Write a case study structure for a ${industry} project. Include:
+- Problem/Challenge
+- Solution/Approach
+- Process/Methodology
+- Results/Impact
+- Key Learnings
+
+Format as a structured case study with clear sections.`,
+      
+      'contact-cta': `Write compelling call-to-action text for a ${industry} portfolio. Include:
+- Engaging headline
+- Value proposition
+- Clear action statement
+- Professional tone
+
+Make it compelling and action-oriented.`
+    };
+
+    let prompt = sectionPrompts[sectionType] || sectionPrompts['about'];
+    
+    if (existingContent) {
+      prompt += `\n\nExisting content to improve:\n${existingContent}`;
+    }
+
+    try {
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: [{ role: 'user', content: prompt }],
+          temperature: 0.7,
+          max_tokens: 500
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const content = data.choices[0]?.message?.content;
+        return { content: content.trim() };
+      }
+    } catch (error) {
+      console.error('Error generating content:', error);
+      return { content: null, error: error.message };
+    }
+
+    return { content: null, error: 'Failed to generate content' };
+  },
+
+  // Generate design improvement suggestions
+  generateDesignSuggestions(analysis, industry) {
+    const suggestions = [];
+
+    if (analysis.visual) {
+      // Color scheme suggestions
+      if (analysis.visual.details.colorScheme) {
+        const colorCount = analysis.visual.details.colorScheme.totalColors || 0;
+        if (colorCount < 3) {
+          suggestions.push({
+            category: 'Color Scheme',
+            issue: 'Limited color palette',
+            suggestion: `Add 2-3 more colors to create visual interest. Consider using a color palette generator like Coolors.co or Adobe Color.`,
+            codeExample: `/* Add to your CSS */
+:root {
+  --primary: #6366f1;
+  --secondary: #8b5cf6;
+  --accent: #ec4899;
+  --neutral: #64748b;
+}`,
+            priority: 'medium'
+          });
+        } else if (colorCount > 8) {
+          suggestions.push({
+            category: 'Color Scheme',
+            issue: 'Too many colors',
+            suggestion: 'Simplify your color palette to 3-5 main colors for better consistency and professional appearance.',
+            priority: 'medium'
+          });
+        }
+      }
+
+      // Typography suggestions
+      if (analysis.visual.details.typography) {
+        if (!analysis.visual.details.typography.webFonts) {
+          suggestions.push({
+            category: 'Typography',
+            issue: 'No web fonts',
+            suggestion: 'Add Google Fonts to improve typography. Popular choices: Inter, Poppins, Roboto, or Montserrat.',
+            codeExample: `<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+
+body {
+  font-family: 'Inter', sans-serif;
+}`,
+            priority: 'low'
+          });
+        }
+
+        if (!analysis.visual.details.typography.lineHeight) {
+          suggestions.push({
+            category: 'Typography',
+            issue: 'No line-height defined',
+            suggestion: 'Add line-height (1.5-1.8) to improve readability.',
+            codeExample: `body {
+  line-height: 1.6;
+}`,
+            priority: 'low'
+          });
+        }
+      }
+
+      // Layout suggestions
+      if (analysis.visual.details.layout) {
+        if (!analysis.visual.details.layout.modernLayout?.grid && 
+            !analysis.visual.details.layout.modernLayout?.flexbox) {
+          suggestions.push({
+            category: 'Layout',
+            issue: 'No modern layout techniques',
+            suggestion: 'Use CSS Grid or Flexbox for better, more flexible layouts.',
+            codeExample: `/* Flexbox example */
+.container {
+  display: flex;
+  gap: 2rem;
+  flex-wrap: wrap;
+}
+
+/* Grid example */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 2rem;
+}`,
+            priority: 'medium'
+          });
+        }
+
+        if (!analysis.visual.details.layout.responsive) {
+          suggestions.push({
+            category: 'Layout',
+            issue: 'No responsive breakpoints',
+            suggestion: 'Add media queries for responsive design on mobile, tablet, and desktop.',
+            codeExample: `/* Mobile first approach */
+.container {
+  padding: 1rem;
+}
+
+@media (min-width: 768px) {
+  .container {
+    padding: 2rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .container {
+    padding: 3rem;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+}`,
+            priority: 'high'
+          });
+        }
+      }
+
+      // Dark mode suggestion
+      if (!analysis.visual.details.colorScheme?.darkMode) {
+        suggestions.push({
+          category: 'Design',
+          issue: 'No dark mode support',
+          suggestion: 'Add dark mode support using CSS media queries for better user experience.',
+          codeExample: `@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1a1a1a;
+    --text: #ffffff;
+    --accent: #6366f1;
+  }
+  
+  body {
+    background: var(--bg);
+    color: var(--text);
+  }
+}`,
+          priority: 'medium'
+        });
+      }
+    }
+
+    // Industry-specific design suggestions
+    if (industry === 'UI/UX Designer') {
+      suggestions.push({
+        category: 'Design',
+        issue: 'Designer portfolio expectations',
+        suggestion: 'Consider adding: Design process section, before/after comparisons, interactive prototypes, and design system showcase.',
+        priority: 'medium'
+      });
+    }
+
+    if (industry === 'Web Developer' || industry === 'Mobile Developer') {
+      suggestions.push({
+        category: 'Design',
+        issue: 'Developer portfolio expectations',
+        suggestion: 'Consider adding: Code snippets, live demos, GitHub contribution graph, and technology badges.',
+        priority: 'medium'
+      });
+    }
+
+    return suggestions;
+  },
+
+  // Combined portfolio builder integration
+  async getPortfolioBuilderSuggestions(analysis, industry) {
+    const [aiSuggestions, templates, designSuggestions] = await Promise.all([
+      this.generatePortfolioSuggestions(analysis, industry).catch(() => ({ suggestions: [] })),
+      Promise.resolve(this.getTemplateRecommendations(industry, analysis)),
+      Promise.resolve(this.generateDesignSuggestions(analysis, industry))
+    ]);
+
+    return {
+      aiSuggestions: aiSuggestions.suggestions || [],
+      templates: templates,
+      designSuggestions: designSuggestions,
+      contentGeneration: {
+        available: true,
+        sections: ['about', 'project-description', 'case-study', 'contact-cta']
+      }
+    };
+  },
+
+  // Progress Tracking System
+  // Store portfolio analysis history
+  saveAnalysisHistory(url, analysis) {
+    try {
+      const historyKey = `portfolio_analysis_history_${btoa(url).replace(/[+/=]/g, '')}`;
+      const history = this.getAnalysisHistory(url) || [];
+      
+      const historyEntry = {
+        timestamp: new Date().toISOString(),
+        date: new Date().toLocaleDateString(),
+        overallScore: analysis.overallScore,
+        scores: {
+          seo: analysis.seo?.score || 0,
+          accessibility: analysis.accessibility?.score || 0,
+          performance: analysis.performance?.score || 0,
+          security: analysis.security?.score || 0,
+          socialMedia: analysis.socialMedia?.score || 0,
+          visual: analysis.visual?.score || 0,
+          content: analysis.content?.score || 0,
+          designQuality: analysis.designQuality || 0,
+          contentQuality: analysis.contentQuality || 0,
+          uxScore: analysis.uxScore || 0
+        },
+        issuesCount: analysis.issues?.length || 0,
+        strengthsCount: analysis.strengths?.length || 0,
+        summary: {
+          totalIssues: analysis.issues?.length || 0,
+          totalStrengths: analysis.strengths?.length || 0,
+          industry: analysis.competitive?.industry || 'Unknown'
+        }
+      };
+      
+      history.push(historyEntry);
+      
+      // Keep only last 50 analyses
+      const trimmedHistory = history.slice(-50);
+      
+      localStorage.setItem(historyKey, JSON.stringify(trimmedHistory));
+      return true;
+    } catch (error) {
+      console.error('Error saving analysis history:', error);
+      return false;
+    }
+  },
+
+  // Get portfolio analysis history
+  getAnalysisHistory(url) {
+    try {
+      const historyKey = `portfolio_analysis_history_${btoa(url).replace(/[+/=]/g, '')}`;
+      const historyData = localStorage.getItem(historyKey);
+      return historyData ? JSON.parse(historyData) : [];
+    } catch (error) {
+      console.error('Error getting analysis history:', error);
+      return [];
+    }
+  },
+
+  // Compare current analysis with previous
+  compareWithPrevious(currentAnalysis, url) {
+    const history = this.getAnalysisHistory(url);
+    if (history.length === 0) {
+      return {
+        hasPrevious: false,
+        message: 'This is your first analysis. Future analyses will show progress!'
+      };
+    }
+
+    const previous = history[history.length - 1];
+    const current = {
+      overallScore: currentAnalysis.overallScore,
+      scores: {
+        seo: currentAnalysis.seo?.score || 0,
+        accessibility: currentAnalysis.accessibility?.score || 0,
+        performance: currentAnalysis.performance?.score || 0,
+        security: currentAnalysis.security?.score || 0,
+        socialMedia: currentAnalysis.socialMedia?.score || 0,
+        visual: currentAnalysis.visual?.score || 0,
+        content: currentAnalysis.content?.score || 0,
+        designQuality: currentAnalysis.designQuality || 0,
+        contentQuality: currentAnalysis.contentQuality || 0,
+        uxScore: currentAnalysis.uxScore || 0
+      },
+      issuesCount: currentAnalysis.issues?.length || 0,
+      strengthsCount: currentAnalysis.strengths?.length || 0
+    };
+
+    const comparison = {
+      hasPrevious: true,
+      previousDate: previous.date,
+      currentDate: new Date().toLocaleDateString(),
+      daysSinceLastAnalysis: Math.floor(
+        (new Date() - new Date(previous.timestamp)) / (1000 * 60 * 60 * 24)
+      ),
+      overallScore: {
+        current: current.overallScore,
+        previous: previous.overallScore,
+        change: current.overallScore - previous.overallScore,
+        percentageChange: previous.overallScore > 0 
+          ? ((current.overallScore - previous.overallScore) / previous.overallScore * 100).toFixed(1)
+          : 0,
+        trend: current.overallScore > previous.overallScore ? 'improved' : 
+               current.overallScore < previous.overallScore ? 'declined' : 'unchanged'
+      },
+      categoryChanges: {},
+      issues: {
+        current: current.issuesCount,
+        previous: previous.issuesCount,
+        change: current.issuesCount - previous.issuesCount,
+        trend: current.issuesCount < previous.issuesCount ? 'improved' : 
+               current.issuesCount > previous.issuesCount ? 'worsened' : 'unchanged'
+      },
+      strengths: {
+        current: current.strengthsCount,
+        previous: previous.strengthsCount,
+        change: current.strengthsCount - previous.strengthsCount,
+        trend: current.strengthsCount > previous.strengthsCount ? 'improved' : 
+               current.strengthsCount < previous.strengthsCount ? 'declined' : 'unchanged'
+      }
+    };
+
+    // Compare category scores
+    Object.keys(current.scores).forEach(category => {
+      const currentScore = current.scores[category];
+      const previousScore = previous.scores[category] || 0;
+      comparison.categoryChanges[category] = {
+        current: currentScore,
+        previous: previousScore,
+        change: currentScore - previousScore,
+        percentageChange: previousScore > 0 
+          ? ((currentScore - previousScore) / previousScore * 100).toFixed(1)
+          : 0,
+        trend: currentScore > previousScore ? 'improved' : 
+               currentScore < previousScore ? 'declined' : 'unchanged'
+      };
+    });
+
+    return comparison;
+  },
+
+  // Get score trends over time
+  getScoreTrends(url, days = 30) {
+    const history = this.getAnalysisHistory(url);
+    if (history.length === 0) {
+      return {
+        hasData: false,
+        message: 'No historical data available'
+      };
+    }
+
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - days);
+    
+    const recentHistory = history.filter(entry => 
+      new Date(entry.timestamp) >= cutoffDate
+    );
+
+    if (recentHistory.length === 0) {
+      return {
+        hasData: false,
+        message: `No data in the last ${days} days`
+      };
+    }
+
+    const trends = {
+      hasData: true,
+      period: `${days} days`,
+      dataPoints: recentHistory.length,
+      overallScore: {
+        first: recentHistory[0].overallScore,
+        last: recentHistory[recentHistory.length - 1].overallScore,
+        average: Math.round(recentHistory.reduce((sum, h) => sum + h.overallScore, 0) / recentHistory.length),
+        highest: Math.max(...recentHistory.map(h => h.overallScore)),
+        lowest: Math.min(...recentHistory.map(h => h.overallScore)),
+        trend: recentHistory[recentHistory.length - 1].overallScore > recentHistory[0].overallScore ? 'improving' : 
+               recentHistory[recentHistory.length - 1].overallScore < recentHistory[0].overallScore ? 'declining' : 'stable',
+        change: recentHistory[recentHistory.length - 1].overallScore - recentHistory[0].overallScore
+      },
+      categoryTrends: {},
+      timeline: recentHistory.map(h => ({
+        date: h.date,
+        timestamp: h.timestamp,
+        overallScore: h.overallScore,
+        scores: h.scores
+      }))
+    };
+
+    // Calculate trends for each category
+    const categories = ['seo', 'accessibility', 'performance', 'security', 'socialMedia', 'visual', 'content'];
+    categories.forEach(category => {
+      const categoryScores = recentHistory.map(h => h.scores[category] || 0);
+      trends.categoryTrends[category] = {
+        first: categoryScores[0],
+        last: categoryScores[categoryScores.length - 1],
+        average: Math.round(categoryScores.reduce((sum, s) => sum + s, 0) / categoryScores.length),
+        highest: Math.max(...categoryScores),
+        lowest: Math.min(...categoryScores),
+        trend: categoryScores[categoryScores.length - 1] > categoryScores[0] ? 'improving' : 
+               categoryScores[categoryScores.length - 1] < categoryScores[0] ? 'declining' : 'stable',
+        change: categoryScores[categoryScores.length - 1] - categoryScores[0]
+      };
+    });
+
+    return trends;
+  },
+
+  // Goal setting and tracking
+  setPortfolioGoal(url, goal) {
+    try {
+      const goalKey = `portfolio_goal_${btoa(url).replace(/[+/=]/g, '')}`;
+      const goalData = {
+        ...goal,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      localStorage.setItem(goalKey, JSON.stringify(goalData));
+      return true;
+    } catch (error) {
+      console.error('Error setting portfolio goal:', error);
+      return false;
+    }
+  },
+
+  getPortfolioGoal(url) {
+    try {
+      const goalKey = `portfolio_goal_${btoa(url).replace(/[+/=]/g, '')}`;
+      const goalData = localStorage.getItem(goalKey);
+      return goalData ? JSON.parse(goalData) : null;
+    } catch (error) {
+      console.error('Error getting portfolio goal:', error);
+      return null;
+    }
+  },
+
+  checkGoalProgress(currentAnalysis, url) {
+    const goal = this.getPortfolioGoal(url);
+    if (!goal) {
+      return {
+        hasGoal: false,
+        message: 'No goal set for this portfolio'
+      };
+    }
+
+    const currentScore = currentAnalysis.overallScore;
+    const targetScore = goal.targetScore || 100;
+    const progress = Math.min((currentScore / targetScore) * 100, 100);
+    const remaining = Math.max(targetScore - currentScore, 0);
+    const isAchieved = currentScore >= targetScore;
+
+    // Check category goals
+    const categoryProgress = {};
+    if (goal.categoryGoals) {
+      Object.keys(goal.categoryGoals).forEach(category => {
+        const target = goal.categoryGoals[category];
+        const current = currentAnalysis[category]?.score || 0;
+        categoryProgress[category] = {
+          current,
+          target,
+          progress: Math.min((current / target) * 100, 100),
+          remaining: Math.max(target - current, 0),
+          isAchieved: current >= target
+        };
+      });
+    }
+
+    return {
+      hasGoal: true,
+      goal: {
+        targetScore,
+        targetDate: goal.targetDate,
+        description: goal.description
+      },
+      progress: {
+        current: currentScore,
+        target: targetScore,
+        progress: Math.round(progress),
+        remaining,
+        isAchieved,
+        percentageComplete: Math.round(progress)
+      },
+      categoryProgress,
+      estimatedCompletion: remaining > 0 && goal.targetDate 
+        ? this.estimateCompletionDate(currentScore, targetScore, goal.targetDate, url)
+        : null
+    };
+  },
+
+  estimateCompletionDate(currentScore, targetScore, targetDate, url) {
+    const history = this.getAnalysisHistory(url);
+    if (history.length < 2) {
+      return null;
+    }
+
+    // Calculate average improvement rate
+    const recentHistory = history.slice(-5); // Last 5 analyses
+    let totalImprovement = 0;
+    let totalDays = 0;
+
+    for (let i = 1; i < recentHistory.length; i++) {
+      const daysDiff = (new Date(recentHistory[i].timestamp) - new Date(recentHistory[i - 1].timestamp)) / (1000 * 60 * 60 * 24);
+      const scoreDiff = recentHistory[i].overallScore - recentHistory[i - 1].overallScore;
+      if (daysDiff > 0 && scoreDiff > 0) {
+        totalImprovement += scoreDiff / daysDiff; // Points per day
+        totalDays += daysDiff;
+      }
+    }
+
+    if (totalDays === 0 || totalImprovement <= 0) {
+      return null;
+    }
+
+    const avgImprovementPerDay = totalImprovement / (recentHistory.length - 1);
+    const remainingPoints = targetScore - currentScore;
+    const estimatedDays = remainingPoints / avgImprovementPerDay;
+    const estimatedDate = new Date();
+    estimatedDate.setDate(estimatedDate.getDate() + estimatedDays);
+
+    return {
+      estimatedDate: estimatedDate.toISOString(),
+      estimatedDays: Math.ceil(estimatedDays),
+      onTrack: targetDate ? estimatedDate <= new Date(targetDate) : null,
+      improvementRate: avgImprovementPerDay.toFixed(2)
+    };
+  },
+
+  // Get progress summary
+  getProgressSummary(url, currentAnalysis) {
+    const history = this.getAnalysisHistory(url);
+    const comparison = this.compareWithPrevious(currentAnalysis, url);
+    const trends = this.getScoreTrends(url, 30);
+    const goalProgress = this.checkGoalProgress(currentAnalysis, url);
+
+    return {
+      history: {
+        totalAnalyses: history.length,
+        firstAnalysis: history.length > 0 ? history[0].date : null,
+        lastAnalysis: history.length > 0 ? history[history.length - 1].date : null
+      },
+      comparison,
+      trends,
+      goalProgress,
+      milestones: this.getMilestones(history, currentAnalysis.overallScore)
+    };
+  },
+
+  // Get achievement milestones
+  getMilestones(history, currentScore) {
+    const milestones = [];
+    
+    if (history.length >= 1) {
+      milestones.push({
+        type: 'first_analysis',
+        achieved: true,
+        date: history[0].date,
+        description: 'First portfolio analysis completed'
+      });
+    }
+
+    if (history.length >= 5) {
+      milestones.push({
+        type: 'five_analyses',
+        achieved: true,
+        date: history[4].date,
+        description: 'Completed 5 portfolio analyses'
+      });
+    }
+
+    if (history.length >= 10) {
+      milestones.push({
+        type: 'ten_analyses',
+        achieved: true,
+        date: history[9].date,
+        description: 'Completed 10 portfolio analyses'
+      });
+    }
+
+    if (currentScore >= 70) {
+      milestones.push({
+        type: 'score_70',
+        achieved: true,
+        description: 'Achieved 70+ overall score'
+      });
+    }
+
+    if (currentScore >= 80) {
+      milestones.push({
+        type: 'score_80',
+        achieved: true,
+        description: 'Achieved 80+ overall score'
+      });
+    }
+
+    if (currentScore >= 90) {
+      milestones.push({
+        type: 'score_90',
+        achieved: true,
+        description: 'Achieved 90+ overall score - Excellent!'
+      });
+    }
+
+    // Check for improvement milestones
+    if (history.length >= 2) {
+      const firstScore = history[0].overallScore;
+      const improvement = currentScore - firstScore;
+      
+      if (improvement >= 10) {
+        milestones.push({
+          type: 'improvement_10',
+          achieved: true,
+          description: `Improved by ${improvement} points since first analysis`
+        });
+      }
+
+      if (improvement >= 20) {
+        milestones.push({
+          type: 'improvement_20',
+          achieved: true,
+          description: `Improved by ${improvement} points - Great progress!`
+        });
+      }
+    }
+
+    return milestones;
+  },
+
+  // Analyze navigation structure
+  analyzeNavigationStructure(doc, url) {
+    const navigation = {
+      score: 0,
+      issues: [],
+      strengths: [],
+      details: {}
+    };
+
+    // Find navigation elements
+    const navElements = doc.querySelectorAll('nav, [role="navigation"], header nav, .navbar, .navigation, [class*="nav"]');
+    const hasNav = navElements.length > 0;
+
+    if (hasNav) {
+      navigation.score += 20;
+      navigation.strengths.push(`Navigation structure found (${navElements.length} nav element(s))`);
+      navigation.details.navElements = navElements.length;
+    } else {
+      navigation.issues.push('No navigation element found');
+    }
+
+    // Find all links
+    const allLinks = doc.querySelectorAll('a[href]');
+    const internalLinks = [];
+    const externalLinks = [];
+    const anchorLinks = [];
+    const commonPages = {
+      about: false,
+      projects: false,
+      portfolio: false,
+      contact: false,
+      blog: false,
+      resume: false,
+      services: false
+    };
+
+    const baseUrl = new URL(url);
+    const baseDomain = baseUrl.hostname;
+
+    allLinks.forEach(link => {
+      const href = link.getAttribute('href') || '';
+      const linkText = (link.textContent || '').toLowerCase().trim();
+
+      // Check for common page links
+      if (linkText.includes('about') || href.toLowerCase().includes('/about')) commonPages.about = true;
+      if (linkText.includes('project') || href.toLowerCase().includes('/project')) commonPages.projects = true;
+      if (linkText.includes('portfolio') || href.toLowerCase().includes('/portfolio')) commonPages.portfolio = true;
+      if (linkText.includes('contact') || href.toLowerCase().includes('/contact')) commonPages.contact = true;
+      if (linkText.includes('blog') || href.toLowerCase().includes('/blog')) commonPages.blog = true;
+      if (linkText.includes('resume') || href.toLowerCase().includes('/resume')) commonPages.resume = true;
+      if (linkText.includes('service') || href.toLowerCase().includes('/service')) commonPages.services = true;
+
+      if (href.startsWith('#')) {
+        anchorLinks.push(href);
+      } else if (href.startsWith('http')) {
+        try {
+          const linkUrl = new URL(href);
+          if (linkUrl.hostname === baseDomain || linkUrl.hostname === `www.${baseDomain}` || baseDomain === `www.${linkUrl.hostname}`) {
+            internalLinks.push(href);
+          } else {
+            externalLinks.push(href);
+          }
+        } catch {
+          // Invalid URL, skip
+        }
+      } else if (href.startsWith('/') || !href.startsWith('mailto:') && !href.startsWith('tel:')) {
+        internalLinks.push(href);
+      }
+    });
+
+    navigation.details.links = {
+      total: allLinks.length,
+      internal: internalLinks.length,
+      external: externalLinks.length,
+      anchor: anchorLinks.length
+    };
+
+    // Evaluate navigation quality
+    if (internalLinks.length >= 3) {
+      navigation.score += 15;
+      navigation.strengths.push(`Good internal linking (${internalLinks.length} internal links)`);
+    } else if (internalLinks.length > 0) {
+      navigation.score += 10;
+      navigation.issues.push(`Limited internal links (${internalLinks.length}) - consider adding more pages`);
+    } else {
+      navigation.issues.push('No internal links found - single page portfolio?');
+    }
+
+    // Check for common portfolio pages
+    const foundPages = Object.values(commonPages).filter(v => v === true).length;
+    if (foundPages >= 4) {
+      navigation.score += 20;
+      navigation.strengths.push(`Comprehensive site structure (${foundPages} common pages found)`);
+    } else if (foundPages >= 2) {
+      navigation.score += 10;
+      navigation.strengths.push(`Basic site structure (${foundPages} pages found)`);
+    } else {
+      navigation.issues.push('Limited page structure - consider adding About, Projects, Contact pages');
+    }
+
+    navigation.details.commonPages = commonPages;
+    navigation.details.foundPages = foundPages;
+
+    // Check for sitemap
+    const sitemapLink = doc.querySelector('link[rel="sitemap"], a[href*="sitemap"]');
+    if (sitemapLink) {
+      navigation.score += 5;
+      navigation.strengths.push('Sitemap found');
+      navigation.details.hasSitemap = true;
+    } else {
+      navigation.issues.push('No sitemap found - consider adding one for SEO');
+      navigation.details.hasSitemap = false;
+    }
+
+    // Check for breadcrumbs
+    const breadcrumbs = doc.querySelector('[class*="breadcrumb"], nav[aria-label*="breadcrumb"], [role="navigation"][aria-label*="breadcrumb"]');
+    if (breadcrumbs) {
+      navigation.score += 5;
+      navigation.strengths.push('Breadcrumb navigation found');
+      navigation.details.hasBreadcrumbs = true;
+    } else {
+      navigation.details.hasBreadcrumbs = false;
+    }
+
+    // Check for mobile menu
+    const mobileMenu = doc.querySelector('[class*="mobile"], [class*="hamburger"], [class*="menu-toggle"], button[aria-label*="menu"]');
+    if (mobileMenu) {
+      navigation.score += 5;
+      navigation.strengths.push('Mobile menu detected');
+      navigation.details.hasMobileMenu = true;
+    } else {
+      navigation.details.hasMobileMenu = false;
+    }
+
+    navigation.score = Math.min(navigation.score, 100);
+    return navigation;
+  },
+
+  // Discover internal pages
+  discoverInternalPages(doc, baseUrl) {
+    const pages = {
+      discovered: [],
+      commonPages: {},
+      recommendations: []
+    };
+
+    const allLinks = doc.querySelectorAll('a[href]');
+    const baseDomain = new URL(baseUrl).hostname;
+    const uniquePages = new Set();
+
+    allLinks.forEach(link => {
+      const href = link.getAttribute('href') || '';
+      let pageUrl = null;
+
+      if (href.startsWith('http')) {
+        try {
+          const linkUrl = new URL(href);
+          if (linkUrl.hostname === baseDomain || linkUrl.hostname === `www.${baseDomain}`) {
+            pageUrl = href;
+          }
+        } catch {
+          // Invalid URL
+        }
+      } else if (href.startsWith('/')) {
+        try {
+          pageUrl = new URL(href, baseUrl).href;
+        } catch {
+          // Invalid URL
+        }
+      } else if (!href.startsWith('#') && !href.startsWith('mailto:') && !href.startsWith('tel:')) {
+        try {
+          pageUrl = new URL(href, baseUrl).href;
+        } catch {
+          // Invalid URL
+        }
+      }
+
+      if (pageUrl && !uniquePages.has(pageUrl)) {
+        uniquePages.add(pageUrl);
+        const urlPath = new URL(pageUrl).pathname.toLowerCase();
+        
+        pages.discovered.push({
+          url: pageUrl,
+          path: urlPath,
+          linkText: (link.textContent || '').trim()
+        });
+
+        // Categorize common pages
+        if (urlPath.includes('/about') || urlPath === '/about') {
+          pages.commonPages.about = pageUrl;
+        }
+        if (urlPath.includes('/project') || urlPath.includes('/portfolio') || urlPath.includes('/work')) {
+          pages.commonPages.projects = pageUrl;
+        }
+        if (urlPath.includes('/contact')) {
+          pages.commonPages.contact = pageUrl;
+        }
+        if (urlPath.includes('/blog') || urlPath.includes('/articles')) {
+          pages.commonPages.blog = pageUrl;
+        }
+        if (urlPath.includes('/resume') || urlPath.includes('/cv')) {
+          pages.commonPages.resume = pageUrl;
+        }
+      }
+    });
+
+    // Generate recommendations for missing common pages
+    if (!pages.commonPages.about) {
+      pages.recommendations.push({
+        page: 'About',
+        description: 'Add an About page to tell your story and background',
+        priority: 'high'
+      });
+    }
+
+    if (!pages.commonPages.projects && !pages.commonPages.portfolio) {
+      pages.recommendations.push({
+        page: 'Projects/Portfolio',
+        description: 'Add a Projects or Portfolio page to showcase your work',
+        priority: 'high'
+      });
+    }
+
+    if (!pages.commonPages.contact) {
+      pages.recommendations.push({
+        page: 'Contact',
+        description: 'Add a Contact page for easy communication',
+        priority: 'high'
+      });
+    }
+
+    pages.totalPages = pages.discovered.length;
+    return pages;
+  },
+
+  // Analyze site architecture
+  analyzeSiteArchitecture(doc, url, discoveredPages) {
+    const architecture = {
+      score: 0,
+      issues: [],
+      strengths: [],
+      details: {}
+    };
+
+    // Check page structure
+    const hasHeader = doc.querySelector('header, [role="banner"]') !== null;
+    const hasMain = doc.querySelector('main, [role="main"]') !== null;
+    const hasFooter = doc.querySelector('footer, [role="contentinfo"]') !== null;
+
+    let structureScore = 0;
+    if (hasHeader) {
+      structureScore += 10;
+      architecture.strengths.push('Header section present');
+    } else {
+      architecture.issues.push('No header section found');
+    }
+
+    if (hasMain) {
+      structureScore += 10;
+      architecture.strengths.push('Main content area present');
+    } else {
+      architecture.issues.push('No main content area found');
+    }
+
+    if (hasFooter) {
+      structureScore += 10;
+      architecture.strengths.push('Footer section present');
+    } else {
+      architecture.issues.push('No footer section found');
+    }
+
+    architecture.score += structureScore;
+    architecture.details.structure = {
+      hasHeader,
+      hasMain,
+      hasFooter
+    };
+
+    // Check for consistent navigation
+    const navElements = doc.querySelectorAll('nav, [role="navigation"]');
+    if (navElements.length > 0) {
+      architecture.score += 10;
+      architecture.strengths.push('Navigation structure present');
+    }
+
+    // Evaluate page count
+    const pageCount = discoveredPages.totalPages || 1;
+    if (pageCount >= 5) {
+      architecture.score += 15;
+      architecture.strengths.push(`Comprehensive site structure (${pageCount} pages)`);
+    } else if (pageCount >= 3) {
+      architecture.score += 10;
+      architecture.strengths.push(`Good site structure (${pageCount} pages)`);
+    } else if (pageCount === 1) {
+      architecture.issues.push('Single page portfolio - consider adding more pages for better organization');
+    }
+
+    architecture.details.pageCount = pageCount;
+
+    // Check for consistent URL structure
+    const urls = discoveredPages.discovered.map(p => p.path);
+    const urlPatterns = {
+      hasSlash: urls.filter(u => u.startsWith('/')).length,
+      hasExtension: urls.filter(u => u.match(/\.[a-z]{2,4}$/)).length,
+      hasTrailingSlash: urls.filter(u => u.endsWith('/')).length
+    };
+
+    const consistentStructure = urlPatterns.hasSlash === urls.length || 
+                                urlPatterns.hasExtension === urls.length ||
+                                urlPatterns.hasTrailingSlash === urls.length;
+
+    if (consistentStructure && urls.length > 1) {
+      architecture.score += 10;
+      architecture.strengths.push('Consistent URL structure');
+      architecture.details.urlStructure = 'consistent';
+    } else if (urls.length > 1) {
+      architecture.issues.push('Inconsistent URL structure - consider standardizing');
+      architecture.details.urlStructure = 'inconsistent';
+    }
+
+    // Check for 404 page (can't really detect, but can recommend)
+    architecture.details.has404Page = 'unknown';
+    architecture.recommendations = [
+      'Ensure all internal links work (no 404 errors)',
+      'Create a custom 404 page for better UX',
+      'Use consistent navigation across all pages',
+      'Implement breadcrumbs for multi-page sites'
+    ];
+
+    architecture.score = Math.min(architecture.score, 100);
+    return architecture;
+  },
+
+  // Attempt to analyze additional pages
+  async analyzeAdditionalPages(baseUrl, discoveredPages) {
+    const additionalAnalyses = [];
+    const pagesToAnalyze = [
+      discoveredPages.commonPages.about,
+      discoveredPages.commonPages.projects,
+      discoveredPages.commonPages.contact
+    ].filter(Boolean).slice(0, 3); // Limit to 3 pages to avoid too many requests
+
+    for (const pageUrl of pagesToAnalyze) {
+      try {
+        const response = await fetch(pageUrl, {
+          method: 'GET',
+          mode: 'cors',
+          headers: { 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' },
+        });
+
+        if (response.ok) {
+          const html = await response.text();
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(html, 'text/html');
+          
+          const title = doc.querySelector('title')?.textContent?.trim() || null;
+          const hasContent = (doc.body?.textContent || '').trim().length > 100;
+          const hasImages = doc.querySelectorAll('img').length > 0;
+          const hasHeadings = doc.querySelectorAll('h1, h2, h3').length > 0;
+
+          additionalAnalyses.push({
+            url: pageUrl,
+            accessible: true,
+            title,
+            hasContent,
+            hasImages,
+            hasHeadings,
+            quality: (title ? 25 : 0) + (hasContent ? 40 : 0) + (hasImages ? 15 : 0) + (hasHeadings ? 20 : 0)
+          });
+        }
+      } catch (error) {
+        // Page not accessible (CORS or other error)
+        additionalAnalyses.push({
+          url: pageUrl,
+          accessible: false,
+          error: error.message
+        });
+      }
+    }
+
+    return additionalAnalyses;
+  },
+
+  // Combined multi-page analysis
+  async performMultiPageAnalysis(doc, url, html) {
+    const navigation = this.analyzeNavigationStructure(doc, url);
+    const discoveredPages = this.discoverInternalPages(doc, url);
+    const architecture = this.analyzeSiteArchitecture(doc, url, discoveredPages);
+    
+    // Attempt to analyze additional pages (may fail due to CORS)
+    const additionalPages = await this.analyzeAdditionalPages(url, discoveredPages).catch(() => []);
+
+    // Calculate overall multi-page score
+    const multiPageScore = Math.round(
+      navigation.score * 0.4 +
+      architecture.score * 0.4 +
+      (discoveredPages.totalPages >= 3 ? 20 : discoveredPages.totalPages * 7)
+    );
+
+    return {
+      score: Math.min(multiPageScore, 100),
+      navigation,
+      discoveredPages,
+      architecture,
+      additionalPages,
+      summary: {
+        totalPages: discoveredPages.totalPages,
+        analyzedPages: 1 + additionalPages.filter(p => p.accessible).length,
+        commonPagesFound: Object.keys(discoveredPages.commonPages).length,
+        navigationQuality: navigation.score,
+        architectureQuality: architecture.score
+      }
+    };
+  },
+
+  // Get field-specific recommendations
+  getFieldSpecificRecommendations(industry, analysis) {
+    const recommendations = {
+      mustHave: [],
+      shouldHave: [],
+      niceToHave: [],
+      industrySpecific: []
+    };
+
+    switch (industry) {
+      case 'Web Developer':
+        recommendations.mustHave = [
+          'Live project demos or deployed applications',
+          'GitHub repository links with clean, documented code',
+          'Technology stack clearly displayed for each project',
+          'Responsive design demonstration'
+        ];
+        recommendations.shouldHave = [
+          'Code snippets or technical explanations',
+          'Performance metrics (load times, optimization)',
+          'API integrations or backend work examples',
+          'Testing and quality assurance practices'
+        ];
+        recommendations.niceToHave = [
+          'Open source contributions',
+          'Technical blog posts or articles',
+          'Contributions to developer communities',
+          'Certifications or courses completed'
+        ];
+        recommendations.industrySpecific = [
+          'Show understanding of modern frameworks (React, Vue, Angular)',
+          'Demonstrate knowledge of version control (Git)',
+          'Include both frontend and backend projects if full-stack',
+          'Show responsive design across different devices'
+        ];
+        break;
+
+      case 'UI/UX Designer':
+        recommendations.mustHave = [
+          'High-quality design portfolio with case studies',
+          'Design process documentation (research, wireframes, iterations)',
+          'Before/after design comparisons',
+          'User-centered design approach demonstration'
+        ];
+        recommendations.shouldHave = [
+          'Interactive prototypes or design mockups',
+          'User research and testing results',
+          'Design system or style guide',
+          'Accessibility considerations in designs'
+        ];
+        recommendations.niceToHave = [
+          'Design tools proficiency (Figma, Sketch, Adobe XD)',
+          'Animation or micro-interaction examples',
+          'Brand identity work',
+          'Design thinking methodology'
+        ];
+        recommendations.industrySpecific = [
+          'Portfolio itself should demonstrate excellent design',
+          'Show understanding of user psychology and behavior',
+          'Include mobile and desktop design examples',
+          'Demonstrate collaboration with developers'
+        ];
+        break;
+
+      case 'Mobile Developer':
+        recommendations.mustHave = [
+          'App Store or Play Store links to published apps',
+          'Screenshots and app demos',
+          'Platform-specific projects (iOS, Android, or both)',
+          'Performance and optimization metrics'
+        ];
+        recommendations.shouldHave = [
+          'Native vs. cross-platform framework experience',
+          'Push notifications and backend integration',
+          'App analytics and user metrics',
+          'Mobile-specific design considerations'
+        ];
+        recommendations.niceToHave = [
+          'App store optimization (ASO) knowledge',
+          'In-app purchase or monetization examples',
+          'Offline functionality demonstrations',
+          'Mobile security best practices'
+        ];
+        recommendations.industrySpecific = [
+          'Show both iOS and Android projects if applicable',
+          'Demonstrate understanding of platform guidelines',
+          'Include app performance metrics',
+          'Show responsive design for different screen sizes'
+        ];
+        break;
+
+      case 'Data Scientist':
+        recommendations.mustHave = [
+          'Data visualization examples and dashboards',
+          'Quantifiable results and metrics',
+          'Technical methodology explanations',
+          'Project outcomes with measurable impact'
+        ];
+        recommendations.shouldHave = [
+          'Jupyter notebooks or code examples',
+          'Machine learning model demonstrations',
+          'Statistical analysis examples',
+          'Data cleaning and preprocessing work'
+        ];
+        recommendations.niceToHave = [
+          'Research papers or publications',
+          'Kaggle competitions or achievements',
+          'Data storytelling examples',
+          'Big data technologies experience'
+        ];
+        recommendations.industrySpecific = [
+          'Show data-driven decision making',
+          'Include metrics and KPIs in case studies',
+          'Demonstrate statistical and analytical skills',
+          'Show ability to communicate insights clearly'
+        ];
+        break;
+
+      case 'DevOps Engineer':
+        recommendations.mustHave = [
+          'CI/CD pipeline examples',
+          'Infrastructure as Code (IaC) demonstrations',
+          'Cloud platform experience (AWS, Azure, GCP)',
+          'Containerization and orchestration examples'
+        ];
+        recommendations.shouldHave = [
+          'Monitoring and logging solutions',
+          'Security and compliance implementations',
+          'Automation scripts and tools',
+          'Performance optimization examples'
+        ];
+        recommendations.niceToHave = [
+          'Open source contributions to DevOps tools',
+          'Certifications (AWS, Kubernetes, etc.)',
+          'Infrastructure diagrams and documentation',
+          'Disaster recovery and backup strategies'
+        ];
+        recommendations.industrySpecific = [
+          'Show understanding of scalable infrastructure',
+          'Demonstrate automation and efficiency improvements',
+          'Include metrics on uptime, performance, cost savings',
+          'Show collaboration with development teams'
+        ];
+        break;
+
+      default:
+        recommendations.mustHave = [
+          'Clear value proposition',
+          'Professional presentation',
+          'Contact information',
+          'Relevant work examples'
+        ];
+    }
+
+    return recommendations;
+  },
+
+  // Analyze role-specific requirements
+  analyzeRoleSpecificRequirements(industry, analysis) {
+    const requirements = {
+      met: [],
+      missing: [],
+      score: 0,
+      details: {}
+    };
+
+    const roleRequirements = {
+      'Web Developer': {
+        'Live Demos': analysis.content?.details?.projects?.links?.live > 0,
+        'GitHub Links': analysis.content?.details?.projects?.links?.github > 0,
+        'Tech Stack': analysis.content?.details?.projects?.technologies?.length >= 5,
+        'Responsive Design': analysis.visual?.details?.layout?.responsive === true,
+        'Performance': analysis.performance?.score >= 70
+      },
+      'UI/UX Designer': {
+        'Case Studies': analysis.content?.details?.caseStudy?.structure?.completeness === 'complete',
+        'Visual Quality': analysis.visual?.score >= 80,
+        'Design Process': analysis.content?.details?.caseStudy?.hasBeforeAfter === true,
+        'Portfolio Design': analysis.designQuality >= 75,
+        'Accessibility': analysis.accessibility?.score >= 70
+      },
+      'Mobile Developer': {
+        'App Links': false, // Would need to check for app store links
+        'Platform Coverage': false, // Would need to detect iOS/Android
+        'Performance Metrics': analysis.content?.details?.caseStudy?.metrics?.length >= 2,
+        'Mobile Responsive': analysis.mobileResponsive === true,
+        'Performance': analysis.performance?.score >= 70
+      },
+      'Data Scientist': {
+        'Data Visualizations': analysis.visual?.details?.images?.total > 0,
+        'Quantifiable Results': analysis.content?.details?.caseStudy?.metrics?.length >= 3,
+        'Technical Depth': analysis.content?.details?.writing?.wordCount >= 500,
+        'Methodology': analysis.content?.details?.caseStudy?.structure?.hasSolution === true,
+        'Impact Metrics': analysis.content?.details?.caseStudy?.structure?.hasImpact === true
+      },
+      'DevOps Engineer': {
+        'CI/CD Examples': false, // Would need content analysis
+        'Cloud Experience': false, // Would need keyword detection
+        'Automation': false, // Would need content analysis
+        'Documentation': analysis.content?.details?.writing?.wordCount >= 300,
+        'Security': analysis.security?.score >= 70
+      }
+    };
+
+    const industryRequirements = roleRequirements[industry] || roleRequirements['Web Developer'];
+    let metCount = 0;
+    const totalRequirements = Object.keys(industryRequirements).length;
+
+    Object.entries(industryRequirements).forEach(([requirement, met]) => {
+      if (met) {
+        requirements.met.push(requirement);
+        metCount++;
+      } else {
+        requirements.missing.push(requirement);
+      }
+    });
+
+    requirements.score = Math.round((metCount / totalRequirements) * 100);
+    requirements.details = {
+      metCount,
+      totalRequirements,
+      requirements: industryRequirements
+    };
+
+    return requirements;
+  },
+
+  // Analyze ATS-friendly optimization
+  analyzeATSOptimization(doc, bodyText, analysis) {
+    const ats = {
+      score: 0,
+      issues: [],
+      strengths: [],
+      details: {}
+    };
+
+    // Check for keyword optimization
+    const commonKeywords = [
+      'skills', 'experience', 'education', 'certification', 'project',
+      'achievement', 'technology', 'proficiency', 'expertise', 'qualification'
+    ];
+    const keywordsFound = commonKeywords.filter(keyword => 
+      bodyText.toLowerCase().includes(keyword.toLowerCase())
+    ).length;
+
+    if (keywordsFound >= 7) {
+      ats.score += 15;
+      ats.strengths.push(`Good keyword usage (${keywordsFound}/10 common keywords)`);
+    } else if (keywordsFound >= 4) {
+      ats.score += 10;
+      ats.issues.push(`Limited keyword usage (${keywordsFound}/10) - consider adding more relevant terms`);
+    } else {
+      ats.issues.push('Very limited keyword usage - may affect ATS parsing');
+    }
+
+    ats.details.keywordsFound = keywordsFound;
+    ats.details.totalKeywords = commonKeywords.length;
+
+    // Check for structured content
+    const hasHeadings = doc.querySelectorAll('h1, h2, h3').length >= 3;
+    const hasLists = doc.querySelectorAll('ul, ol').length > 0;
+    const hasSections = doc.querySelectorAll('section, article').length > 0;
+
+    if (hasHeadings && hasLists && hasSections) {
+      ats.score += 20;
+      ats.strengths.push('Well-structured content (headings, lists, sections)');
+    } else {
+      if (!hasHeadings) ats.issues.push('Limited heading structure - use H1, H2, H3 for better organization');
+      if (!hasLists) ats.issues.push('No lists found - use bullet points for skills/achievements');
+      if (!hasSections) ats.issues.push('No semantic sections - use <section> or <article> tags');
+    }
+
+    ats.details.structure = {
+      hasHeadings,
+      hasLists,
+      hasSections
+    };
+
+    // Check for skills section
+    const hasSkillsSection = bodyText.toLowerCase().includes('skill') || 
+                            doc.querySelector('[id*="skill"], [class*="skill"]') !== null;
+    if (hasSkillsSection) {
+      ats.score += 15;
+      ats.strengths.push('Skills section found');
+    } else {
+      ats.issues.push('No skills section found - important for ATS parsing');
+    }
+
+    ats.details.hasSkillsSection = hasSkillsSection;
+
+    // Check for experience/work history
+    const hasExperience = bodyText.toLowerCase().includes('experience') || 
+                         bodyText.toLowerCase().includes('work') ||
+                         bodyText.toLowerCase().includes('employment');
+    if (hasExperience) {
+      ats.score += 15;
+      ats.strengths.push('Experience/work history section found');
+    } else {
+      ats.issues.push('No experience section found - important for recruiters');
+    }
+
+    ats.details.hasExperience = hasExperience;
+
+    // Check for education section
+    const hasEducation = bodyText.toLowerCase().includes('education') || 
+                        bodyText.toLowerCase().includes('degree') ||
+                        bodyText.toLowerCase().includes('university');
+    if (hasEducation) {
+      ats.score += 10;
+      ats.strengths.push('Education section found');
+    } else {
+      ats.issues.push('No education section found');
+    }
+
+    ats.details.hasEducation = hasEducation;
+
+    // Check for contact information
+    const hasContact = analysis.hasContactInfo || 
+                      doc.querySelector('a[href^="mailto:"]') !== null ||
+                      /[\w.-]+@[\w.-]+\.\w+/.test(bodyText);
+    if (hasContact) {
+      ats.score += 10;
+      ats.strengths.push('Contact information present');
+    } else {
+      ats.issues.push('No contact information found');
+    }
+
+    ats.details.hasContact = hasContact;
+
+    // Check for dates (important for ATS)
+    const hasDates = /\d{4}|\d{1,2}\/\d{1,2}\/\d{2,4}|(january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{4}/i.test(bodyText);
+    if (hasDates) {
+      ats.score += 10;
+      ats.strengths.push('Dates found in content (important for timeline)');
+    } else {
+      ats.issues.push('No dates found - consider adding dates to experience/education');
+    }
+
+    ats.details.hasDates = hasDates;
+
+    // Check for certifications
+    const hasCertifications = bodyText.toLowerCase().includes('certification') || 
+                             bodyText.toLowerCase().includes('certificate') ||
+                             bodyText.toLowerCase().includes('certified');
+    if (hasCertifications) {
+      ats.score += 5;
+      ats.strengths.push('Certifications mentioned');
+    }
+
+    ats.details.hasCertifications = hasCertifications;
+
+    ats.score = Math.min(ats.score, 100);
+    return ats;
+  },
+
+  // Analyze from recruiter perspective
+  analyzeRecruiterPerspective(analysis, industry) {
+    const recruiter = {
+      score: 0,
+      issues: [],
+      strengths: [],
+      details: {},
+      timeToEvaluate: 0 // Estimated seconds
+    };
+
+    // First impression (load time, visual appeal)
+    const loadTime = analysis.performance?.loadTime || 0;
+    if (loadTime < 2000) {
+      recruiter.score += 15;
+      recruiter.strengths.push('Fast loading time - good first impression');
+      recruiter.timeToEvaluate += 5;
+    } else if (loadTime < 5000) {
+      recruiter.score += 10;
+      recruiter.timeToEvaluate += 10;
+    } else {
+      recruiter.issues.push('Slow loading time - may lose recruiter attention');
+      recruiter.timeToEvaluate += 20;
+    }
+
+    recruiter.details.loadTime = loadTime;
+
+    // Clarity and organization
+    const hasClearStructure = analysis.visual?.details?.layout?.semanticElements >= 3;
+    const hasNavigation = analysis.multiPage?.navigation?.score >= 60;
+    const hasHeadings = analysis.content?.details?.writing?.wordCount > 0;
+
+    if (hasClearStructure && hasNavigation) {
+      recruiter.score += 20;
+      recruiter.strengths.push('Clear site structure - easy to navigate');
+      recruiter.timeToEvaluate += 10;
+    } else {
+      recruiter.issues.push('Unclear structure - may confuse recruiters');
+      recruiter.timeToEvaluate += 30;
+    }
+
+    // Key information visibility
+    const hasAbout = analysis.hasAboutSection || analysis.multiPage?.discoveredPages?.commonPages?.about;
+    const hasProjects = analysis.hasProjects || analysis.multiPage?.discoveredPages?.commonPages?.projects;
+    const hasContact = analysis.hasContactInfo || analysis.multiPage?.discoveredPages?.commonPages?.contact;
+
+    let keyInfoScore = 0;
+    if (hasAbout) {
+      keyInfoScore += 10;
+      recruiter.strengths.push('About section easily accessible');
+    } else {
+      recruiter.issues.push('About section not easily found');
+    }
+
+    if (hasProjects) {
+      keyInfoScore += 15;
+      recruiter.strengths.push('Projects/work easily accessible');
+    } else {
+      recruiter.issues.push('Projects/work not easily found - critical for recruiters');
+    }
+
+    if (hasContact) {
+      keyInfoScore += 10;
+      recruiter.strengths.push('Contact information easily accessible');
+    } else {
+      recruiter.issues.push('Contact information not easily found');
+    }
+
+    recruiter.score += keyInfoScore;
+    recruiter.details.keyInformation = {
+      hasAbout,
+      hasProjects,
+      hasContact
+    };
+
+    // Professional presentation
+    const designQuality = analysis.designQuality || 0;
+    if (designQuality >= 80) {
+      recruiter.score += 15;
+      recruiter.strengths.push('Professional design quality');
+      recruiter.timeToEvaluate += 5;
+    } else if (designQuality >= 60) {
+      recruiter.score += 10;
+      recruiter.timeToEvaluate += 10;
+    } else {
+      recruiter.issues.push('Design quality could be improved for professional impression');
+      recruiter.timeToEvaluate += 15;
+    }
+
+    // Content quality
+    const contentQuality = analysis.contentQuality || 0;
+    if (contentQuality >= 75) {
+      recruiter.score += 15;
+      recruiter.strengths.push('High-quality, engaging content');
+      recruiter.timeToEvaluate += 20;
+    } else if (contentQuality >= 50) {
+      recruiter.score += 10;
+      recruiter.timeToEvaluate += 15;
+    } else {
+      recruiter.issues.push('Content quality could be improved');
+      recruiter.timeToEvaluate += 10;
+    }
+
+    // Mobile accessibility (recruiters often browse on mobile)
+    if (analysis.mobileResponsive) {
+      recruiter.score += 10;
+      recruiter.strengths.push('Mobile responsive - accessible on all devices');
+    } else {
+      recruiter.issues.push('Not mobile responsive - may lose mobile recruiters');
+    }
+
+    // Call-to-action clarity
+    const hasCTAs = analysis.content?.details?.callToAction?.ctaButtons >= 2;
+    if (hasCTAs) {
+      recruiter.score += 10;
+      recruiter.strengths.push('Clear call-to-action buttons');
+    } else {
+      recruiter.issues.push('Limited call-to-action - make it easy for recruiters to contact you');
+    }
+
+    // Industry-specific recruiter expectations
+    if (industry === 'Web Developer' || industry === 'Mobile Developer') {
+      const hasCodeLinks = analysis.content?.details?.projects?.links?.github > 0;
+      if (hasCodeLinks) {
+        recruiter.score += 5;
+        recruiter.strengths.push('Code repositories accessible - shows technical skills');
+      } else {
+        recruiter.issues.push('No code repositories linked - important for developer roles');
+      }
+    }
+
+    if (industry === 'UI/UX Designer') {
+      const hasCaseStudies = analysis.content?.details?.caseStudy?.structure?.completeness === 'complete';
+      if (hasCaseStudies) {
+        recruiter.score += 5;
+        recruiter.strengths.push('Case studies present - shows design thinking');
+      } else {
+        recruiter.issues.push('No case studies - important for design roles');
+      }
+    }
+
+    recruiter.details.estimatedEvaluationTime = recruiter.timeToEvaluate;
+    recruiter.score = Math.min(recruiter.score, 100);
+
+    return recruiter;
+  },
+
+  // Combined industry-specific insights
+  getIndustrySpecificInsights(analysis, industry) {
+    const fieldRecommendations = this.getFieldSpecificRecommendations(industry, analysis);
+    const roleRequirements = this.analyzeRoleSpecificRequirements(industry, analysis);
+    const atsOptimization = this.analyzeATSOptimization(
+      analysis.doc || null,
+      analysis.bodyText || '',
+      analysis
+    );
+    const recruiterPerspective = this.analyzeRecruiterPerspective(analysis, industry);
+
+    return {
+      industry,
+      fieldRecommendations,
+      roleRequirements,
+      atsOptimization,
+      recruiterPerspective,
+      summary: {
+        roleRequirementsMet: `${roleRequirements.met.length}/${roleRequirements.details.totalRequirements}`,
+        atsScore: atsOptimization.score,
+        recruiterScore: recruiterPerspective.score,
+        estimatedRecruiterEvaluationTime: `${recruiterPerspective.details.estimatedEvaluationTime} seconds`
+      }
+    };
+  },
+
+  // Export and Sharing Functions
+  // Generate text report
+  generateTextReport(analysis) {
+    let report = `PORTFOLIO ANALYSIS REPORT\n`;
+    report += `========================\n\n`;
+    report += `URL: ${analysis.url}\n`;
+    report += `Analysis Date: ${new Date().toLocaleDateString()}\n`;
+    report += `Overall Score: ${analysis.overallScore}/100\n\n`;
+
+    report += `SCORE BREAKDOWN\n`;
+    report += `---------------\n`;
+    report += `Design Quality: ${analysis.designQuality}/100\n`;
+    report += `Content Quality: ${analysis.contentQuality}/100\n`;
+    report += `UX Score: ${analysis.uxScore}/100\n`;
+    report += `Mobile Responsive: ${analysis.mobileResponsive ? 'Yes' : 'No'}\n\n`;
+
+    if (analysis.seo) {
+      report += `SEO Score: ${analysis.seo.score}/100\n`;
+    }
+    if (analysis.accessibility) {
+      report += `Accessibility Score: ${analysis.accessibility.score}/100\n`;
+    }
+    if (analysis.performance) {
+      report += `Performance Score: ${analysis.performance.score}/100\n`;
+    }
+    if (analysis.security) {
+      report += `Security Score: ${analysis.security.score}/100\n`;
+    }
+    if (analysis.visual) {
+      report += `Visual Design Score: ${analysis.visual.score}/100\n`;
+    }
+    if (analysis.content) {
+      report += `Content Score: ${analysis.content.score}/100\n`;
+    }
+    report += `\n`;
+
+    if (analysis.competitive) {
+      report += `COMPETITIVE ANALYSIS\n`;
+      report += `-------------------\n`;
+      report += `Industry: ${analysis.competitive.industry}\n`;
+      report += `Percentile: ${analysis.competitive.benchmarks.percentile}\n`;
+      report += `Rating: ${analysis.competitive.benchmarks.rating}\n`;
+      report += `Industry Average: ${analysis.competitive.benchmarks.average}/100\n`;
+      report += `Top 25% Threshold: ${analysis.competitive.benchmarks.top25Percent}/100\n`;
+      report += `Top 10% Threshold: ${analysis.competitive.benchmarks.top10Percent}/100\n\n`;
+    }
+
+    if (analysis.strengths && analysis.strengths.length > 0) {
+      report += `STRENGTHS (${analysis.strengths.length})\n`;
+      report += `----------\n`;
+      analysis.strengths.forEach((strength, i) => {
+        report += `${i + 1}. ${strength}\n`;
+      });
+      report += `\n`;
+    }
+
+    if (analysis.issues && analysis.issues.length > 0) {
+      report += `ISSUES TO ADDRESS (${analysis.issues.length})\n`;
+      report += `-------------------\n`;
+      analysis.issues.forEach((issue, i) => {
+        report += `${i + 1}. ${issue}\n`;
+      });
+      report += `\n`;
+    }
+
+    if (analysis.recommendations) {
+      report += `RECOMMENDATIONS\n`;
+      report += `---------------\n`;
+      report += `Quick Wins: ${analysis.recommendations.summary.quickWinsCount}\n`;
+      report += `Long-term: ${analysis.recommendations.summary.longTermCount}\n`;
+      report += `High Priority: ${analysis.recommendations.summary.highPriorityCount}\n`;
+      report += `Potential Score Improvement: +${analysis.recommendations.summary.totalPotentialScore} points\n\n`;
+    }
+
+    if (analysis.industryInsights) {
+      report += `INDUSTRY INSIGHTS\n`;
+      report += `----------------\n`;
+      report += `Role Requirements Met: ${analysis.industryInsights.summary.roleRequirementsMet}\n`;
+      report += `ATS Score: ${analysis.industryInsights.summary.atsScore}/100\n`;
+      report += `Recruiter Score: ${analysis.industryInsights.summary.recruiterScore}/100\n`;
+      report += `Estimated Recruiter Evaluation Time: ${analysis.industryInsights.summary.estimatedRecruiterEvaluationTime}\n\n`;
+    }
+
+    if (analysis.progress && analysis.progress.comparison && analysis.progress.comparison.hasPrevious) {
+      report += `PROGRESS COMPARISON\n`;
+      report += `------------------\n`;
+      report += `Previous Score: ${analysis.progress.comparison.overallScore.previous}/100\n`;
+      report += `Current Score: ${analysis.progress.comparison.overallScore.current}/100\n`;
+      report += `Change: ${analysis.progress.comparison.overallScore.change > 0 ? '+' : ''}${analysis.progress.comparison.overallScore.change} points\n`;
+      report += `Trend: ${analysis.progress.comparison.overallScore.trend}\n\n`;
+    }
+
+    return report;
+  },
+
+  // Generate HTML report (for PDF conversion)
+  generateHTMLReport(analysis) {
+    const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Portfolio Analysis Report - ${analysis.url}</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 40px; line-height: 1.6; color: #333; }
+    h1 { color: #4f46e5; border-bottom: 3px solid #4f46e5; padding-bottom: 10px; }
+    h2 { color: #6366f1; margin-top: 30px; border-bottom: 2px solid #e5e7eb; padding-bottom: 5px; }
+    h3 { color: #818cf8; margin-top: 20px; }
+    .score { font-size: 2em; font-weight: bold; color: #4f46e5; }
+    .score-good { color: #10b981; }
+    .score-fair { color: #f59e0b; }
+    .score-poor { color: #ef4444; }
+    .strength { color: #10b981; margin: 5px 0; }
+    .issue { color: #ef4444; margin: 5px 0; }
+    .section { margin: 20px 0; padding: 15px; background: #f9fafb; border-radius: 8px; }
+    table { width: 100%; border-collapse: collapse; margin: 15px 0; }
+    th, td { padding: 10px; text-align: left; border-bottom: 1px solid #e5e7eb; }
+    th { background: #4f46e5; color: white; }
+    .badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 0.85em; }
+    .badge-success { background: #d1fae5; color: #065f46; }
+    .badge-warning { background: #fef3c7; color: #92400e; }
+    .badge-danger { background: #fee2e2; color: #991b1b; }
+    @media print { body { margin: 20px; } .no-print { display: none; } }
+  </style>
+</head>
+<body>
+  <h1>Portfolio Analysis Report</h1>
+  <p><strong>URL:</strong> ${analysis.url}</p>
+  <p><strong>Analysis Date:</strong> ${new Date().toLocaleDateString()}</p>
+  
+  <div class="section">
+    <h2>Overall Score</h2>
+    <div class="score ${analysis.overallScore >= 80 ? 'score-good' : analysis.overallScore >= 60 ? 'score-fair' : 'score-poor'}">
+      ${analysis.overallScore}/100
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Score Breakdown</h2>
+    <table>
+      <tr><th>Category</th><th>Score</th></tr>
+      <tr><td>Design Quality</td><td>${analysis.designQuality}/100</td></tr>
+      <tr><td>Content Quality</td><td>${analysis.contentQuality}/100</td></tr>
+      <tr><td>UX Score</td><td>${analysis.uxScore}/100</td></tr>
+      ${analysis.seo ? `<tr><td>SEO</td><td>${analysis.seo.score}/100</td></tr>` : ''}
+      ${analysis.accessibility ? `<tr><td>Accessibility</td><td>${analysis.accessibility.score}/100</td></tr>` : ''}
+      ${analysis.performance ? `<tr><td>Performance</td><td>${analysis.performance.score}/100</td></tr>` : ''}
+      ${analysis.security ? `<tr><td>Security</td><td>${analysis.security.score}/100</td></tr>` : ''}
+      ${analysis.visual ? `<tr><td>Visual Design</td><td>${analysis.visual.score}/100</td></tr>` : ''}
+      ${analysis.content ? `<tr><td>Content</td><td>${analysis.content.score}/100</td></tr>` : ''}
+    </table>
+  </div>
+
+  ${analysis.competitive ? `
+  <div class="section">
+    <h2>Competitive Analysis</h2>
+    <p><strong>Industry:</strong> ${analysis.competitive.industry}</p>
+    <p><strong>Percentile:</strong> ${analysis.competitive.benchmarks.percentile}</p>
+    <p><strong>Rating:</strong> ${analysis.competitive.benchmarks.rating}</p>
+    <p><strong>Industry Average:</strong> ${analysis.competitive.benchmarks.average}/100</p>
+  </div>
+  ` : ''}
+
+  ${analysis.strengths && analysis.strengths.length > 0 ? `
+  <div class="section">
+    <h2>Strengths (${analysis.strengths.length})</h2>
+    <ul>
+      ${analysis.strengths.map(s => `<li class="strength">✓ ${s}</li>`).join('')}
+    </ul>
+  </div>
+  ` : ''}
+
+  ${analysis.issues && analysis.issues.length > 0 ? `
+  <div class="section">
+    <h2>Issues to Address (${analysis.issues.length})</h2>
+    <ul>
+      ${analysis.issues.map(i => `<li class="issue">✗ ${i}</li>`).join('')}
+    </ul>
+  </div>
+  ` : ''}
+
+  ${analysis.recommendations ? `
+  <div class="section">
+    <h2>Recommendations</h2>
+    <p><strong>Quick Wins:</strong> ${analysis.recommendations.summary.quickWinsCount}</p>
+    <p><strong>Long-term Improvements:</strong> ${analysis.recommendations.summary.longTermCount}</p>
+    <p><strong>High Priority:</strong> ${analysis.recommendations.summary.highPriorityCount}</p>
+    <p><strong>Potential Score Improvement:</strong> +${analysis.recommendations.summary.totalPotentialScore} points</p>
+  </div>
+  ` : ''}
+
+  ${analysis.progress && analysis.progress.comparison && analysis.progress.comparison.hasPrevious ? `
+  <div class="section">
+    <h2>Progress Comparison</h2>
+    <p><strong>Previous Score:</strong> ${analysis.progress.comparison.overallScore.previous}/100</p>
+    <p><strong>Current Score:</strong> ${analysis.progress.comparison.overallScore.current}/100</p>
+    <p><strong>Change:</strong> ${analysis.progress.comparison.overallScore.change > 0 ? '+' : ''}${analysis.progress.comparison.overallScore.change} points</p>
+    <p><strong>Trend:</strong> ${analysis.progress.comparison.overallScore.trend}</p>
+  </div>
+  ` : ''}
+</body>
+</html>`;
+    return html;
+  },
+
+  // Export to JSON
+  exportToJSON(analysis) {
+    return JSON.stringify(analysis, null, 2);
+  },
+
+  // Export to CSV
+  exportToCSV(analysis) {
+    let csv = 'Category,Score,Status\n';
+    csv += `Overall Score,${analysis.overallScore},${analysis.overallScore >= 80 ? 'Good' : analysis.overallScore >= 60 ? 'Fair' : 'Poor'}\n`;
+    csv += `Design Quality,${analysis.designQuality},${analysis.designQuality >= 80 ? 'Good' : analysis.designQuality >= 60 ? 'Fair' : 'Poor'}\n`;
+    csv += `Content Quality,${analysis.contentQuality},${analysis.contentQuality >= 80 ? 'Good' : analysis.contentQuality >= 60 ? 'Fair' : 'Poor'}\n`;
+    csv += `UX Score,${analysis.uxScore},${analysis.uxScore >= 80 ? 'Good' : analysis.uxScore >= 60 ? 'Fair' : 'Poor'}\n`;
+    
+    if (analysis.seo) csv += `SEO,${analysis.seo.score},${analysis.seo.score >= 70 ? 'Good' : 'Needs Improvement'}\n`;
+    if (analysis.accessibility) csv += `Accessibility,${analysis.accessibility.score},${analysis.accessibility.score >= 70 ? 'Good' : 'Needs Improvement'}\n`;
+    if (analysis.performance) csv += `Performance,${analysis.performance.score},${analysis.performance.score >= 70 ? 'Good' : 'Needs Improvement'}\n`;
+    if (analysis.security) csv += `Security,${analysis.security.score},${analysis.security.score >= 70 ? 'Good' : 'Needs Improvement'}\n`;
+    if (analysis.visual) csv += `Visual Design,${analysis.visual.score},${analysis.visual.score >= 80 ? 'Good' : 'Needs Improvement'}\n`;
+    if (analysis.content) csv += `Content,${analysis.content.score},${analysis.content.score >= 75 ? 'Good' : 'Needs Improvement'}\n`;
+
+    csv += '\n';
+    csv += 'Issue,Category,Priority\n';
+    if (analysis.issues && analysis.issues.length > 0) {
+      analysis.issues.forEach(issue => {
+        // Try to categorize issue
+        let category = 'General';
+        if (issue.toLowerCase().includes('seo')) category = 'SEO';
+        else if (issue.toLowerCase().includes('accessibility') || issue.toLowerCase().includes('a11y')) category = 'Accessibility';
+        else if (issue.toLowerCase().includes('performance') || issue.toLowerCase().includes('speed')) category = 'Performance';
+        else if (issue.toLowerCase().includes('security') || issue.toLowerCase().includes('https')) category = 'Security';
+        else if (issue.toLowerCase().includes('design') || issue.toLowerCase().includes('visual')) category = 'Design';
+        else if (issue.toLowerCase().includes('content')) category = 'Content';
+        
+        csv += `"${issue.replace(/"/g, '""')}",${category},Medium\n`;
+      });
+    }
+
+    return csv;
+  },
+
+  // Generate improvement checklist
+  generateChecklist(analysis) {
+    const checklist = {
+      completed: [],
+      pending: [],
+      byCategory: {
+        seo: [],
+        accessibility: [],
+        performance: [],
+        security: [],
+        design: [],
+        content: []
+      }
+    };
+
+    // Convert recommendations to checklist items
+    if (analysis.recommendations) {
+      [...analysis.recommendations.quickWins, ...analysis.recommendations.longTerm].forEach(rec => {
+        const item = {
+          id: rec.id,
+          title: rec.title,
+          description: rec.description,
+          category: rec.category,
+          priority: rec.priority,
+          estimatedTime: rec.estimatedTime,
+          expectedImprovement: rec.expectedImprovement,
+          completed: false
+        };
+        
+        checklist.pending.push(item);
+        
+        // Categorize
+        const category = rec.category.toLowerCase();
+        if (checklist.byCategory[category]) {
+          checklist.byCategory[category].push(item);
+        }
+      });
+    }
+
+    return checklist;
+  },
+
+  // Export checklist to various formats
+  exportChecklist(analysis, format = 'json') {
+    const checklist = this.generateChecklist(analysis);
+
+    switch (format.toLowerCase()) {
+      case 'json':
+        return JSON.stringify(checklist, null, 2);
+      
+      case 'csv':
+        let csv = 'ID,Title,Category,Priority,Estimated Time,Expected Improvement,Status\n';
+        checklist.pending.forEach(item => {
+          csv += `${item.id},"${item.title.replace(/"/g, '""')}",${item.category},${item.priority},"${item.estimatedTime}","${item.expectedImprovement}",Pending\n`;
+        });
+        return csv;
+      
+      case 'text':
+        let text = 'PORTFOLIO IMPROVEMENT CHECKLIST\n';
+        text += '==================================\n\n';
+        text += `Total Items: ${checklist.pending.length}\n\n`;
+        
+        Object.keys(checklist.byCategory).forEach(category => {
+          if (checklist.byCategory[category].length > 0) {
+            text += `${category.toUpperCase()}\n`;
+            text += '-'.repeat(category.length) + '\n';
+            checklist.byCategory[category].forEach((item, i) => {
+              text += `[ ] ${i + 1}. ${item.title}\n`;
+              text += `    Description: ${item.description}\n`;
+              text += `    Priority: ${item.priority} | Time: ${item.estimatedTime}\n`;
+              text += `    Expected: ${item.expectedImprovement}\n\n`;
+            });
+          }
+        });
+        return text;
+      
+      default:
+        return JSON.stringify(checklist, null, 2);
+    }
+  },
+
+  // Generate comparison report
+  generateComparisonReport(currentAnalysis, previousAnalysis, url) {
+    if (!previousAnalysis) {
+      return {
+        hasComparison: false,
+        message: 'No previous analysis available for comparison'
+      };
+    }
+
+    const comparison = {
+      hasComparison: true,
+      url: url,
+      currentDate: new Date().toLocaleDateString(),
+      previousDate: previousAnalysis.date || 'Unknown',
+      overallScore: {
+        current: currentAnalysis.overallScore,
+        previous: previousAnalysis.overallScore,
+        change: currentAnalysis.overallScore - previousAnalysis.overallScore,
+        percentageChange: previousAnalysis.overallScore > 0 
+          ? ((currentAnalysis.overallScore - previousAnalysis.overallScore) / previousAnalysis.overallScore * 100).toFixed(1)
+          : 0
+      },
+      categoryChanges: {},
+      improvements: [],
+      regressions: [],
+      summary: {
+        totalImprovements: 0,
+        totalRegressions: 0,
+        netChange: 0
+      }
+    };
+
+    // Compare category scores
+    const categories = ['seo', 'accessibility', 'performance', 'security', 'socialMedia', 'visual', 'content'];
+    categories.forEach(category => {
+      const currentScore = currentAnalysis[category]?.score || 0;
+      const previousScore = previousAnalysis.scores?.[category] || 0;
+      const change = currentScore - previousScore;
+
+      comparison.categoryChanges[category] = {
+        current: currentScore,
+        previous: previousScore,
+        change: change,
+        percentageChange: previousScore > 0 
+          ? ((change / previousScore) * 100).toFixed(1)
+          : 0,
+        trend: change > 0 ? 'improved' : change < 0 ? 'declined' : 'unchanged'
+      };
+
+      if (change > 0) {
+        comparison.improvements.push({
+          category: category,
+          improvement: change,
+          message: `${category} improved by ${change} points`
+        });
+        comparison.summary.totalImprovements++;
+      } else if (change < 0) {
+        comparison.regressions.push({
+          category: category,
+          decline: Math.abs(change),
+          message: `${category} declined by ${Math.abs(change)} points`
+        });
+        comparison.summary.totalRegressions++;
+      }
+    });
+
+    comparison.summary.netChange = comparison.overallScore.change;
+
+    return comparison;
+  },
+
+  // Generate shareable link data
+  generateShareableData(analysis) {
+    // Create a shareable data object (could be stored and shared via URL)
+    const shareableData = {
+      url: analysis.url,
+      date: new Date().toISOString(),
+      overallScore: analysis.overallScore,
+      scores: {
+        designQuality: analysis.designQuality,
+        contentQuality: analysis.contentQuality,
+        uxScore: analysis.uxScore
+      },
+      summary: {
+        strengthsCount: analysis.strengths?.length || 0,
+        issuesCount: analysis.issues?.length || 0,
+        industry: analysis.competitive?.industry || 'Unknown',
+        percentile: analysis.competitive?.benchmarks?.percentile || 'Unknown'
+      }
+    };
+
+    // Encode to base64 for URL sharing (if needed)
+    const encoded = btoa(JSON.stringify(shareableData));
+    
+    return {
+      data: shareableData,
+      encoded: encoded,
+      shareableUrl: `${window.location.origin}${window.location.pathname}?share=${encoded}`,
+      text: this.generateTextReport(analysis)
+    };
+  },
+
+  // Export full analysis report
+  exportAnalysisReport(analysis, format = 'json') {
+    switch (format.toLowerCase()) {
+      case 'json':
+        return {
+          format: 'json',
+          data: this.exportToJSON(analysis),
+          filename: `portfolio-analysis-${new Date().toISOString().split('T')[0]}.json`,
+          mimeType: 'application/json'
+        };
+      
+      case 'csv':
+        return {
+          format: 'csv',
+          data: this.exportToCSV(analysis),
+          filename: `portfolio-analysis-${new Date().toISOString().split('T')[0]}.csv`,
+          mimeType: 'text/csv'
+        };
+      
+      case 'text':
+        return {
+          format: 'text',
+          data: this.generateTextReport(analysis),
+          filename: `portfolio-analysis-${new Date().toISOString().split('T')[0]}.txt`,
+          mimeType: 'text/plain'
+        };
+      
+      case 'html':
+        return {
+          format: 'html',
+          data: this.generateHTMLReport(analysis),
+          filename: `portfolio-analysis-${new Date().toISOString().split('T')[0]}.html`,
+          mimeType: 'text/html'
+        };
+      
+      case 'checklist-json':
+        return {
+          format: 'json',
+          data: this.exportChecklist(analysis, 'json'),
+          filename: `portfolio-checklist-${new Date().toISOString().split('T')[0]}.json`,
+          mimeType: 'application/json'
+        };
+      
+      case 'checklist-csv':
+        return {
+          format: 'csv',
+          data: this.exportChecklist(analysis, 'csv'),
+          filename: `portfolio-checklist-${new Date().toISOString().split('T')[0]}.csv`,
+          mimeType: 'text/csv'
+        };
+      
+      case 'checklist-text':
+        return {
+          format: 'text',
+          data: this.exportChecklist(analysis, 'text'),
+          filename: `portfolio-checklist-${new Date().toISOString().split('T')[0]}.txt`,
+          mimeType: 'text/plain'
+        };
+      
+      default:
+        return {
+          format: 'json',
+          data: this.exportToJSON(analysis),
+          filename: `portfolio-analysis-${new Date().toISOString().split('T')[0]}.json`,
+          mimeType: 'application/json'
+        };
+    }
+  },
+
+  // Real-time Monitoring & Automated Re-analysis Functions
+  // Set up monitoring for a portfolio
+  setupMonitoring(url, options = {}) {
+    const monitoringConfig = {
+      url: url,
+      enabled: true,
+      frequency: options.frequency || 'weekly', // 'daily', 'weekly', 'monthly'
+      notifyOnChange: options.notifyOnChange !== false, // Default true
+      notifyOnScoreChange: options.notifyOnScoreChange || 5, // Notify if score changes by X points
+      notifyOnIssues: options.notifyOnIssues !== false, // Default true
+      lastCheck: null,
+      nextCheck: null,
+      checkCount: 0,
+      createdAt: new Date().toISOString(),
+      alerts: []
+    };
+
+    // Calculate next check time
+    monitoringConfig.nextCheck = this.calculateNextCheckTime(monitoringConfig.frequency);
+
+    // Save to localStorage
+    const monitoringKey = `portfolio_monitoring_${this.hashUrl(url)}`;
+    localStorage.setItem(monitoringKey, JSON.stringify(monitoringConfig));
+
+    return monitoringConfig;
+  },
+
+  // Calculate next check time based on frequency
+  calculateNextCheckTime(frequency) {
+    const now = new Date();
+    const next = new Date(now);
+
+    switch (frequency.toLowerCase()) {
+      case 'daily':
+        next.setDate(next.getDate() + 1);
+        next.setHours(9, 0, 0, 0); // 9 AM
+        break;
+      case 'weekly':
+        next.setDate(next.getDate() + 7);
+        next.setHours(9, 0, 0, 0);
+        break;
+      case 'monthly':
+        next.setMonth(next.getMonth() + 1);
+        next.setDate(1);
+        next.setHours(9, 0, 0, 0);
+        break;
+      default:
+        next.setDate(next.getDate() + 7);
+    }
+
+    return next.toISOString();
+  },
+
+  // Get monitoring configuration
+  getMonitoringConfig(url) {
+    const monitoringKey = `portfolio_monitoring_${this.hashUrl(url)}`;
+    const stored = localStorage.getItem(monitoringKey);
+    return stored ? JSON.parse(stored) : null;
+  },
+
+  // Update monitoring configuration
+  updateMonitoringConfig(url, updates) {
+    const config = this.getMonitoringConfig(url);
+    if (!config) {
+      return null;
+    }
+
+    const updated = { ...config, ...updates };
+    if (updates.frequency && updates.frequency !== config.frequency) {
+      updated.nextCheck = this.calculateNextCheckTime(updates.frequency);
+    }
+
+    const monitoringKey = `portfolio_monitoring_${this.hashUrl(url)}`;
+    localStorage.setItem(monitoringKey, JSON.stringify(updated));
+    return updated;
+  },
+
+  // Disable monitoring
+  disableMonitoring(url) {
+    return this.updateMonitoringConfig(url, { enabled: false });
+  },
+
+  // Enable monitoring
+  enableMonitoring(url) {
+    return this.updateMonitoringConfig(url, { enabled: true });
+  },
+
+  // Remove monitoring
+  removeMonitoring(url) {
+    const monitoringKey = `portfolio_monitoring_${this.hashUrl(url)}`;
+    localStorage.removeItem(monitoringKey);
+    return true;
+  },
+
+  // Get all monitored portfolios
+  getAllMonitoredPortfolios() {
+    const monitored = [];
+    const keys = Object.keys(localStorage);
+    
+    keys.forEach(key => {
+      if (key.startsWith('portfolio_monitoring_')) {
+        try {
+          const config = JSON.parse(localStorage.getItem(key));
+          if (config && config.enabled) {
+            monitored.push(config);
+          }
+        } catch (e) {
+          // Skip invalid entries
+        }
+      }
+    });
+
+    return monitored;
+  },
+
+  // Check if portfolio needs re-analysis
+  shouldReanalyze(url) {
+    const config = this.getMonitoringConfig(url);
+    if (!config || !config.enabled) {
+      return false;
+    }
+
+    const now = new Date();
+    const nextCheck = new Date(config.nextCheck);
+    return now >= nextCheck;
+  },
+
+  // Perform automated re-analysis
+  async performAutomatedReanalysis(url) {
+    const config = this.getMonitoringConfig(url);
+    if (!config || !config.enabled) {
+      return { success: false, message: 'Monitoring not enabled for this portfolio' };
+    }
+
+    try {
+      // Get previous analysis
+      const history = this.getAnalysisHistory(url);
+      const previousAnalysis = history && history.length > 0 ? history[0] : null;
+
+      // Perform new analysis
+      const currentAnalysis = await this.analyzePortfolio(url);
+
+      // Detect changes
+      const changes = this.detectChanges(previousAnalysis, currentAnalysis, config);
+
+      // Update monitoring config
+      const updatedConfig = this.updateMonitoringConfig(url, {
+        lastCheck: new Date().toISOString(),
+        nextCheck: this.calculateNextCheckTime(config.frequency),
+        checkCount: config.checkCount + 1
+      });
+
+      // Store alert if significant changes detected
+      if (changes.hasSignificantChanges) {
+        const alert = {
+          id: `alert_${Date.now()}`,
+          url: url,
+          timestamp: new Date().toISOString(),
+          type: 'change_detected',
+          message: changes.summary,
+          details: changes,
+          read: false
+        };
+
+        this.addAlert(alert);
+      }
+
+      return {
+        success: true,
+        analysis: currentAnalysis,
+        changes: changes,
+        config: updatedConfig
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  },
+
+  // Detect changes between analyses
+  detectChanges(previousAnalysis, currentAnalysis, monitoringConfig) {
+    if (!previousAnalysis) {
+      return {
+        hasChanges: false,
+        hasSignificantChanges: false,
+        message: 'No previous analysis to compare',
+        summary: 'First analysis completed'
+      };
+    }
+
+    const changes = {
+      hasChanges: false,
+      hasSignificantChanges: false,
+      scoreChange: 0,
+      scoreChangePercentage: 0,
+      categoryChanges: {},
+      newIssues: [],
+      resolvedIssues: [],
+      newStrengths: [],
+      lostStrengths: [],
+      summary: ''
+    };
+
+    // Compare overall scores
+    const previousScore = previousAnalysis.overallScore || 0;
+    const currentScore = currentAnalysis.overallScore || 0;
+    changes.scoreChange = currentScore - previousScore;
+    changes.scoreChangePercentage = previousScore > 0 
+      ? ((changes.scoreChange / previousScore) * 100).toFixed(1)
+      : 0;
+
+    if (Math.abs(changes.scoreChange) >= (monitoringConfig.notifyOnScoreChange || 5)) {
+      changes.hasSignificantChanges = true;
+    }
+
+    // Compare category scores
+    const categories = ['seo', 'accessibility', 'performance', 'security', 'socialMedia', 'visual', 'content'];
+    categories.forEach(category => {
+      const prevScore = previousAnalysis[category]?.score || previousAnalysis.scores?.[category] || 0;
+      const currScore = currentAnalysis[category]?.score || 0;
+      const change = currScore - prevScore;
+
+      if (change !== 0) {
+        changes.hasChanges = true;
+        changes.categoryChanges[category] = {
+          previous: prevScore,
+          current: currScore,
+          change: change,
+          percentageChange: prevScore > 0 ? ((change / prevScore) * 100).toFixed(1) : 0
+        };
+      }
+    });
+
+    // Compare issues
+    const previousIssues = previousAnalysis.issues || [];
+    const currentIssues = currentAnalysis.issues || [];
+    
+    // Find new issues
+    changes.newIssues = currentIssues.filter(issue => 
+      !previousIssues.some(prevIssue => prevIssue.toLowerCase() === issue.toLowerCase())
+    );
+    
+    // Find resolved issues
+    changes.resolvedIssues = previousIssues.filter(prevIssue => 
+      !currentIssues.some(issue => issue.toLowerCase() === prevIssue.toLowerCase())
+    );
+
+    if (changes.newIssues.length > 0 || changes.resolvedIssues.length > 0) {
+      changes.hasChanges = true;
+      if (monitoringConfig.notifyOnIssues) {
+        changes.hasSignificantChanges = true;
+      }
+    }
+
+    // Compare strengths
+    const previousStrengths = previousAnalysis.strengths || [];
+    const currentStrengths = currentAnalysis.strengths || [];
+    
+    changes.newStrengths = currentStrengths.filter(strength => 
+      !previousStrengths.some(prevStrength => prevStrength.toLowerCase() === strength.toLowerCase())
+    );
+    
+    changes.lostStrengths = previousStrengths.filter(prevStrength => 
+      !currentStrengths.some(strength => strength.toLowerCase() === prevStrength.toLowerCase())
+    );
+
+    if (changes.newStrengths.length > 0 || changes.lostStrengths.length > 0) {
+      changes.hasChanges = true;
+    }
+
+    // Generate summary
+    const summaryParts = [];
+    if (Math.abs(changes.scoreChange) > 0) {
+      summaryParts.push(`Score ${changes.scoreChange > 0 ? 'increased' : 'decreased'} by ${Math.abs(changes.scoreChange)} points`);
+    }
+    if (changes.newIssues.length > 0) {
+      summaryParts.push(`${changes.newIssues.length} new issue(s) detected`);
+    }
+    if (changes.resolvedIssues.length > 0) {
+      summaryParts.push(`${changes.resolvedIssues.length} issue(s) resolved`);
+    }
+    if (changes.newStrengths.length > 0) {
+      summaryParts.push(`${changes.newStrengths.length} new strength(s) added`);
+    }
+
+    changes.summary = summaryParts.length > 0 
+      ? summaryParts.join(', ')
+      : 'No significant changes detected';
+
+    return changes;
+  },
+
+  // Alert management
+  addAlert(alert) {
+    const alertsKey = 'portfolio_monitoring_alerts';
+    let alerts = [];
+    
+    try {
+      const stored = localStorage.getItem(alertsKey);
+      alerts = stored ? JSON.parse(stored) : [];
+    } catch (e) {
+      alerts = [];
+    }
+
+    alerts.unshift(alert); // Add to beginning
+    alerts = alerts.slice(0, 100); // Keep only last 100 alerts
+
+    localStorage.setItem(alertsKey, JSON.stringify(alerts));
+    return alert;
+  },
+
+  getAlerts(url = null, unreadOnly = false) {
+    const alertsKey = 'portfolio_monitoring_alerts';
+    let alerts = [];
+    
+    try {
+      const stored = localStorage.getItem(alertsKey);
+      alerts = stored ? JSON.parse(stored) : [];
+    } catch (e) {
+      alerts = [];
+    }
+
+    // Filter by URL if provided
+    if (url) {
+      alerts = alerts.filter(alert => alert.url === url);
+    }
+
+    // Filter unread only if requested
+    if (unreadOnly) {
+      alerts = alerts.filter(alert => !alert.read);
+    }
+
+    return alerts;
+  },
+
+  markAlertAsRead(alertId) {
+    const alertsKey = 'portfolio_monitoring_alerts';
+    let alerts = [];
+    
+    try {
+      const stored = localStorage.getItem(alertsKey);
+      alerts = stored ? JSON.parse(stored) : [];
+    } catch (e) {
+      return false;
+    }
+
+    const alert = alerts.find(a => a.id === alertId);
+    if (alert) {
+      alert.read = true;
+      localStorage.setItem(alertsKey, JSON.stringify(alerts));
+      return true;
+    }
+
+    return false;
+  },
+
+  markAllAlertsAsRead(url = null) {
+    const alertsKey = 'portfolio_monitoring_alerts';
+    let alerts = [];
+    
+    try {
+      const stored = localStorage.getItem(alertsKey);
+      alerts = stored ? JSON.parse(stored) : [];
+    } catch (e) {
+      return 0;
+    }
+
+    let marked = 0;
+    alerts.forEach(alert => {
+      if ((!url || alert.url === url) && !alert.read) {
+        alert.read = true;
+        marked++;
+      }
+    });
+
+    if (marked > 0) {
+      localStorage.setItem(alertsKey, JSON.stringify(alerts));
+    }
+
+    return marked;
+  },
+
+  deleteAlert(alertId) {
+    const alertsKey = 'portfolio_monitoring_alerts';
+    let alerts = [];
+    
+    try {
+      const stored = localStorage.getItem(alertsKey);
+      alerts = stored ? JSON.parse(stored) : [];
+    } catch (e) {
+      return false;
+    }
+
+    const initialLength = alerts.length;
+    alerts = alerts.filter(a => a.id !== alertId);
+    
+    if (alerts.length < initialLength) {
+      localStorage.setItem(alertsKey, JSON.stringify(alerts));
+      return true;
+    }
+
+    return false;
+  },
+
+  clearAllAlerts(url = null) {
+    const alertsKey = 'portfolio_monitoring_alerts';
+    
+    if (url) {
+      let alerts = [];
+      try {
+        const stored = localStorage.getItem(alertsKey);
+        alerts = stored ? JSON.parse(stored) : [];
+      } catch (e) {
+        return 0;
+      }
+
+      const initialLength = alerts.length;
+      alerts = alerts.filter(a => a.url !== url);
+      const removed = initialLength - alerts.length;
+      
+      if (removed > 0) {
+        localStorage.setItem(alertsKey, JSON.stringify(alerts));
+      }
+      
+      return removed;
+    } else {
+      localStorage.removeItem(alertsKey);
+      return true;
+    }
+  },
+
+  // Get monitoring status for all portfolios
+  getMonitoringStatus() {
+    const monitored = this.getAllMonitoredPortfolios();
+    const status = {
+      totalMonitored: monitored.length,
+      dueForCheck: [],
+      nextChecks: [],
+      recentChecks: [],
+      alerts: this.getAlerts(null, true), // Unread alerts
+      summary: {
+        daily: 0,
+        weekly: 0,
+        monthly: 0
+      }
+    };
+
+    const now = new Date();
+
+    monitored.forEach(config => {
+      // Count by frequency
+      if (config.frequency === 'daily') status.summary.daily++;
+      else if (config.frequency === 'weekly') status.summary.weekly++;
+      else if (config.frequency === 'monthly') status.summary.monthly++;
+
+      // Check if due for re-analysis
+      if (config.nextCheck) {
+        const nextCheck = new Date(config.nextCheck);
+        if (now >= nextCheck) {
+          status.dueForCheck.push(config);
+        } else {
+          status.nextChecks.push({
+            url: config.url,
+            nextCheck: config.nextCheck,
+            daysUntil: Math.ceil((nextCheck - now) / (1000 * 60 * 60 * 24))
+          });
+        }
+      }
+
+      // Recent checks (last 7 days)
+      if (config.lastCheck) {
+        const lastCheck = new Date(config.lastCheck);
+        const daysSince = (now - lastCheck) / (1000 * 60 * 60 * 24);
+        if (daysSince <= 7) {
+          status.recentChecks.push({
+            url: config.url,
+            lastCheck: config.lastCheck,
+            daysAgo: Math.floor(daysSince),
+            checkCount: config.checkCount || 0
+          });
+        }
+      }
+    });
+
+    // Sort next checks by date
+    status.nextChecks.sort((a, b) => new Date(a.nextCheck) - new Date(b.nextCheck));
+
+    return status;
+  },
+
+  // Hash URL for storage key
+  hashUrl(url) {
+    // Simple hash function for URL
+    let hash = 0;
+    for (let i = 0; i < url.length; i++) {
+      const char = url.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32-bit integer
+    }
+    return Math.abs(hash).toString(36);
+  },
+
+  // Check all monitored portfolios (should be called periodically)
+  async checkAllMonitoredPortfolios() {
+    const monitored = this.getAllMonitoredPortfolios();
+    const results = [];
+
+    for (const config of monitored) {
+      if (this.shouldReanalyze(config.url)) {
+        try {
+          const result = await this.performAutomatedReanalysis(config.url);
+          results.push({
+            url: config.url,
+            success: result.success,
+            changes: result.changes,
+            error: result.error
+          });
+        } catch (error) {
+          results.push({
+            url: config.url,
+            success: false,
+            error: error.message
+          });
+        }
+      }
+    }
+
+    return results;
+  },
+
+  // Advanced Analytics & Predictive Insights Functions
+  // Calculate trend and forecast future scores
+  calculateTrendForecast(url, daysAhead = 30) {
+    const history = this.getAnalysisHistory(url);
+    if (!history || history.length < 2) {
+      return {
+        hasEnoughData: false,
+        message: 'Insufficient historical data for forecasting (need at least 2 analyses)'
+      };
+    }
+
+    // Sort by date (oldest first)
+    const sortedHistory = [...history].sort((a, b) => {
+      const dateA = new Date(a.date || a.timestamp || 0);
+      const dateB = new Date(b.date || b.timestamp || 0);
+      return dateA - dateB;
+    });
+
+    const scores = sortedHistory.map(h => h.overallScore || 0);
+    const dates = sortedHistory.map(h => new Date(h.date || h.timestamp || Date.now()));
+
+    // Calculate linear regression for trend
+    const n = scores.length;
+    const sumX = dates.reduce((sum, date, i) => sum + i, 0);
+    const sumY = scores.reduce((sum, score) => sum + score, 0);
+    const sumXY = dates.reduce((sum, date, i) => sum + i * scores[i], 0);
+    const sumX2 = dates.reduce((sum, date, i) => sum + i * i, 0);
+
+    const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+    const intercept = (sumY - slope * sumX) / n;
+
+    // Calculate current trend
+    const currentScore = scores[scores.length - 1];
+    const previousScore = scores.length > 1 ? scores[scores.length - 2] : currentScore;
+    const trend = currentScore - previousScore;
+    const trendDirection = trend > 0 ? 'improving' : trend < 0 ? 'declining' : 'stable';
+    const averageTrend = (currentScore - scores[0]) / (n - 1);
+
+    // Forecast future score
+    const futureIndex = n + Math.floor(daysAhead / 7); // Assuming weekly checks
+    const forecastedScore = Math.max(0, Math.min(100, slope * futureIndex + intercept));
+
+    // Calculate confidence based on data consistency
+    const variance = scores.reduce((sum, score) => {
+      const mean = sumY / n;
+      return sum + Math.pow(score - mean, 2);
+    }, 0) / n;
+    const stdDev = Math.sqrt(variance);
+    const confidence = Math.max(0, Math.min(100, 100 - (stdDev * 2)));
+
+    // Calculate rate of improvement
+    const improvementRate = averageTrend; // Points per analysis period
+    const daysToTarget = (targetScore) => {
+      if (improvementRate <= 0) return null;
+      const pointsNeeded = targetScore - currentScore;
+      return Math.ceil((pointsNeeded / improvementRate) * 7); // Convert to days
+    };
+
+    return {
+      hasEnoughData: true,
+      currentScore: currentScore,
+      previousScore: previousScore,
+      trend: trend,
+      trendDirection: trendDirection,
+      averageTrend: averageTrend,
+      improvementRate: improvementRate,
+      forecastedScore: Math.round(forecastedScore),
+      forecastedDate: new Date(Date.now() + daysAhead * 24 * 60 * 60 * 1000).toISOString(),
+      confidence: Math.round(confidence),
+      dataPoints: n,
+      variance: variance,
+      standardDeviation: stdDev,
+      daysToTarget: daysToTarget,
+      historicalScores: scores,
+      historicalDates: dates.map(d => d.toISOString())
+    };
+  },
+
+  // Predict future score based on recommendations implementation
+  predictScoreWithRecommendations(currentAnalysis, recommendationsToImplement = []) {
+    if (!currentAnalysis || !currentAnalysis.recommendations) {
+      return {
+        currentScore: currentAnalysis?.overallScore || 0,
+        predictedScore: currentAnalysis?.overallScore || 0,
+        potentialImprovement: 0,
+        message: 'No recommendations available for prediction'
+      };
+    }
+
+    const currentScore = currentAnalysis.overallScore || 0;
+    let potentialImprovement = 0;
+    const implementedRecommendations = [];
+
+    // If specific recommendations provided, use those
+    if (recommendationsToImplement.length > 0) {
+      recommendationsToImplement.forEach(recId => {
+        const allRecs = [
+          ...(currentAnalysis.recommendations.quickWins || []),
+          ...(currentAnalysis.recommendations.longTerm || [])
+        ];
+        const rec = allRecs.find(r => r.id === recId);
+        if (rec && rec.expectedImprovement) {
+          potentialImprovement += rec.expectedImprovement;
+          implementedRecommendations.push(rec);
+        }
+      });
+    } else {
+      // Predict based on all quick wins
+      const quickWins = currentAnalysis.recommendations.quickWins || [];
+      quickWins.forEach(rec => {
+        if (rec.expectedImprovement) {
+          potentialImprovement += rec.expectedImprovement;
+          implementedRecommendations.push(rec);
+        }
+      });
+    }
+
+    // Cap improvement at reasonable maximum (can't exceed 100)
+    const predictedScore = Math.min(100, currentScore + potentialImprovement);
+    const actualImprovement = predictedScore - currentScore;
+
+    return {
+      currentScore: currentScore,
+      predictedScore: Math.round(predictedScore),
+      potentialImprovement: Math.round(actualImprovement),
+      recommendationsCount: implementedRecommendations.length,
+      recommendations: implementedRecommendations.map(r => ({
+        id: r.id,
+        title: r.title,
+        expectedImprovement: r.expectedImprovement
+      })),
+      confidence: implementedRecommendations.length > 0 ? 75 : 0
+    };
+  },
+
+  // Analyze patterns in historical data
+  analyzeHistoricalPatterns(url) {
+    const history = this.getAnalysisHistory(url);
+    if (!history || history.length < 3) {
+      return {
+        hasEnoughData: false,
+        message: 'Insufficient data for pattern analysis (need at least 3 analyses)'
+      };
+    }
+
+    const sortedHistory = [...history].sort((a, b) => {
+      const dateA = new Date(a.date || a.timestamp || 0);
+      const dateB = new Date(b.date || b.timestamp || 0);
+      return dateA - dateB;
+    });
+
+    const patterns = {
+      scoreProgression: [],
+      categoryTrends: {},
+      improvementVelocity: [],
+      consistency: {},
+      bestPerformingCategories: [],
+      worstPerformingCategories: [],
+      insights: []
+    };
+
+    // Analyze score progression
+    sortedHistory.forEach((analysis, index) => {
+      if (index > 0) {
+        const previous = sortedHistory[index - 1];
+        const change = (analysis.overallScore || 0) - (previous.overallScore || 0);
+        patterns.scoreProgression.push({
+          date: analysis.date || analysis.timestamp,
+          score: analysis.overallScore || 0,
+          change: change,
+          changePercentage: previous.overallScore > 0 
+            ? ((change / previous.overallScore) * 100).toFixed(1)
+            : 0
+        });
+      }
+    });
+
+    // Analyze category trends
+    const categories = ['seo', 'accessibility', 'performance', 'security', 'socialMedia', 'visual', 'content'];
+    categories.forEach(category => {
+      const categoryScores = sortedHistory
+        .map(h => h[category]?.score || h.scores?.[category] || 0)
+        .filter(score => score > 0);
+
+      if (categoryScores.length > 0) {
+        const firstScore = categoryScores[0];
+        const lastScore = categoryScores[categoryScores.length - 1];
+        const change = lastScore - firstScore;
+        const average = categoryScores.reduce((sum, s) => sum + s, 0) / categoryScores.length;
+
+        patterns.categoryTrends[category] = {
+          firstScore: firstScore,
+          lastScore: lastScore,
+          change: change,
+          average: Math.round(average),
+          trend: change > 0 ? 'improving' : change < 0 ? 'declining' : 'stable',
+          dataPoints: categoryScores.length
+        };
+      }
+    });
+
+    // Calculate improvement velocity (rate of change)
+    if (patterns.scoreProgression.length > 0) {
+      const changes = patterns.scoreProgression.map(p => p.change);
+      const averageChange = changes.reduce((sum, c) => sum + c, 0) / changes.length;
+      patterns.improvementVelocity = {
+        average: Math.round(averageChange * 10) / 10,
+        trend: averageChange > 0 ? 'positive' : averageChange < 0 ? 'negative' : 'neutral',
+        consistency: this.calculateConsistency(changes)
+      };
+    }
+
+    // Identify best and worst performing categories
+    const categoryAverages = Object.entries(patterns.categoryTrends)
+      .map(([cat, data]) => ({ category: cat, average: data.average }))
+      .sort((a, b) => b.average - a.average);
+
+    patterns.bestPerformingCategories = categoryAverages.slice(0, 3);
+    patterns.worstPerformingCategories = categoryAverages.slice(-3).reverse();
+
+    // Calculate consistency
+    const allScores = sortedHistory.map(h => h.overallScore || 0);
+    patterns.consistency = {
+      variance: this.calculateVariance(allScores),
+      standardDeviation: Math.sqrt(this.calculateVariance(allScores)),
+      coefficientOfVariation: (Math.sqrt(this.calculateVariance(allScores)) / (allScores.reduce((a, b) => a + b, 0) / allScores.length)) * 100,
+      isConsistent: Math.sqrt(this.calculateVariance(allScores)) < 5 // Low variance = consistent
+    };
+
+    // Generate insights
+    if (patterns.improvementVelocity.trend === 'positive') {
+      patterns.insights.push(`Portfolio is improving at an average rate of ${Math.abs(patterns.improvementVelocity.average)} points per analysis`);
+    } else if (patterns.improvementVelocity.trend === 'negative') {
+      patterns.insights.push(`Portfolio score is declining. Consider reviewing recent changes.`);
+    }
+
+    if (patterns.consistency.isConsistent) {
+      patterns.insights.push('Portfolio performance is consistent across analyses');
+    } else {
+      patterns.insights.push('Portfolio performance shows variability - consider focusing on stability');
+    }
+
+    const bestCategory = patterns.bestPerformingCategories[0];
+    const worstCategory = patterns.worstPerformingCategories[0];
+    if (bestCategory && worstCategory) {
+      patterns.insights.push(`Best performing category: ${bestCategory.category} (${bestCategory.average}/100)`);
+      patterns.insights.push(`Category needing most improvement: ${worstCategory.category} (${worstCategory.average}/100)`);
+    }
+
+    return patterns;
+  },
+
+  // Calculate variance
+  calculateVariance(values) {
+    if (values.length === 0) return 0;
+    const mean = values.reduce((a, b) => a + b, 0) / values.length;
+    return values.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / values.length;
+  },
+
+  // Calculate consistency score
+  calculateConsistency(changes) {
+    if (changes.length === 0) return 'unknown';
+    const variance = this.calculateVariance(changes);
+    const stdDev = Math.sqrt(variance);
+    
+    if (stdDev < 2) return 'very_consistent';
+    if (stdDev < 5) return 'consistent';
+    if (stdDev < 10) return 'moderate';
+    return 'inconsistent';
+  },
+
+  // Predict goal achievement timeline
+  predictGoalAchievement(url, targetScore) {
+    const history = this.getAnalysisHistory(url);
+    const currentAnalysis = history && history.length > 0 ? history[0] : null;
+    const forecast = this.calculateTrendForecast(url, 90);
+
+    if (!currentAnalysis || !forecast.hasEnoughData) {
+      return {
+        canPredict: false,
+        message: 'Insufficient data for goal prediction'
+      };
+    }
+
+    const currentScore = currentAnalysis.overallScore || 0;
+    const pointsNeeded = targetScore - currentScore;
+
+    if (pointsNeeded <= 0) {
+      return {
+        canPredict: true,
+        goalAchieved: true,
+        currentScore: currentScore,
+        targetScore: targetScore,
+        message: 'Goal already achieved!'
+      };
+    }
+
+    // Use improvement rate from forecast
+    const improvementRate = forecast.improvementRate || 0;
+
+    if (improvementRate <= 0) {
+      return {
+        canPredict: true,
+        goalAchieved: false,
+        currentScore: currentScore,
+        targetScore: targetScore,
+        pointsNeeded: pointsNeeded,
+        estimatedDays: null,
+        estimatedDate: null,
+        message: 'Current trend suggests goal may not be achievable without changes',
+        recommendation: 'Consider implementing recommended improvements to accelerate progress'
+      };
+    }
+
+    // Calculate estimated timeline
+    const analysesNeeded = Math.ceil(pointsNeeded / improvementRate);
+    const estimatedDays = analysesNeeded * 7; // Assuming weekly checks
+    const estimatedDate = new Date(Date.now() + estimatedDays * 24 * 60 * 60 * 1000);
+
+    // Calculate confidence based on forecast confidence and data consistency
+    const confidence = Math.min(forecast.confidence || 50, 85);
+
+    return {
+      canPredict: true,
+      goalAchieved: false,
+      currentScore: currentScore,
+      targetScore: targetScore,
+      pointsNeeded: pointsNeeded,
+      improvementRate: improvementRate,
+      estimatedDays: estimatedDays,
+      estimatedDate: estimatedDate.toISOString(),
+      estimatedWeeks: Math.ceil(estimatedDays / 7),
+      confidence: confidence,
+      message: `Based on current trend, goal should be achievable in approximately ${Math.ceil(estimatedDays / 7)} weeks`,
+      recommendation: forecast.improvementRate < 2 
+        ? 'Consider implementing quick wins to accelerate progress'
+        : 'Continue current improvement trajectory'
+    };
+  },
+
+  // Generate comprehensive analytics report
+  generateAnalyticsReport(url) {
+    const history = this.getAnalysisHistory(url);
+    const currentAnalysis = history && history.length > 0 ? history[0] : null;
+    const forecast = this.calculateTrendForecast(url, 30);
+    const patterns = this.analyzeHistoricalPatterns(url);
+    const goal = this.getPortfolioGoal(url);
+    const goalPrediction = goal ? this.predictGoalAchievement(url, goal.targetScore) : null;
+
+    const report = {
+      url: url,
+      generatedAt: new Date().toISOString(),
+      currentAnalysis: currentAnalysis ? {
+        score: currentAnalysis.overallScore,
+        date: currentAnalysis.date || currentAnalysis.timestamp
+      } : null,
+      forecast: forecast,
+      patterns: patterns,
+      goalPrediction: goalPrediction,
+      summary: {
+        totalAnalyses: history ? history.length : 0,
+        hasForecast: forecast.hasEnoughData,
+        hasPatterns: patterns.hasEnoughData,
+        hasGoal: goal !== null,
+        trendDirection: forecast.trendDirection || 'unknown',
+        improvementRate: forecast.improvementRate || 0
+      },
+      recommendations: []
+    };
+
+    // Generate recommendations based on analytics
+    if (forecast.hasEnoughData) {
+      if (forecast.trendDirection === 'declining') {
+        report.recommendations.push({
+          type: 'urgent',
+          title: 'Address Declining Trend',
+          message: 'Portfolio score is declining. Review recent changes and implement recommended improvements.',
+          priority: 'high'
+        });
+      }
+
+      if (forecast.confidence < 50) {
+        report.recommendations.push({
+          type: 'data',
+          title: 'Increase Analysis Frequency',
+          message: 'Low forecast confidence due to limited data. Perform more frequent analyses for better predictions.',
+          priority: 'medium'
+        });
+      }
+    }
+
+    if (patterns.hasEnoughData && patterns.worstPerformingCategories.length > 0) {
+      const worstCat = patterns.worstPerformingCategories[0];
+      report.recommendations.push({
+        type: 'improvement',
+        title: `Focus on ${worstCat.category}`,
+        message: `${worstCat.category} is the lowest performing category. Prioritize improvements in this area.`,
+        priority: 'high'
+      });
+    }
+
+    if (goalPrediction && goalPrediction.canPredict && !goalPrediction.goalAchieved) {
+      if (goalPrediction.estimatedDays > 90) {
+        report.recommendations.push({
+          type: 'goal',
+          title: 'Accelerate Goal Achievement',
+          message: `Goal achievement is estimated at ${Math.ceil(goalPrediction.estimatedDays / 7)} weeks. Consider implementing quick wins to speed up progress.`,
+          priority: 'medium'
+        });
+      }
+    }
+
+    return report;
+  },
+
   async analyzePortfolio(url) {
     if (!this.validateUrl(url)) {
       throw new Error('Invalid portfolio URL');
@@ -2588,6 +5836,7 @@ const PortfolioUtils = {
       const socialMediaAnalysis = this.analyzeSocialMedia(doc);
       const visualAnalysis = this.analyzeVisualDesign(doc, html, url);
       const contentAnalysis = this.analyzeContent(doc, bodyText, url);
+      const multiPageAnalysis = await this.performMultiPageAnalysis(doc, url, html);
       
       // Prepare analysis object for benchmarking
       const analysisForBenchmarking = {
@@ -2633,6 +5882,9 @@ const PortfolioUtils = {
       
       // Generate actionable recommendations
       const recommendations = this.generateActionableRecommendations(analysisForBenchmarking, competitiveAnalysis);
+      
+      // Get portfolio builder suggestions
+      const portfolioBuilder = await this.getPortfolioBuilderSuggestions(analysisForBenchmarking, competitiveAnalysis.industry);
 
       // Combine all issues and strengths
       const allIssues = [
@@ -2654,8 +5906,45 @@ const PortfolioUtils = {
         ...visualAnalysis.strengths,
         ...contentAnalysis.strengths
       ];
+      
+      // Save analysis to history
+      this.saveAnalysisHistory(url, {
+        ...analysisForBenchmarking,
+        overallScore,
+        issues: allIssues,
+        strengths: allStrengths,
+        competitive: competitiveAnalysis
+      });
+      
+      // Get progress tracking data
+      const progress = this.getProgressSummary(url, {
+        ...analysisForBenchmarking,
+        overallScore,
+        issues: allIssues,
+        strengths: allStrengths,
+        competitive: competitiveAnalysis
+      });
+      
+      // Get industry-specific insights
+      const industryInsights = this.getIndustrySpecificInsights({
+        ...analysisForBenchmarking,
+        overallScore,
+        issues: allIssues,
+        strengths: allStrengths,
+        competitive: competitiveAnalysis,
+        multiPage: multiPageAnalysis,
+        doc: doc,
+        bodyText: bodyText,
+        designQuality: visualAnalysis.score,
+        contentQuality: contentAnalysis.score,
+        hasAboutSection: hasAbout,
+        hasProjects: hasProjects,
+        hasContactInfo: hasContactInfo,
+        mobileResponsive: mobileResponsive
+      }, competitiveAnalysis.industry);
 
-      return {
+      // Prepare final analysis object for export
+      const finalAnalysis = {
         url,
         isAccessible: true,
         title,
@@ -2663,14 +5952,13 @@ const PortfolioUtils = {
         hasContactInfo,
         hasProjects,
         hasAboutSection: hasAbout,
-        designQuality: visualAnalysis.score, // Now using visual analysis score
-        contentQuality: contentAnalysis.score, // Now using content analysis score
-        uxScore: Math.round((accessibilityAnalysis.score + (visualAnalysis.details.layout?.score || 0)) / 2), // Combined accessibility and layout
+        designQuality: visualAnalysis.score,
+        contentQuality: contentAnalysis.score,
+        uxScore: Math.round((accessibilityAnalysis.score + (visualAnalysis.details.layout?.score || 0)) / 2),
         mobileResponsive,
         overallScore,
         issues: allIssues,
         strengths: allStrengths,
-        // Enhanced analysis details
         seo: seoAnalysis,
         accessibility: accessibilityAnalysis,
         performance: {
@@ -2682,7 +5970,23 @@ const PortfolioUtils = {
         visual: visualAnalysis,
         content: contentAnalysis,
         competitive: competitiveAnalysis,
-        recommendations: recommendations
+        recommendations: recommendations,
+        portfolioBuilder: portfolioBuilder,
+        progress: progress,
+        multiPage: multiPageAnalysis,
+        industryInsights: industryInsights
+      };
+
+      // Generate shareable data
+      const shareableData = this.generateShareableData(finalAnalysis);
+
+      return {
+        ...finalAnalysis,
+        export: {
+          available: true,
+          formats: ['json', 'csv', 'text', 'html', 'checklist-json', 'checklist-csv', 'checklist-text'],
+          shareable: shareableData
+        }
       };
     } catch (error) {
       if (error.message.includes('CORS')) {
@@ -2709,7 +6013,12 @@ const PortfolioUtils = {
           visual: null,
           content: null,
           competitive: null,
-          recommendations: null
+          recommendations: null,
+          portfolioBuilder: null,
+          progress: null,
+          multiPage: null,
+          industryInsights: null,
+          export: null
         };
       }
       throw error;
