@@ -23032,6 +23032,313 @@ Generate the repurposed content:`;
                 };
             };
 
+            // Calculate dashboard metrics from real data
+            const calculateDashboardMetrics = React.useMemo(() => {
+                const now = new Date();
+                const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+                const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+                const thisMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+                const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+                
+                const thisMonthContent = contentHistory.filter(item => {
+                    const itemDate = new Date(item.metadata?.timestamp || item.createdAt || 0);
+                    return itemDate >= thisMonth && itemDate <= thisMonthEnd;
+                });
+                
+                const lastMonthContent = contentHistory.filter(item => {
+                    const itemDate = new Date(item.metadata?.timestamp || item.createdAt || 0);
+                    return itemDate >= lastMonth && itemDate <= lastMonthEnd;
+                });
+                
+                const thisWeek = new Date(now);
+                thisWeek.setDate(now.getDate() - 7);
+                const thisWeekContent = contentHistory.filter(item => {
+                    const itemDate = new Date(item.metadata?.timestamp || item.createdAt || 0);
+                    return itemDate >= thisWeek;
+                });
+                
+                const totalEngagement = thisMonthContent.reduce((sum, item) => {
+                    const engagement = item.metadata?.engagement || item.metadata?.estimatedEngagement || 0;
+                    return sum + (typeof engagement === 'number' ? engagement : 0);
+                }, 0);
+                
+                const avgEngagement = thisMonthContent.length > 0 
+                    ? Math.round(totalEngagement / thisMonthContent.length) 
+                    : 0;
+                
+                const lastMonthEngagement = lastMonthContent.reduce((sum, item) => {
+                    const engagement = item.metadata?.engagement || item.metadata?.estimatedEngagement || 0;
+                    return sum + (typeof engagement === 'number' ? engagement : 0);
+                }, 0);
+                
+                const engagementGrowth = lastMonthEngagement > 0 
+                    ? Math.round(((totalEngagement - lastMonthEngagement) / lastMonthEngagement) * 100)
+                    : 0;
+                
+                const publishedThisWeek = thisWeekContent.filter(item => 
+                    item.metadata?.status === 'published' || item.metadata?.published
+                ).length;
+                
+                const authorityChange = authorityInsights.overallAuthority 
+                    ? (authorityInsights.overallAuthority - (authorityInsights.previousAuthority || authorityInsights.overallAuthority - 5))
+                    : 0;
+                
+                return {
+                    postsThisMonth: thisMonthContent.length,
+                    postsLastMonth: lastMonthContent.length,
+                    postsChange: thisMonthContent.length - lastMonthContent.length,
+                    totalEngagement,
+                    avgEngagement,
+                    engagementGrowth,
+                    contentGeneratedThisWeek: thisWeekContent.length,
+                    publishedThisWeek,
+                    authorityChange
+                };
+            }, [contentHistory, authorityInsights]);
+
+            // Generate personalized content suggestions
+            const generatePersonalizedSuggestions = React.useMemo(() => {
+                if (expertiseAreas.length === 0) return contentSuggestions;
+                
+                const suggestions = [];
+                const recentTopics = contentHistory.slice(0, 10).map(item => 
+                    item.metadata?.topic?.toLowerCase() || ''
+                );
+                
+                expertiseAreas.forEach((area, index) => {
+                    if (index >= 3) return; // Limit to 3 suggestions
+                    
+                    const areaName = area.name.toLowerCase();
+                    const matchingTopic = trendingTopics.find(topic => 
+                        topic.title.toLowerCase().includes(areaName.split(' ')[0]) ||
+                        areaName.includes(topic.keywords[0]?.toLowerCase() || '')
+                    );
+                    
+                    if (matchingTopic) {
+                        const contentType = area.authorityScore >= 70 ? 'Article' : 'LinkedIn Post';
+                        const estimatedEngagement = Math.round(
+                            (matchingTopic.engagementPotential || 75) * (area.authorityScore / 100) * 10
+                        );
+                        
+                        suggestions.push({
+                            id: `suggestion-${area.id}`,
+                            topic: `${area.name}: ${matchingTopic.title}`,
+                            angle: `Leverage your ${area.level.toLowerCase()} expertise in ${area.name}`,
+                            contentType,
+                            estimatedEngagement,
+                            difficulty: area.authorityScore >= 70 ? 'Easy' : 'Medium',
+                            timeToCreate: contentType === 'Article' ? '25 min' : '15 min',
+                            platforms: ['LinkedIn', 'Twitter'],
+                            expertiseArea: area.name
+                        });
+                    }
+                });
+                
+                // Fill remaining slots with default suggestions if needed
+                while (suggestions.length < 3 && suggestions.length < contentSuggestions.length) {
+                    const defaultSuggestion = contentSuggestions[suggestions.length];
+                    if (defaultSuggestion) {
+                        suggestions.push(defaultSuggestion);
+                    }
+                }
+                
+                return suggestions.slice(0, 3);
+            }, [expertiseAreas, trendingTopics, contentHistory]);
+
+            // Generate smart insights
+            const generateSmartInsights = React.useMemo(() => {
+                const insights = [];
+                
+                // Authority building insight
+                if (expertiseAreas.length > 0) {
+                    const topArea = expertiseAreas.reduce((top, area) => 
+                        area.contentCount > (top?.contentCount || 0) ? area : top
+                    );
+                    if (topArea && topArea.contentCount > 0) {
+                        insights.push({
+                            type: 'authority',
+                            title: 'Authority Building',
+                            message: `Your ${topArea.name} content has ${topArea.contentCount} pieces. Keep building authority in this area!`,
+                            color: 'green'
+                        });
+                    }
+                }
+                
+                // Engagement insight
+                if (calculateDashboardMetrics.avgEngagement > 0) {
+                    const engagementLevel = calculateDashboardMetrics.avgEngagement > 500 ? 'excellent' :
+                                          calculateDashboardMetrics.avgEngagement > 300 ? 'good' : 'growing';
+                    if (engagementLevel !== 'excellent') {
+                        insights.push({
+                            type: 'engagement',
+                            title: 'Engagement Opportunity',
+                            message: `Your average engagement is ${calculateDashboardMetrics.avgEngagement}. Consider more visual content to boost engagement.`,
+                            color: 'blue'
+                        });
+                    }
+                }
+                
+                // Content frequency insight
+                if (calculateDashboardMetrics.postsThisMonth < 10) {
+                    insights.push({
+                        type: 'frequency',
+                        title: 'Content Frequency',
+                        message: `You've posted ${calculateDashboardMetrics.postsThisMonth} times this month. Aim for 12-15 posts for optimal growth.`,
+                        color: 'purple'
+                    });
+                }
+                
+                // Trending opportunity
+                if (trendingTopics.length > 0) {
+                    const topTrend = trendingTopics[0];
+                    insights.push({
+                        type: 'trending',
+                        title: 'Trending Opportunity',
+                        message: `${topTrend.title} is trending with ${topTrend.relevanceScore}% relevance. Consider creating content on this topic.`,
+                        color: 'blue'
+                    });
+                }
+                
+                return insights.slice(0, 3);
+            }, [expertiseAreas, calculateDashboardMetrics, trendingTopics]);
+
+            // Get recent activity
+            const recentActivity = React.useMemo(() => {
+                return contentHistory
+                    .slice(0, 5)
+                    .map(item => ({
+                        id: item.id,
+                        title: item.title,
+                        type: item.type || item.metadata?.contentType || 'post',
+                        timestamp: new Date(item.metadata?.timestamp || item.createdAt || Date.now()),
+                        platform: item.metadata?.platforms?.[0] || 'LinkedIn',
+                        status: item.metadata?.status || 'generated'
+                    }))
+                    .sort((a, b) => b.timestamp - a.timestamp);
+            }, [contentHistory]);
+
+            // Calculate per-expertise analytics
+            const getExpertiseAreaAnalytics = React.useCallback((areaName) => {
+                const areaNameLower = areaName.toLowerCase();
+                
+                // Find all content related to this expertise area
+                const relatedContent = contentHistory.filter(item => {
+                    const topic = item.metadata?.topic?.toLowerCase() || '';
+                    const expertise = item.metadata?.expertiseArea?.toLowerCase() || item.metadata?.expertise_area?.toLowerCase() || '';
+                    const title = item.title?.toLowerCase() || '';
+                    
+                    return topic.includes(areaNameLower.split(' ')[0]) || 
+                           areaNameLower.includes(topic.split(' ')[0]) ||
+                           expertise.includes(areaNameLower) ||
+                           title.includes(areaNameLower.split(' ')[0]);
+                });
+                
+                // Calculate engagement metrics
+                const totalEngagement = relatedContent.reduce((sum, item) => {
+                    const engagement = item.metadata?.engagement || item.metadata?.estimatedEngagement || 0;
+                    return sum + (typeof engagement === 'number' ? engagement : 0);
+                }, 0);
+                
+                const totalViews = relatedContent.reduce((sum, item) => {
+                    const views = item.metadata?.views || item.metadata?.estimatedViews || 0;
+                    return sum + (typeof views === 'number' ? views : 0);
+                }, 0);
+                
+                const totalLikes = relatedContent.reduce((sum, item) => {
+                    const likes = item.metadata?.likes || 0;
+                    return sum + (typeof likes === 'number' ? likes : 0);
+                }, 0);
+                
+                const totalComments = relatedContent.reduce((sum, item) => {
+                    const comments = item.metadata?.comments || 0;
+                    return sum + (typeof comments === 'number' ? comments : 0);
+                }, 0);
+                
+                const totalShares = relatedContent.reduce((sum, item) => {
+                    const shares = item.metadata?.shares || 0;
+                    return sum + (typeof shares === 'number' ? shares : 0);
+                }, 0);
+                
+                const avgEngagement = relatedContent.length > 0 ? Math.round(totalEngagement / relatedContent.length) : 0;
+                const engagementRate = totalViews > 0 ? ((totalLikes + totalComments + totalShares) / totalViews * 100).toFixed(1) : 0;
+                
+                // Content type distribution
+                const contentTypes = relatedContent.reduce((acc, item) => {
+                    const type = item.type || item.metadata?.contentType || 'post';
+                    acc[type] = (acc[type] || 0) + 1;
+                    return acc;
+                }, {});
+                
+                // Best performing content (sorted by engagement)
+                const bestPerforming = relatedContent
+                    .map(item => ({
+                        id: item.id,
+                        title: item.title,
+                        engagement: item.metadata?.engagement || item.metadata?.estimatedEngagement || 0,
+                        views: item.metadata?.views || item.metadata?.estimatedViews || 0,
+                        platform: item.metadata?.platforms?.[0] || 'LinkedIn',
+                        type: item.type || item.metadata?.contentType || 'post',
+                        date: new Date(item.metadata?.timestamp || item.createdAt || Date.now())
+                    }))
+                    .sort((a, b) => b.engagement - a.engagement)
+                    .slice(0, 5);
+                
+                // Performance trend (last 30 days)
+                const thirtyDaysAgo = new Date();
+                thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+                
+                const recentContent = relatedContent.filter(item => {
+                    const itemDate = new Date(item.metadata?.timestamp || item.createdAt || 0);
+                    return itemDate >= thirtyDaysAgo;
+                });
+                
+                const previousContent = relatedContent.filter(item => {
+                    const itemDate = new Date(item.metadata?.timestamp || item.createdAt || 0);
+                    const sixtyDaysAgo = new Date();
+                    sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+                    return itemDate >= sixtyDaysAgo && itemDate < thirtyDaysAgo;
+                });
+                
+                const recentEngagement = recentContent.reduce((sum, item) => 
+                    sum + (item.metadata?.engagement || item.metadata?.estimatedEngagement || 0), 0
+                );
+                const previousEngagement = previousContent.reduce((sum, item) => 
+                    sum + (item.metadata?.engagement || item.metadata?.estimatedEngagement || 0), 0
+                );
+                
+                const engagementTrend = previousEngagement > 0 
+                    ? ((recentEngagement - previousEngagement) / previousEngagement * 100).toFixed(1)
+                    : 0;
+                
+                return {
+                    contentCount: relatedContent.length,
+                    totalEngagement,
+                    avgEngagement,
+                    totalViews,
+                    totalLikes,
+                    totalComments,
+                    totalShares,
+                    engagementRate: parseFloat(engagementRate),
+                    contentTypes,
+                    bestPerforming,
+                    engagementTrend: parseFloat(engagementTrend),
+                    recentContentCount: recentContent.length
+                };
+            }, [contentHistory]);
+
+            // State for expanded analytics
+            const [expandedAnalytics, setExpandedAnalytics] = useState(new Set());
+            
+            const toggleAnalytics = (areaId) => {
+                const newExpanded = new Set(expandedAnalytics);
+                if (newExpanded.has(areaId)) {
+                    newExpanded.delete(areaId);
+                } else {
+                    newExpanded.add(areaId);
+                }
+                setExpandedAnalytics(newExpanded);
+            };
+
             // Update dynamic content when expertise areas or content history changes
             React.useEffect(() => {
                 const opportunities = calculateGrowthOpportunities(expertiseAreas, trendingTopics);
@@ -23182,7 +23489,7 @@ Generate the repurposed content:`;
                                     </div>
                                     
                                     <div className="space-y-4">
-                                        {contentSuggestions.map((suggestion) => (
+                                        {generatePersonalizedSuggestions.map((suggestion) => (
                                             <div key={suggestion.id} className={`${isLightMode ? 'bg-white/30 backdrop-blur-xl border-white/20' : 'bg-gray-800 border-gray-700'} border rounded-lg p-6 hover:border-purple-500/50 transition-all duration-300`}>
                                                 <div className="flex items-start justify-between mb-4">
                                                     <div>
@@ -23243,19 +23550,49 @@ Generate the repurposed content:`;
                                     
                                     <div className="grid grid-cols-3 gap-6">
                                         <div className="text-center">
-                                            <div className={`text-4xl font-bold ${isLightMode ? 'text-green-600' : 'text-green-400'} mb-2`}>78</div>
+                                            <div className={`text-4xl font-bold mb-2 ${
+                                                (authorityInsights.overallAuthority || 0) >= 80 ? (isLightMode ? 'text-green-600' : 'text-green-400') :
+                                                (authorityInsights.overallAuthority || 0) >= 60 ? (isLightMode ? 'text-yellow-600' : 'text-yellow-400') :
+                                                (isLightMode ? 'text-red-600' : 'text-red-400')
+                                            }`}>
+                                                {authorityInsights.overallAuthority || 0}
+                                            </div>
                                             <div className={`text-sm ${isLightMode ? 'text-gray-500' : 'text-gray-400'} mb-1`}>Overall Authority</div>
-                                            <div className={`text-xs ${isLightMode ? 'text-green-600' : 'text-green-400'}`}>+5 this month</div>
+                                            <div className={`text-xs ${
+                                                calculateDashboardMetrics.authorityChange >= 0 
+                                                    ? (isLightMode ? 'text-green-600' : 'text-green-400')
+                                                    : (isLightMode ? 'text-red-600' : 'text-red-400')
+                                            }`}>
+                                                {calculateDashboardMetrics.authorityChange >= 0 ? '+' : ''}{calculateDashboardMetrics.authorityChange} this month
+                                            </div>
                                         </div>
                                         <div className="text-center">
-                                            <div className={`text-4xl font-bold ${isLightMode ? 'text-blue-600' : 'text-blue-400'} mb-2`}>24</div>
+                                            <div className={`text-4xl font-bold ${isLightMode ? 'text-blue-600' : 'text-blue-400'} mb-2`}>
+                                                {calculateDashboardMetrics.postsThisMonth}
+                                            </div>
                                             <div className={`text-sm ${isLightMode ? 'text-gray-500' : 'text-gray-400'} mb-1`}>Posts This Month</div>
-                                            <div className={`text-xs ${isLightMode ? 'text-blue-600' : 'text-blue-400'}`}>+3 from last month</div>
+                                            <div className={`text-xs ${
+                                                calculateDashboardMetrics.postsChange >= 0 
+                                                    ? (isLightMode ? 'text-blue-600' : 'text-blue-400')
+                                                    : (isLightMode ? 'text-red-600' : 'text-red-400')
+                                            }`}>
+                                                {calculateDashboardMetrics.postsChange >= 0 ? '+' : ''}{calculateDashboardMetrics.postsChange} from last month
+                                            </div>
                                         </div>
                                         <div className="text-center">
-                                            <div className={`text-4xl font-bold ${isLightMode ? 'text-purple-600' : 'text-purple-400'} mb-2`}>3.2K</div>
+                                            <div className={`text-4xl font-bold ${isLightMode ? 'text-purple-600' : 'text-purple-400'} mb-2`}>
+                                                {calculateDashboardMetrics.totalEngagement > 1000 
+                                                    ? (calculateDashboardMetrics.totalEngagement / 1000).toFixed(1) + 'K'
+                                                    : calculateDashboardMetrics.totalEngagement}
+                                            </div>
                                             <div className={`text-sm ${isLightMode ? 'text-gray-500' : 'text-gray-400'} mb-1`}>Total Engagement</div>
-                                            <div className={`text-xs ${isLightMode ? 'text-purple-600' : 'text-purple-400'}`}>+12% growth</div>
+                                            <div className={`text-xs ${
+                                                calculateDashboardMetrics.engagementGrowth >= 0 
+                                                    ? (isLightMode ? 'text-purple-600' : 'text-purple-400')
+                                                    : (isLightMode ? 'text-red-600' : 'text-red-400')
+                                            }`}>
+                                                {calculateDashboardMetrics.engagementGrowth >= 0 ? '+' : ''}{calculateDashboardMetrics.engagementGrowth}% growth
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -23298,19 +23635,31 @@ Generate the repurposed content:`;
                                     <div className="space-y-3">
                                         <div className="flex justify-between">
                                             <span className={`text-sm ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>Content Generated</span>
-                                            <span className={`text-sm font-medium ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>12 this week</span>
+                                            <span className={`text-sm font-medium ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                {calculateDashboardMetrics.contentGeneratedThisWeek} this week
+                                            </span>
                                         </div>
                                         <div className="flex justify-between">
                                             <span className={`text-sm ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>Published</span>
-                                            <span className={`text-sm font-medium ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>8 this week</span>
+                                            <span className={`text-sm font-medium ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                {calculateDashboardMetrics.publishedThisWeek} this week
+                                            </span>
                                         </div>
                                         <div className="flex justify-between">
                                             <span className={`text-sm ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>Avg. Engagement</span>
-                                            <span className={`text-sm font-medium ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>340</span>
+                                            <span className={`text-sm font-medium ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                {calculateDashboardMetrics.avgEngagement || 0}
+                                            </span>
                                         </div>
                                         <div className="flex justify-between">
                                             <span className={`text-sm ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>Authority Growth</span>
-                                            <span className={`text-sm font-medium ${isLightMode ? 'text-green-600' : 'text-green-400'}`}>+5%</span>
+                                            <span className={`text-sm font-medium ${
+                                                calculateDashboardMetrics.authorityChange >= 0 
+                                                    ? (isLightMode ? 'text-green-600' : 'text-green-400')
+                                                    : (isLightMode ? 'text-red-600' : 'text-red-400')
+                                            }`}>
+                                                {calculateDashboardMetrics.authorityChange >= 0 ? '+' : ''}{calculateDashboardMetrics.authorityChange}
+                                            </span>
                                         </div>
                                     </div>
                                 </div>
@@ -23319,18 +23668,107 @@ Generate the repurposed content:`;
                                 <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
                                     <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-4`}>AI Insights</h3>
                                     <div className="space-y-4">
-                                        <div className="bg-blue-500/20 border border-blue-500/50 rounded-lg p-4">
-                                            <h4 className={`font-medium ${isLightMode ? 'text-blue-600' : 'text-blue-400'} mb-1`}>Trending Opportunity</h4>
-                                            <p className={`text-sm ${isLightMode ? 'text-gray-600' : 'text-gray-300'}`}>AI Ethics content is gaining 40% more engagement this week</p>
+                                        {generateSmartInsights.length > 0 ? (
+                                            generateSmartInsights.map((insight, index) => (
+                                                <div key={index} className={`${
+                                                    insight.color === 'blue' ? 'bg-blue-500/20 border-blue-500/50' :
+                                                    insight.color === 'green' ? 'bg-green-500/20 border-green-500/50' :
+                                                    'bg-purple-500/20 border-purple-500/50'
+                                                } border rounded-lg p-4`}>
+                                                    <h4 className={`font-medium mb-1 ${
+                                                        insight.color === 'blue' ? (isLightMode ? 'text-blue-600' : 'text-blue-400') :
+                                                        insight.color === 'green' ? (isLightMode ? 'text-green-600' : 'text-green-400') :
+                                                        (isLightMode ? 'text-purple-600' : 'text-purple-400')
+                                                    }`}>
+                                                        {insight.title}
+                                                    </h4>
+                                                    <p className={`text-sm ${isLightMode ? 'text-gray-600' : 'text-gray-300'}`}>
+                                                        {insight.message}
+                                                    </p>
+                                                </div>
+                                            ))
+                                        ) : (
+                                            <div className={`text-center py-4 ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                <p className="text-sm">Generate some content to see personalized insights!</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Recent Activity */}
+                                {recentActivity.length > 0 && (
+                                    <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
+                                        <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-4`}>Recent Activity</h3>
+                                        <div className="space-y-3">
+                                            {recentActivity.map((activity) => (
+                                                <div key={activity.id} className={`${isLightMode ? 'bg-white/30 backdrop-blur-xl border-white/20' : 'bg-gray-800 border-gray-700'} border rounded-lg p-3`}>
+                                                    <div className="flex items-start justify-between">
+                                                        <div className="flex-1">
+                                                            <div className={`text-sm font-medium ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-1`}>
+                                                                {activity.title}
+                                                            </div>
+                                                            <div className="flex items-center gap-2 text-xs">
+                                                                <span className={`${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                                    {activity.type}
+                                                                </span>
+                                                                <span className={`${isLightMode ? 'text-gray-400' : 'text-gray-500'}`}>•</span>
+                                                                <span className={`${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                                    {activity.platform}
+                                                                </span>
+                                                                <span className={`${isLightMode ? 'text-gray-400' : 'text-gray-500'}`}>•</span>
+                                                                <span className={`${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                                    {activity.timestamp.toLocaleDateString()}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                                            activity.status === 'published' 
+                                                                ? (isLightMode ? 'bg-green-100 text-green-700' : 'bg-green-500/20 text-green-400')
+                                                                : activity.status === 'scheduled'
+                                                                ? (isLightMode ? 'bg-blue-100 text-blue-700' : 'bg-blue-500/20 text-blue-400')
+                                                                : (isLightMode ? 'bg-gray-100 text-gray-700' : 'bg-gray-500/20 text-gray-400')
+                                                        }`}>
+                                                            {activity.status}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            ))}
                                         </div>
-                                        <div className="bg-green-500/20 border border-green-500/50 rounded-lg p-4">
-                                            <h4 className={`font-medium ${isLightMode ? 'text-green-600' : 'text-green-400'} mb-1`}>Authority Building</h4>
-                                            <p className={`text-sm ${isLightMode ? 'text-gray-600' : 'text-gray-300'}`}>Your Software Architecture content is performing 25% above average</p>
-                                        </div>
-                                        <div className="bg-purple-500/20 border border-purple-500/50 rounded-lg p-4">
-                                            <h4 className={`font-medium ${isLightMode ? 'text-purple-600' : 'text-purple-400'} mb-1`}>Content Strategy</h4>
-                                            <p className={`text-sm ${isLightMode ? 'text-gray-600' : 'text-gray-300'}`}>Consider more visual content to increase engagement by 30%</p>
-                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Quick Actions */}
+                                <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
+                                    <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-4`}>Quick Actions</h3>
+                                    <div className="space-y-2">
+                                        <button
+                                            onClick={() => setActiveTab('generator')}
+                                            className="w-full bg-gradient-to-r from-purple-500 to-indigo-600 text-white py-2 rounded-lg font-medium hover:from-purple-600 hover:to-indigo-700 transition-all duration-200 text-sm"
+                                        >
+                                            Generate Content Now
+                                        </button>
+                                        <button
+                                            onClick={() => setActiveTab('calendar')}
+                                            className="w-full bg-gradient-to-r from-blue-500 to-cyan-600 text-white py-2 rounded-lg font-medium hover:from-blue-600 hover:to-cyan-700 transition-all duration-200 text-sm"
+                                        >
+                                            Schedule Post
+                                        </button>
+                                        <button
+                                            onClick={() => setActiveTab('analytics')}
+                                            className="w-full bg-gradient-to-r from-green-500 to-emerald-600 text-white py-2 rounded-lg font-medium hover:from-green-600 hover:to-emerald-700 transition-all duration-200 text-sm"
+                                        >
+                                            View Analytics
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                setEditingExpertise(null);
+                                                setShowExpertiseModal(true);
+                                                setExpertiseError(null);
+                                            }}
+                                            className="w-full bg-gradient-to-r from-orange-500 to-red-600 text-white py-2 rounded-lg font-medium hover:from-orange-600 hover:to-red-700 transition-all duration-200 text-sm"
+                                        >
+                                            Add Expertise Area
+                                        </button>
                                     </div>
                                 </div>
                             </div>
@@ -23684,10 +24122,180 @@ Generate the repurposed content:`;
                                                     </div>
                                                 </div>
                                                 
-                                                <div className={`flex items-center justify-between text-sm ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                <div className={`flex items-center justify-between text-sm ${isLightMode ? 'text-gray-500' : 'text-gray-400'} mb-3`}>
                                                     <span>{area.contentCount} pieces of content</span>
-                                                        <span>Updated {formatLastUpdated(area.lastUpdated)}</span>
+                                                    <span>Updated {formatLastUpdated(area.lastUpdated)}</span>
                                                 </div>
+                                                
+                                                {/* View Analytics Button */}
+                                                <button
+                                                    onClick={() => toggleAnalytics(area.id)}
+                                                    className={`w-full py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                                                        isLightMode
+                                                            ? 'bg-purple-100 text-purple-700 hover:bg-purple-200'
+                                                            : 'bg-purple-500/20 text-purple-400 hover:bg-purple-500/30'
+                                                    }`}
+                                                >
+                                                    {expandedAnalytics.has(area.id) ? '▼ Hide Analytics' : '▶ View Analytics'}
+                                                </button>
+                                                
+                                                {/* Expanded Analytics Section */}
+                                                {expandedAnalytics.has(area.id) && (() => {
+                                                    const analytics = getExpertiseAreaAnalytics(area.name);
+                                                    return (
+                                                        <div className={`mt-4 pt-4 border-t ${isLightMode ? 'border-gray-200' : 'border-gray-700'} space-y-4`}>
+                                                            {/* Key Metrics */}
+                                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                                                <div className={`${isLightMode ? 'bg-gray-50' : 'bg-gray-700/50'} rounded-lg p-3`}>
+                                                                    <div className={`text-xs ${isLightMode ? 'text-gray-500' : 'text-gray-400'} mb-1`}>Total Engagement</div>
+                                                                    <div className={`text-lg font-bold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                                        {analytics.totalEngagement > 1000 
+                                                                            ? (analytics.totalEngagement / 1000).toFixed(1) + 'K'
+                                                                            : analytics.totalEngagement}
+                                                                    </div>
+                                                                </div>
+                                                                <div className={`${isLightMode ? 'bg-gray-50' : 'bg-gray-700/50'} rounded-lg p-3`}>
+                                                                    <div className={`text-xs ${isLightMode ? 'text-gray-500' : 'text-gray-400'} mb-1`}>Avg Engagement</div>
+                                                                    <div className={`text-lg font-bold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                                        {analytics.avgEngagement}
+                                                                    </div>
+                                                                </div>
+                                                                <div className={`${isLightMode ? 'bg-gray-50' : 'bg-gray-700/50'} rounded-lg p-3`}>
+                                                                    <div className={`text-xs ${isLightMode ? 'text-gray-500' : 'text-gray-400'} mb-1`}>Engagement Rate</div>
+                                                                    <div className={`text-lg font-bold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                                        {analytics.engagementRate}%
+                                                                    </div>
+                                                                </div>
+                                                                <div className={`${isLightMode ? 'bg-gray-50' : 'bg-gray-700/50'} rounded-lg p-3`}>
+                                                                    <div className={`text-xs ${isLightMode ? 'text-gray-500' : 'text-gray-400'} mb-1`}>Total Views</div>
+                                                                    <div className={`text-lg font-bold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                                        {analytics.totalViews > 1000 
+                                                                            ? (analytics.totalViews / 1000).toFixed(1) + 'K'
+                                                                            : analytics.totalViews}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                            
+                                                            {/* Engagement Breakdown */}
+                                                            <div>
+                                                                <h4 className={`text-sm font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-2`}>Engagement Breakdown</h4>
+                                                                <div className="grid grid-cols-3 gap-2">
+                                                                    <div className={`${isLightMode ? 'bg-blue-50' : 'bg-blue-500/20'} rounded-lg p-2 text-center`}>
+                                                                        <div className={`text-sm font-bold ${isLightMode ? 'text-blue-700' : 'text-blue-400'}`}>
+                                                                            {analytics.totalLikes}
+                                                                        </div>
+                                                                        <div className={`text-xs ${isLightMode ? 'text-blue-600' : 'text-blue-300'}`}>Likes</div>
+                                                                    </div>
+                                                                    <div className={`${isLightMode ? 'bg-green-50' : 'bg-green-500/20'} rounded-lg p-2 text-center`}>
+                                                                        <div className={`text-sm font-bold ${isLightMode ? 'text-green-700' : 'text-green-400'}`}>
+                                                                            {analytics.totalComments}
+                                                                        </div>
+                                                                        <div className={`text-xs ${isLightMode ? 'text-green-600' : 'text-green-300'}`}>Comments</div>
+                                                                    </div>
+                                                                    <div className={`${isLightMode ? 'bg-purple-50' : 'bg-purple-500/20'} rounded-lg p-2 text-center`}>
+                                                                        <div className={`text-sm font-bold ${isLightMode ? 'text-purple-700' : 'text-purple-400'}`}>
+                                                                            {analytics.totalShares}
+                                                                        </div>
+                                                                        <div className={`text-xs ${isLightMode ? 'text-purple-600' : 'text-purple-300'}`}>Shares</div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                            
+                                                            {/* Content Type Distribution */}
+                                                            {Object.keys(analytics.contentTypes).length > 0 && (
+                                                                <div>
+                                                                    <h4 className={`text-sm font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-2`}>Content Type Distribution</h4>
+                                                                    <div className="space-y-2">
+                                                                        {Object.entries(analytics.contentTypes).map(([type, count]) => (
+                                                                            <div key={type} className="flex items-center justify-between">
+                                                                                <span className={`text-sm capitalize ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>
+                                                                                    {type}
+                                                                                </span>
+                                                                                <div className="flex items-center gap-2 flex-1 mx-3">
+                                                                                    <div className={`flex-1 ${isLightMode ? 'bg-gray-200' : 'bg-gray-700'} rounded-full h-2`}>
+                                                                                        <div 
+                                                                                            className="bg-purple-500 h-2 rounded-full"
+                                                                                            style={{ width: `${(count / analytics.contentCount) * 100}%` }}
+                                                                                        ></div>
+                                                                                    </div>
+                                                                                    <span className={`text-sm font-medium ${isLightMode ? 'text-gray-900' : 'text-gray-50'} w-8 text-right`}>
+                                                                                        {count}
+                                                                                    </span>
+                                                                                </div>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                            
+                                                            {/* Engagement Trend */}
+                                                            {analytics.engagementTrend !== 0 && (
+                                                                <div>
+                                                                    <h4 className={`text-sm font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-2`}>Engagement Trend (Last 30 Days)</h4>
+                                                                    <div className={`flex items-center gap-2 ${isLightMode ? 'bg-gray-50' : 'bg-gray-700/50'} rounded-lg p-3`}>
+                                                                        <span className={`text-lg ${analytics.engagementTrend >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                                                            {analytics.engagementTrend >= 0 ? '↑' : '↓'}
+                                                                        </span>
+                                                                        <span className={`text-sm font-medium ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                                            {Math.abs(analytics.engagementTrend)}% {analytics.engagementTrend >= 0 ? 'increase' : 'decrease'} compared to previous 30 days
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                            
+                                                            {/* Best Performing Content */}
+                                                            {analytics.bestPerforming.length > 0 && (
+                                                                <div>
+                                                                    <h4 className={`text-sm font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-2`}>Top Performing Content</h4>
+                                                                    <div className="space-y-2">
+                                                                        {analytics.bestPerforming.map((content, idx) => (
+                                                                            <div 
+                                                                                key={content.id} 
+                                                                                className={`${isLightMode ? 'bg-gray-50' : 'bg-gray-700/50'} rounded-lg p-3 flex items-start justify-between`}
+                                                                            >
+                                                                                <div className="flex-1">
+                                                                                    <div className="flex items-center gap-2 mb-1">
+                                                                                        <span className={`text-xs font-bold ${isLightMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                                                                            #{idx + 1}
+                                                                                        </span>
+                                                                                        <span className={`text-sm font-medium ${isLightMode ? 'text-gray-900' : 'text-gray-50'} truncate`}>
+                                                                                            {content.title}
+                                                                                        </span>
+                                                                                    </div>
+                                                                                    <div className="flex items-center gap-2 text-xs">
+                                                                                        <span className={`${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                                                            {content.type}
+                                                                                        </span>
+                                                                                        <span className={`${isLightMode ? 'text-gray-400' : 'text-gray-500'}`}>•</span>
+                                                                                        <span className={`${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                                                            {content.platform}
+                                                                                        </span>
+                                                                                    </div>
+                                                                                </div>
+                                                                                <div className="text-right ml-3">
+                                                                                    <div className={`text-sm font-bold ${isLightMode ? 'text-purple-600' : 'text-purple-400'}`}>
+                                                                                        {content.engagement}
+                                                                                    </div>
+                                                                                    <div className={`text-xs ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                                                        engagement
+                                                                                    </div>
+                                                                                </div>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                            
+                                                            {/* Empty State */}
+                                                            {analytics.contentCount === 0 && (
+                                                                <div className={`text-center py-4 ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                                    <p className="text-sm">No content found for this expertise area yet.</p>
+                                                                    <p className="text-xs mt-1">Generate content related to {area.name} to see analytics here.</p>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })()}
                                             </div>
                                             ))
                                         )}
@@ -23768,13 +24376,52 @@ Generate the repurposed content:`;
                                 <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
                                     <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-4`}>Quick Actions</h3>
                                     <div className="space-y-3">
-                                        <button className="w-full bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700 transition-colors duration-200">
+                                        <button 
+                                            onClick={() => {
+                                                if (expertiseAreas.length === 0) {
+                                                    alert('No expertise areas to update. Please add an expertise area first.');
+                                                    return;
+                                                }
+                                                // If only one area, edit it directly. If multiple, edit the first one (could be enhanced to show selection)
+                                                if (expertiseAreas.length === 1) {
+                                                    handleEditExpertise(expertiseAreas[0]);
+                                                } else {
+                                                    // For multiple areas, edit the first one (can be enhanced later with selection)
+                                                    handleEditExpertise(expertiseAreas[0]);
+                                                }
+                                            }}
+                                            disabled={expertiseAreas.length === 0}
+                                            className={`w-full py-2 rounded-lg font-medium transition-colors duration-200 ${
+                                                expertiseAreas.length === 0
+                                                    ? 'bg-gray-400 text-gray-200 cursor-not-allowed'
+                                                    : 'bg-blue-600 text-white hover:bg-blue-700'
+                                            }`}
+                                        >
                                             Update Expertise Level
                                         </button>
-                                        <button className="w-full bg-green-600 text-white py-2 rounded-lg font-medium hover:bg-green-700 transition-colors duration-200">
+                                        <button 
+                                            onClick={() => {
+                                                setEditingExpertise(null);
+                                                setShowExpertiseModal(true);
+                                                setExpertiseError(null);
+                                            }}
+                                            className="w-full bg-green-600 text-white py-2 rounded-lg font-medium hover:bg-green-700 transition-colors duration-200"
+                                        >
                                             Add New Skill
                                         </button>
-                                        <button className="w-full bg-purple-600 text-white py-2 rounded-lg font-medium hover:bg-purple-700 transition-colors duration-200">
+                                        <button 
+                                            onClick={() => {
+                                                setActiveTab('generator');
+                                                // Scroll to content history section if it exists
+                                                setTimeout(() => {
+                                                    const contentHistorySection = document.querySelector('[data-content-history]');
+                                                    if (contentHistorySection) {
+                                                        contentHistorySection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                                    }
+                                                }, 100);
+                                            }}
+                                            className="w-full bg-purple-600 text-white py-2 rounded-lg font-medium hover:bg-purple-700 transition-colors duration-200"
+                                        >
                                             View Content History
                                         </button>
                                     </div>
