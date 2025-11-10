@@ -21131,19 +21131,48 @@ Generate the repurposed content:`;
                 isLoading, setIsLoading, error, setError, generatePost,
                 tone, setTone, selectedPlatforms, setSelectedPlatforms, contentType, setContentType,
                 copyToClipboard, exportAsTextFile, getWordCount, getCharacterCount, saveContentToHistory,
-                handleScheduleContent
+                handleScheduleContent, expertiseAreas
             }) => {
                 const [localFormData, setLocalFormData] = React.useState({
                     topic: formData.topic || '',
                     targetAudience: formData.targetAudience || 'professionals',
-                    contentLength: formData.contentLength || 'medium'
+                    contentLength: formData.contentLength || 'medium',
+                    expertiseArea: formData.expertiseArea || ''
                 });
+                const [suggestedExpertise, setSuggestedExpertise] = React.useState([]);
+                const [showExpertiseSuggestions, setShowExpertiseSuggestions] = React.useState(false);
 
                 React.useEffect(() => {
                     if (formData.topic) {
                         setLocalFormData(prev => ({ ...prev, topic: formData.topic }));
                     }
-                }, [formData.topic]);
+                    if (formData.expertiseArea) {
+                        setLocalFormData(prev => ({ ...prev, expertiseArea: formData.expertiseArea }));
+                    }
+                }, [formData.topic, formData.expertiseArea]);
+
+                // Auto-suggest expertise areas based on topic
+                React.useEffect(() => {
+                    if (localFormData.topic && expertiseAreas && expertiseAreas.length > 0) {
+                        const topicLower = localFormData.topic.toLowerCase();
+                        const suggestions = expertiseAreas
+                            .filter(area => {
+                                const areaNameLower = area.name.toLowerCase();
+                                // Check if topic contains expertise area name or vice versa
+                                return topicLower.includes(areaNameLower.split(' ')[0]) ||
+                                       areaNameLower.includes(topicLower.split(' ')[0]) ||
+                                       topicLower.split(' ').some(word => areaNameLower.includes(word));
+                            })
+                            .slice(0, 3)
+                            .map(area => area.name);
+                        
+                        setSuggestedExpertise(suggestions);
+                        setShowExpertiseSuggestions(suggestions.length > 0 && !localFormData.expertiseArea);
+                    } else {
+                        setSuggestedExpertise([]);
+                        setShowExpertiseSuggestions(false);
+                    }
+                }, [localFormData.topic, expertiseAreas, localFormData.expertiseArea]);
 
                 const platforms = ['LinkedIn', 'Twitter', 'Facebook', 'Instagram', 'Medium'];
                 const tones = ['professional', 'conversational', 'friendly', 'authoritative', 'inspiring'];
@@ -21172,7 +21201,9 @@ Generate the repurposed content:`;
                                 topic: localFormData.topic,
                                 platforms: selectedPlatforms,
                                 tone: tone,
-                                timestamp: Date.now()
+                                timestamp: Date.now(),
+                                expertiseArea: localFormData.expertiseArea || null,
+                                expertise_area: localFormData.expertiseArea || null
                             }
                         };
                         setGeneratedContent(contentObj);
@@ -21234,7 +21265,66 @@ Generate the repurposed content:`;
                                         className={`w-full px-4 py-2 rounded-lg border ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} focus:outline-none focus:ring-2 focus:ring-purple-500`}
                                         disabled={isLoading}
                                     />
+                                    {/* Auto-suggested Expertise Areas */}
+                                    {showExpertiseSuggestions && suggestedExpertise.length > 0 && (
+                                        <div className={`mt-2 p-3 rounded-lg border ${isLightMode ? 'bg-blue-50 border-blue-200' : 'bg-blue-500/20 border-blue-500/50'}`}>
+                                            <div className={`text-xs font-medium mb-2 ${isLightMode ? 'text-blue-800' : 'text-blue-300'}`}>
+                                                💡 Suggested Expertise Areas:
+                                            </div>
+                                            <div className="flex flex-wrap gap-2">
+                                                {suggestedExpertise.map((expertise, idx) => (
+                                                    <button
+                                                        key={idx}
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setLocalFormData({ ...localFormData, expertiseArea: expertise });
+                                                            setShowExpertiseSuggestions(false);
+                                                        }}
+                                                        className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
+                                                            isLightMode
+                                                                ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                                                                : 'bg-blue-500/30 text-blue-300 hover:bg-blue-500/40'
+                                                        }`}
+                                                    >
+                                                        {expertise} ✓
+                                                    </button>
+                                                ))}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowExpertiseSuggestions(false)}
+                                                    className={`px-2 py-1 text-xs ${isLightMode ? 'text-blue-600' : 'text-blue-400'}`}
+                                                >
+                                                    Dismiss
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
+
+                                {/* Expertise Area Selector */}
+                                {expertiseAreas && expertiseAreas.length > 0 && (
+                                    <div>
+                                        <label className={`block text-sm font-medium ${isLightMode ? 'text-gray-700' : 'text-gray-300'} mb-2`}>
+                                            Expertise Area (Optional)
+                                        </label>
+                                        <select
+                                            value={localFormData.expertiseArea || ''}
+                                            onChange={(e) => setLocalFormData({ ...localFormData, expertiseArea: e.target.value })}
+                                            className={`w-full px-4 py-2 rounded-lg border ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} focus:outline-none focus:ring-2 focus:ring-purple-500`}
+                                            disabled={isLoading}
+                                        >
+                                            <option value="">Select an expertise area (optional)</option>
+                                            {expertiseAreas.map(area => (
+                                                <option key={area.id} value={area.name}>
+                                                    {area.name} ({area.level})
+                                                </option>
+                                            ))}
+                                        </select>
+                                        <p className={`text-xs mt-1 ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                            Link this content to an expertise area for better analytics
+                                        </p>
+                                    </div>
+                                )}
 
                                 <div>
                                     <label className={`block text-sm font-medium ${isLightMode ? 'text-gray-700' : 'text-gray-300'} mb-2`}>
@@ -24192,6 +24282,7 @@ Generate the repurposed content:`;
                                             getCharacterCount={getCharacterCount}
                                             saveContentToHistory={saveContentToHistory}
                                             handleScheduleContent={handleScheduleContent}
+                                            expertiseAreas={expertiseAreas}
                                         />
                                     )}
 
@@ -24273,12 +24364,85 @@ Generate the repurposed content:`;
                             <div className="lg:col-span-2 space-y-8">
                                 {/* Expertise Areas */}
                                 <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-8`}>
-                                    <div className="flex items-center gap-3 mb-6">
-                                        <div className="w-10 h-10 bg-indigo-500 rounded-lg flex items-center justify-center">
-                                            <div className="w-5 h-5 text-white text-xl">👤</div>
+                                    <div className="flex items-center justify-between mb-6">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 bg-indigo-500 rounded-lg flex items-center justify-center">
+                                                <div className="w-5 h-5 text-white text-xl">👤</div>
+                                            </div>
+                                            <h2 className={`text-2xl font-bold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>Your Expertise Areas</h2>
                                         </div>
-                                        <h2 className={`text-2xl font-bold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>Your Expertise Areas</h2>
+                                        {/* Content Distribution Chart Toggle */}
+                                        {expertiseAreas.length > 0 && (
+                                            <button
+                                                onClick={() => {
+                                                    const chartSection = document.getElementById('content-distribution-chart');
+                                                    if (chartSection) {
+                                                        chartSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                                    }
+                                                }}
+                                                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                                                    isLightMode
+                                                        ? 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200'
+                                                        : 'bg-indigo-500/20 text-indigo-400 hover:bg-indigo-500/30'
+                                                }`}
+                                            >
+                                                📊 View Distribution
+                                            </button>
+                                        )}
                                     </div>
+                                    
+                                    {/* Content Distribution Chart */}
+                                    {expertiseAreas.length > 0 && (() => {
+                                        const distributionData = expertiseAreas.map(area => {
+                                            const relatedContent = contentHistory.filter(item => {
+                                                const topic = item.metadata?.topic?.toLowerCase() || '';
+                                                const expertise = item.metadata?.expertiseArea?.toLowerCase() || item.metadata?.expertise_area?.toLowerCase() || '';
+                                                const title = item.title?.toLowerCase() || '';
+                                                const areaNameLower = area.name.toLowerCase();
+                                                return topic.includes(areaNameLower.split(' ')[0]) || 
+                                                       areaNameLower.includes(topic.split(' ')[0]) ||
+                                                       expertise.includes(areaNameLower) ||
+                                                       title.includes(areaNameLower.split(' ')[0]);
+                                            });
+                                            return {
+                                                name: area.name,
+                                                count: relatedContent.length,
+                                                color: area.authorityScore >= 80 ? '#10b981' : area.authorityScore >= 60 ? '#eab308' : '#ef4444'
+                                            };
+                                        });
+                                        const maxCount = Math.max(...distributionData.map(d => d.count), 1);
+                                        
+                                        return (
+                                            <div id="content-distribution-chart" className={`mb-6 ${isLightMode ? 'bg-gray-50' : 'bg-gray-800/50'} rounded-lg p-4`}>
+                                                <h3 className={`text-sm font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-3`}>
+                                                    Content Distribution Across Expertise Areas
+                                                </h3>
+                                                <div className="space-y-2">
+                                                    {distributionData.map((item, idx) => (
+                                                        <div key={idx}>
+                                                            <div className="flex items-center justify-between mb-1">
+                                                                <span className={`text-xs font-medium ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>
+                                                                    {item.name}
+                                                                </span>
+                                                                <span className={`text-xs font-bold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                                    {item.count} {item.count === 1 ? 'piece' : 'pieces'}
+                                                                </span>
+                                                            </div>
+                                                            <div className={`w-full ${isLightMode ? 'bg-gray-200' : 'bg-gray-700'} rounded-full h-2`}>
+                                                                <div
+                                                                    className="h-2 rounded-full transition-all duration-300"
+                                                                    style={{ 
+                                                                        width: `${maxCount > 0 ? (item.count / maxCount) * 100 : 0}%`,
+                                                                        backgroundColor: item.color
+                                                                    }}
+                                                                ></div>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        );
+                                    })()}
                                     
                                     <div className="space-y-4">
                                         {expertiseAreas.length === 0 ? (
@@ -24356,17 +24520,41 @@ Generate the repurposed content:`;
                                                     <span>Updated {formatLastUpdated(area.lastUpdated)}</span>
                                                 </div>
                                                 
-                                                {/* View Analytics Button */}
-                                                <button
-                                                    onClick={() => toggleAnalytics(area.id)}
-                                                    className={`w-full py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                                                        isLightMode
-                                                            ? 'bg-purple-100 text-purple-700 hover:bg-purple-200'
-                                                            : 'bg-purple-500/20 text-purple-400 hover:bg-purple-500/30'
-                                                    }`}
-                                                >
-                                                    {expandedAnalytics.has(area.id) ? '▼ Hide Analytics' : '▶ View Analytics'}
-                                                </button>
+                                                {/* Action Buttons */}
+                                                <div className="flex gap-2">
+                                                    <button
+                                                        onClick={() => {
+                                                            // Navigate to generator with pre-filled expertise area
+                                                            setActiveTab('generator');
+                                                            setFormData({
+                                                                ...formData,
+                                                                topic: area.name,
+                                                                expertiseArea: area.name
+                                                            });
+                                                            // Set active generator to post-generator
+                                                            setTimeout(() => {
+                                                                setActiveGenerator('post-generator');
+                                                            }, 100);
+                                                        }}
+                                                        className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                                                            isLightMode
+                                                                ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                                                                : 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
+                                                        }`}
+                                                    >
+                                                        ✨ Generate Content
+                                                    </button>
+                                                    <button
+                                                        onClick={() => toggleAnalytics(area.id)}
+                                                        className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                                                            isLightMode
+                                                                ? 'bg-purple-100 text-purple-700 hover:bg-purple-200'
+                                                                : 'bg-purple-500/20 text-purple-400 hover:bg-purple-500/30'
+                                                        }`}
+                                                    >
+                                                        {expandedAnalytics.has(area.id) ? '▼ Hide' : '▶ Analytics'}
+                                                    </button>
+                                                </div>
                                                 
                                                 {/* Expanded Analytics Section */}
                                                 {expandedAnalytics.has(area.id) && (() => {
@@ -24532,6 +24720,77 @@ Generate the repurposed content:`;
                                                                 )}
                                                             </div>
                                                             
+                                                            {/* Related Content List */}
+                                                            {(() => {
+                                                                const relatedContent = contentHistory.filter(item => {
+                                                                    const topic = item.metadata?.topic?.toLowerCase() || '';
+                                                                    const expertise = item.metadata?.expertiseArea?.toLowerCase() || item.metadata?.expertise_area?.toLowerCase() || '';
+                                                                    const title = item.title?.toLowerCase() || '';
+                                                                    const areaNameLower = area.name.toLowerCase();
+                                                                    return topic.includes(areaNameLower.split(' ')[0]) || 
+                                                                           areaNameLower.includes(topic.split(' ')[0]) ||
+                                                                           expertise.includes(areaNameLower) ||
+                                                                           title.includes(areaNameLower.split(' ')[0]);
+                                                                }).slice(0, 10);
+                                                                
+                                                                return relatedContent.length > 0 ? (
+                                                                    <div>
+                                                                        <h4 className={`text-sm font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-2`}>
+                                                                            Related Content ({relatedContent.length})
+                                                                        </h4>
+                                                                        <div className="space-y-2 max-h-64 overflow-y-auto">
+                                                                            {relatedContent.map((item) => (
+                                                                                <div 
+                                                                                    key={item.id} 
+                                                                                    className={`${isLightMode ? 'bg-gray-50' : 'bg-gray-700/50'} rounded-lg p-3 hover:${isLightMode ? 'bg-gray-100' : 'bg-gray-700'} transition-colors cursor-pointer`}
+                                                                                    onClick={() => {
+                                                                                        setGeneratedContent(item);
+                                                                                        setActiveTab('generator');
+                                                                                        setActiveGenerator(item.type || 'post-generator');
+                                                                                    }}
+                                                                                >
+                                                                                    <div className="flex items-start justify-between">
+                                                                                        <div className="flex-1">
+                                                                                            <div className={`text-sm font-medium ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-1 truncate`}>
+                                                                                                {item.title}
+                                                                                            </div>
+                                                                                            <div className="flex items-center gap-2 text-xs">
+                                                                                                <span className={`${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                                                                    {item.type || item.metadata?.contentType || 'post'}
+                                                                                                </span>
+                                                                                                <span className={`${isLightMode ? 'text-gray-400' : 'text-gray-500'}`}>•</span>
+                                                                                                <span className={`${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                                                                    {item.metadata?.platforms?.[0] || 'LinkedIn'}
+                                                                                                </span>
+                                                                                                <span className={`${isLightMode ? 'text-gray-400' : 'text-gray-500'}`}>•</span>
+                                                                                                <span className={`${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                                                                    {new Date(item.metadata?.timestamp || item.createdAt || Date.now()).toLocaleDateString()}
+                                                                                                </span>
+                                                                                            </div>
+                                                                                        </div>
+                                                                                        <button
+                                                                                            onClick={(e) => {
+                                                                                                e.stopPropagation();
+                                                                                                setGeneratedContent(item);
+                                                                                                setActiveTab('generator');
+                                                                                                setActiveGenerator(item.type || 'post-generator');
+                                                                                            }}
+                                                                                            className={`ml-2 px-2 py-1 rounded text-xs font-medium transition-all ${
+                                                                                                isLightMode
+                                                                                                    ? 'bg-purple-500 text-white hover:bg-purple-600'
+                                                                                                    : 'bg-purple-600 text-white hover:bg-purple-700'
+                                                                                            }`}
+                                                                                        >
+                                                                                            View
+                                                                                        </button>
+                                                                                    </div>
+                                                                                </div>
+                                                                            ))}
+                                                                        </div>
+                                                                    </div>
+                                                                ) : null;
+                                                            })()}
+                                                            
                                                             {/* Best Performing Content */}
                                                             {analytics.bestPerforming.length > 0 && (
                                                                 <div>
@@ -24540,7 +24799,15 @@ Generate the repurposed content:`;
                                                                         {analytics.bestPerforming.map((content, idx) => (
                                                                             <div 
                                                                                 key={content.id} 
-                                                                                className={`${isLightMode ? 'bg-gray-50' : 'bg-gray-700/50'} rounded-lg p-3 flex items-start justify-between`}
+                                                                                className={`${isLightMode ? 'bg-gray-50' : 'bg-gray-700/50'} rounded-lg p-3 flex items-start justify-between cursor-pointer hover:${isLightMode ? 'bg-gray-100' : 'bg-gray-700'} transition-colors`}
+                                                                                onClick={() => {
+                                                                                    const fullContent = contentHistory.find(c => c.id === content.id);
+                                                                                    if (fullContent) {
+                                                                                        setGeneratedContent(fullContent);
+                                                                                        setActiveTab('generator');
+                                                                                        setActiveGenerator(fullContent.type || 'post-generator');
+                                                                                    }
+                                                                                }}
                                                                             >
                                                                                 <div className="flex-1">
                                                                                     <div className="flex items-center gap-2 mb-1">
