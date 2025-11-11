@@ -32467,6 +32467,13 @@ Generate the repurposed content:`;
             const [filterLocation, setFilterLocation] = useState('all');
             const [filterDate, setFilterDate] = useState('all');
             
+            // Role Models filters and search
+            const [roleModelSearchQuery, setRoleModelSearchQuery] = useState('');
+            const [roleModelFilterIndustry, setRoleModelFilterIndustry] = useState('all');
+            const [roleModelFilterInfluence, setRoleModelFilterInfluence] = useState('all');
+            const [roleModelFilterEngagement, setRoleModelFilterEngagement] = useState('all');
+            const [roleModelSortBy, setRoleModelSortBy] = useState('relevance');
+            
             // Check for light mode
             const isLightMode = !document.documentElement.classList.contains('dark');
 
@@ -32539,7 +32546,19 @@ Generate the repurposed content:`;
                     twitterUrl: 'https://twitter.com/sarahjohnson',
                     isFollowing: true,
                     influenceScore: 92,
-                    avatar: '/api/placeholder/60/60'
+                    avatar: '/api/placeholder/60/60',
+                    careerPath: [
+                        { role: 'Software Engineer', company: 'Microsoft', year: '2018-2020' },
+                        { role: 'Senior Software Engineer', company: 'Amazon', year: '2020-2022' },
+                        { role: 'Senior Software Engineer', company: 'Google', year: '2022-Present' }
+                    ],
+                    topSkills: ['React', 'TypeScript', 'System Design', 'Mentoring', 'Open Source'],
+                    achievements: [
+                        'Open source contributor with 5k+ GitHub stars',
+                        'Speaker at React Conf 2023',
+                        'Mentored 50+ junior developers'
+                    ],
+                    whyFollow: 'Sarah shares practical React tips and career advice for developers. Her content on system design and mentoring is highly valuable for mid-level engineers looking to grow.'
                 },
                 {
                     id: 2,
@@ -32555,7 +32574,20 @@ Generate the repurposed content:`;
                     twitterUrl: 'https://twitter.com/michaelchen',
                     isFollowing: false,
                     influenceScore: 88,
-                    avatar: '/api/placeholder/60/60'
+                    avatar: '/api/placeholder/60/60',
+                    careerPath: [
+                        { role: 'Software Engineer', company: 'Facebook', year: '2015-2017' },
+                        { role: 'Engineering Manager', company: 'Uber', year: '2017-2020' },
+                        { role: 'Director of Engineering', company: 'Stripe', year: '2020-2023' },
+                        { role: 'VP of Engineering', company: 'Stripe', year: '2023-Present' }
+                    ],
+                    topSkills: ['Engineering Leadership', 'Team Building', 'Scalable Systems', 'Product Strategy', 'Hiring'],
+                    achievements: [
+                        'Scaled engineering team from 10 to 200+ engineers',
+                        'Built payment infrastructure handling $100B+ annually',
+                        'Published 3 books on engineering leadership'
+                    ],
+                    whyFollow: 'Michael provides deep insights into engineering leadership and scaling teams. His content on building high-performing engineering organizations is essential for current and aspiring engineering leaders.'
                 }
             ];
 
@@ -32635,6 +32667,101 @@ Generate the repurposed content:`;
             const handleFollowToggle = (roleModelId) => {
                 // Toggle follow functionality would be implemented here
                 console.log('Toggle follow for role model:', roleModelId);
+            };
+
+            // Filter and sort role models
+            const getFilteredAndSortedRoleModels = () => {
+                let filtered = [...roleModels];
+
+                // Search filter
+                if (roleModelSearchQuery.trim()) {
+                    const query = roleModelSearchQuery.toLowerCase();
+                    filtered = filtered.filter(model => 
+                        model.name.toLowerCase().includes(query) ||
+                        model.company.toLowerCase().includes(query) ||
+                        model.title.toLowerCase().includes(query) ||
+                        model.contentThemes.some(theme => theme.toLowerCase().includes(query))
+                    );
+                }
+
+                // Industry filter
+                if (roleModelFilterIndustry !== 'all') {
+                    filtered = filtered.filter(model => 
+                        model.industry.toLowerCase() === roleModelFilterIndustry.toLowerCase()
+                    );
+                }
+
+                // Influence score filter
+                if (roleModelFilterInfluence !== 'all') {
+                    filtered = filtered.filter(model => {
+                        if (roleModelFilterInfluence === '90+') {
+                            return model.influenceScore >= 90;
+                        }
+                        const [min, max] = roleModelFilterInfluence.split('-').map(Number);
+                        return model.influenceScore >= min && model.influenceScore < max;
+                    });
+                }
+
+                // Engagement rate filter
+                if (roleModelFilterEngagement !== 'all') {
+                    filtered = filtered.filter(model => {
+                        if (roleModelFilterEngagement === '8+') {
+                            return model.engagementRate >= 8;
+                        }
+                        const [min, max] = roleModelFilterEngagement.split('-').map(Number);
+                        return model.engagementRate >= min && model.engagementRate < max;
+                    });
+                }
+
+                // Sort
+                filtered.sort((a, b) => {
+                    switch (roleModelSortBy) {
+                        case 'relevance':
+                            return b.influenceScore - a.influenceScore;
+                        case 'influence':
+                            return b.influenceScore - a.influenceScore;
+                        case 'engagement':
+                            return b.engagementRate - a.engagementRate;
+                        case 'followers':
+                            return b.followersCount - a.followersCount;
+                        case 'name':
+                            return a.name.localeCompare(b.name);
+                        default:
+                            return 0;
+                    }
+                });
+
+                return filtered;
+            };
+
+            // Get unique industries from role models
+            const getUniqueIndustries = () => {
+                const industries = [...new Set(roleModels.map(model => model.industry))];
+                return industries.sort();
+            };
+
+            // Generate avatar initials from name
+            const getInitials = (name) => {
+                return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+            };
+
+            // Generate gradient color based on name (consistent color per person)
+            const getAvatarGradient = (name) => {
+                const colors = [
+                    'from-blue-500 to-purple-600',
+                    'from-green-500 to-teal-600',
+                    'from-orange-500 to-red-600',
+                    'from-pink-500 to-rose-600',
+                    'from-indigo-500 to-blue-600',
+                    'from-yellow-500 to-orange-600',
+                    'from-cyan-500 to-blue-600',
+                    'from-violet-500 to-purple-600'
+                ];
+                let hash = 0;
+                for (let i = 0; i < name.length; i++) {
+                    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+                }
+                return colors[Math.abs(hash) % colors.length];
             };
 
             const tabs = [
@@ -32849,11 +32976,99 @@ Generate the repurposed content:`;
                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                             {/* Main Content */}
                             <div className="lg:col-span-2 space-y-6">
+                                {/* Search and Filters */}
+                                <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
+                                    <div className="flex flex-col md:flex-row gap-4 mb-4">
+                                        <div className="flex-1">
+                                            <div className="relative">
+                                                <div className={`absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none`}>
+                                                    <div className={`w-4 h-4 ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>🔍</div>
+                                                </div>
+                                                <input
+                                                    type="text"
+                                                    value={roleModelSearchQuery}
+                                                    onChange={(e) => setRoleModelSearchQuery(e.target.value)}
+                                                    placeholder="Search by name, company, title, or content themes..."
+                                                    className={`w-full pl-10 pr-4 py-3 ${isLightMode ? 'bg-white border-gray-300 text-gray-900 placeholder-gray-500' : 'bg-gray-800 border-gray-700 text-gray-50 placeholder-gray-400'} border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                                                />
+                                            </div>
+                                        </div>
+                                        <div className="flex gap-3">
+                                            <select
+                                                value={roleModelSortBy}
+                                                onChange={(e) => setRoleModelSortBy(e.target.value)}
+                                                className={`px-4 py-3 ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-800 border-gray-700 text-gray-50'} border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                                            >
+                                                <option value="relevance">Sort by Relevance</option>
+                                                <option value="influence">Sort by Influence</option>
+                                                <option value="engagement">Sort by Engagement</option>
+                                                <option value="followers">Sort by Followers</option>
+                                                <option value="name">Sort by Name</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div className="flex flex-wrap gap-3">
+                                        <select
+                                            value={roleModelFilterIndustry}
+                                            onChange={(e) => setRoleModelFilterIndustry(e.target.value)}
+                                            className={`px-4 py-2 ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-800 border-gray-700 text-gray-50'} border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm`}
+                                        >
+                                            <option value="all">All Industries</option>
+                                            {getUniqueIndustries().map((industry) => (
+                                                <option key={industry} value={industry}>{industry}</option>
+                                            ))}
+                                        </select>
+                                        <select
+                                            value={roleModelFilterInfluence}
+                                            onChange={(e) => setRoleModelFilterInfluence(e.target.value)}
+                                            className={`px-4 py-2 ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-800 border-gray-700 text-gray-50'} border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm`}
+                                        >
+                                            <option value="all">All Influence Scores</option>
+                                            <option value="90+">90+ (Top Tier)</option>
+                                            <option value="80-90">80-90 (High)</option>
+                                            <option value="70-80">70-80 (Medium)</option>
+                                            <option value="0-70">Below 70</option>
+                                        </select>
+                                        <select
+                                            value={roleModelFilterEngagement}
+                                            onChange={(e) => setRoleModelFilterEngagement(e.target.value)}
+                                            className={`px-4 py-2 ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-800 border-gray-700 text-gray-50'} border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm`}
+                                        >
+                                            <option value="all">All Engagement Rates</option>
+                                            <option value="8+">8%+ (Very High)</option>
+                                            <option value="6-8">6-8% (High)</option>
+                                            <option value="4-6">4-6% (Medium)</option>
+                                            <option value="0-4">Below 4%</option>
+                                        </select>
+                                        {(roleModelSearchQuery || roleModelFilterIndustry !== 'all' || roleModelFilterInfluence !== 'all' || roleModelFilterEngagement !== 'all') && (
+                                            <button
+                                                onClick={() => {
+                                                    setRoleModelSearchQuery('');
+                                                    setRoleModelFilterIndustry('all');
+                                                    setRoleModelFilterInfluence('all');
+                                                    setRoleModelFilterEngagement('all');
+                                                }}
+                                                className={`px-4 py-2 ${isLightMode ? 'bg-gray-200 text-gray-700 hover:bg-gray-300' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'} rounded-lg text-sm font-medium transition-colors duration-200`}
+                                            >
+                                                Clear Filters
+                                            </button>
+                                        )}
+                                    </div>
+                                    <div className={`mt-4 text-sm ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>
+                                        Showing {getFilteredAndSortedRoleModels().length} of {roleModels.length} role models
+                                    </div>
+                                </div>
+
+                                {/* Role Models List */}
                                 <div className="space-y-4">
-                                    {roleModels.map((model) => (
-                                        <div key={model.id} className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
-                                            <div className="flex items-start gap-4">
-                                                <div className="w-16 h-16 bg-gray-300 rounded-full flex-shrink-0"></div>
+                                    {getFilteredAndSortedRoleModels().length > 0 ? (
+                                        getFilteredAndSortedRoleModels().map((model) => (
+                                        <div key={model.id} className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6 hover:border-indigo-500/50 transition-all duration-300`}>
+                                            <div className="flex items-start gap-4 mb-6">
+                                                {/* Enhanced Avatar */}
+                                                <div className={`w-20 h-20 bg-gradient-to-br ${getAvatarGradient(model.name)} rounded-full flex items-center justify-center flex-shrink-0 shadow-lg`}>
+                                                    <span className="text-white text-2xl font-bold">{getInitials(model.name)}</span>
+                                                </div>
                                                 <div className="flex-1">
                                                     <div className="flex items-start justify-between mb-3">
                                                         <div>
@@ -32878,37 +33093,128 @@ Generate the repurposed content:`;
                                                             {model.isFollowing ? 'Following' : 'Follow'}
                                                         </button>
                                                     </div>
-                                                    <div className="mb-4">
-                                                        <div className="flex flex-wrap gap-2">
-                                                            {model.contentThemes.map((theme) => (
-                                                                <span key={theme} className="px-2 py-1 bg-purple-500/20 text-purple-400 text-xs rounded-full">
-                                                                    {theme}
-                                                                </span>
-                                                            ))}
+                                                    
+                                                    {/* Why Follow AI Insight */}
+                                                    {model.whyFollow && (
+                                                        <div className={`${isLightMode ? 'bg-indigo-50 border-indigo-200' : 'bg-indigo-500/10 border-indigo-500/30'} border rounded-lg p-4 mb-4`}>
+                                                            <div className="flex items-start gap-2">
+                                                                <div className="text-indigo-500 text-lg">💡</div>
+                                                                <div>
+                                                                    <h4 className={`font-semibold text-sm ${isLightMode ? 'text-indigo-900' : 'text-indigo-400'} mb-1`}>Why Follow</h4>
+                                                                    <p className={`text-sm ${isLightMode ? 'text-indigo-700' : 'text-indigo-300'}`}>{model.whyFollow}</p>
+                                                                </div>
+                                                            </div>
                                                         </div>
-                                                    </div>
-                                                    <div className="mb-4">
-                                                        <h4 className={`font-medium ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-2`}>Recent Posts</h4>
-                                                        <div className="space-y-1">
-                                                            {model.recentPosts.map((post, index) => (
-                                                                <p key={index} className={`text-sm ${isLightMode ? 'text-gray-600' : 'text-gray-300'}`}>• {post}</p>
-                                                            ))}
-                                                        </div>
-                                                    </div>
-                                                    <div className="flex gap-3">
-                                                        <button className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200">
-                                                            <div className="w-4 h-4">💼</div>
-                                                            LinkedIn
-                                                        </button>
-                                                        <button className="flex items-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors duration-200">
-                                                            <div className="w-4 h-4">🐦</div>
-                                                            Twitter
-                                                        </button>
-                                                    </div>
+                                                    )}
                                                 </div>
                                             </div>
+
+                                            {/* Top Skills */}
+                                            {model.topSkills && model.topSkills.length > 0 && (
+                                                <div className="mb-4">
+                                                    <h4 className={`font-medium ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-2 text-sm`}>Top Skills</h4>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {model.topSkills.map((skill, index) => (
+                                                            <span key={index} className="px-3 py-1 bg-blue-500/20 text-blue-400 text-xs rounded-full font-medium">
+                                                                {skill}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Content Themes */}
+                                            <div className="mb-4">
+                                                <h4 className={`font-medium ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-2 text-sm`}>Content Themes</h4>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {model.contentThemes.map((theme) => (
+                                                        <span key={theme} className="px-2 py-1 bg-purple-500/20 text-purple-400 text-xs rounded-full">
+                                                            {theme}
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            {/* Career Path Timeline */}
+                                            {model.careerPath && model.careerPath.length > 0 && (
+                                                <div className="mb-4">
+                                                    <h4 className={`font-medium ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-3 text-sm`}>Career Path</h4>
+                                                    <div className="space-y-3">
+                                                        {model.careerPath.map((step, index) => (
+                                                            <div key={index} className="flex items-start gap-3">
+                                                                <div className="flex flex-col items-center">
+                                                                    <div className={`w-2 h-2 rounded-full ${index === model.careerPath.length - 1 ? 'bg-indigo-500' : 'bg-gray-400'}`}></div>
+                                                                    {index < model.careerPath.length - 1 && (
+                                                                        <div className="w-0.5 h-full bg-gray-300 dark:bg-gray-600 min-h-[24px]"></div>
+                                                                    )}
+                                                                </div>
+                                                                <div className="flex-1 pb-2">
+                                                                    <p className={`font-medium ${isLightMode ? 'text-gray-900' : 'text-gray-50'} text-sm`}>{step.role}</p>
+                                                                    <p className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>{step.company} • {step.year}</p>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Achievements */}
+                                            {model.achievements && model.achievements.length > 0 && (
+                                                <div className="mb-4">
+                                                    <h4 className={`font-medium ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-2 text-sm`}>Key Achievements</h4>
+                                                    <div className="space-y-2">
+                                                        {model.achievements.map((achievement, index) => (
+                                                            <div key={index} className="flex items-start gap-2">
+                                                                <div className="text-yellow-500 mt-0.5">🏆</div>
+                                                                <p className={`text-sm ${isLightMode ? 'text-gray-600' : 'text-gray-300'}`}>{achievement}</p>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Recent Posts */}
+                                            <div className="mb-4">
+                                                <h4 className={`font-medium ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-2 text-sm`}>Recent Posts</h4>
+                                                <div className="space-y-1">
+                                                    {model.recentPosts.map((post, index) => (
+                                                        <p key={index} className={`text-sm ${isLightMode ? 'text-gray-600' : 'text-gray-300'}`}>• {post}</p>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            {/* Social Links */}
+                                            <div className="flex gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
+                                                <a 
+                                                    href={model.linkedinUrl} 
+                                                    target="_blank" 
+                                                    rel="noopener noreferrer"
+                                                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200 text-sm"
+                                                >
+                                                    <div className="w-4 h-4">💼</div>
+                                                    LinkedIn
+                                                </a>
+                                                <a 
+                                                    href={model.twitterUrl} 
+                                                    target="_blank" 
+                                                    rel="noopener noreferrer"
+                                                    className="flex items-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors duration-200 text-sm"
+                                                >
+                                                    <div className="w-4 h-4">🐦</div>
+                                                    Twitter
+                                                </a>
+                                            </div>
                                         </div>
-                                    ))}
+                                        ))
+                                    ) : (
+                                        <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-12 text-center`}>
+                                            <div className="text-4xl mb-4">🔍</div>
+                                            <h3 className={`text-xl font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-2`}>No role models found</h3>
+                                            <p className={isLightMode ? 'text-gray-600' : 'text-gray-400'}>
+                                                Try adjusting your search or filters to find more role models.
+                                            </p>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 
@@ -32920,7 +33226,9 @@ Generate the repurposed content:`;
                                     <div className="space-y-3">
                                         {roleModels.filter(model => model.isFollowing).map((model) => (
                                             <div key={model.id} className="flex items-center gap-3">
-                                                <div className="w-10 h-10 bg-gray-300 rounded-full flex-shrink-0"></div>
+                                                <div className={`w-10 h-10 bg-gradient-to-br ${getAvatarGradient(model.name)} rounded-full flex items-center justify-center flex-shrink-0 shadow-md`}>
+                                                    <span className="text-white text-xs font-bold">{getInitials(model.name)}</span>
+                                                </div>
                                                 <div>
                                                     <h4 className={`font-medium ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>{model.name}</h4>
                                                     <p className={`text-sm ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>{model.title}</p>
