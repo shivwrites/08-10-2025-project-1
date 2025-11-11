@@ -32530,6 +32530,20 @@ Generate the repurposed content:`;
             const [activityFeed, setActivityFeed] = useState([]); // Array of activity objects
             const [activityFilter, setActivityFilter] = useState('all'); // Filter by activity type
             
+            // AI Insights interactive state
+            const [expandedInsights, setExpandedInsights] = useState({}); // { insightId: true/false }
+            const [dismissedInsights, setDismissedInsights] = useState(new Set()); // Set of dismissed insight IDs
+            const [insightProgress, setInsightProgress] = useState({}); // { insightId: { completedSteps: [], totalSteps: number } }
+            const [insightActions, setInsightActions] = useState({}); // { insightId: { bookmarked: bool, calendarAdded: bool, reminderSet: bool } }
+            
+            // Insights sorting and filtering state
+            const [insightSortBy, setInsightSortBy] = useState('priority'); // 'priority', 'confidence', 'impact', 'urgency'
+            const [insightFilterPriority, setInsightFilterPriority] = useState('all'); // 'all', 'high', 'medium', 'low'
+            const [insightFilterCategory, setInsightFilterCategory] = useState('all'); // 'all', or specific category
+            
+            // Predictive analytics state
+            const [showPredictiveInsights, setShowPredictiveInsights] = useState(true);
+            
             // Check for light mode
             const isLightMode = !document.documentElement.classList.contains('dark');
 
@@ -32978,6 +32992,63 @@ Generate the repurposed content:`;
             const handleFollowToggle = (roleModelId) => {
                 // Toggle follow functionality would be implemented here
                 console.log('Toggle follow for role model:', roleModelId);
+            };
+
+            // Helper functions for insight quick actions
+            const addToCalendar = (item) => {
+                if (item.date) {
+                    // Create calendar event URL (Google Calendar format)
+                    const eventDate = new Date(item.date);
+                    const startDate = eventDate.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+                    const endDate = new Date(eventDate.getTime() + 2 * 60 * 60 * 1000).toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+                    const title = encodeURIComponent(item.title || item.name);
+                    const details = encodeURIComponent(item.description || item.suggestedApproach || '');
+                    const location = encodeURIComponent(item.location || '');
+                    const calendarUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${startDate}/${endDate}&details=${details}&location=${location}`;
+                    window.open(calendarUrl, '_blank');
+                } else {
+                    alert('Calendar event created! (This would integrate with your calendar app)');
+                }
+            };
+
+            const setReminder = (item) => {
+                const reminderTime = item.date 
+                    ? new Date(new Date(item.date).getTime() - 24 * 60 * 60 * 1000) // 1 day before
+                    : new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours from now
+                alert(`Reminder set for ${reminderTime.toLocaleString()}! (This would integrate with your reminder system)`);
+            };
+
+            // Insight interaction handlers
+            const toggleInsightExpanded = (insightId) => {
+                setExpandedInsights(prev => ({
+                    ...prev,
+                    [insightId]: !prev[insightId]
+                }));
+            };
+
+            const dismissInsight = (insightId) => {
+                setDismissedInsights(prev => {
+                    const newSet = new Set(prev);
+                    newSet.add(insightId);
+                    return newSet;
+                });
+            };
+
+            const toggleInsightStep = (insightId, stepId) => {
+                setInsightProgress(prev => {
+                    const current = prev[insightId] || { completedSteps: [], totalSteps: 0 };
+                    const completedSteps = current.completedSteps.includes(stepId)
+                        ? current.completedSteps.filter(id => id !== stepId)
+                        : [...current.completedSteps, stepId];
+                    
+                    return {
+                        ...prev,
+                        [insightId]: {
+                            ...current,
+                            completedSteps
+                        }
+                    };
+                });
             };
 
             // Notes management
@@ -34849,6 +34920,293 @@ Generate the repurposed content:`;
                 const totalFollowUps = stats.followUpsPending + stats.followUpsSent + stats.followUpsReplied;
                 if (totalFollowUps === 0) return 0;
                 return Math.round((stats.followUpsReplied / totalFollowUps) * 100);
+            };
+
+            // Generate dynamic, personalized AI insights based on user data
+            const generateDynamicInsights = () => {
+                const insights = [];
+                
+                // Analyze bookmarked events
+                const bookmarkedEvents = careerEvents.filter(e => e.isBookmarked);
+                if (bookmarkedEvents.length > 0) {
+                    const topBookmarked = bookmarkedEvents.sort((a, b) => b.relevanceScore - a.relevanceScore)[0];
+                    const eventDate = new Date(topBookmarked.date);
+                    const daysUntil = Math.ceil((eventDate - new Date()) / (1000 * 60 * 60 * 24));
+                    
+                    if (daysUntil > 0 && daysUntil <= 30) {
+                        const urgency = daysUntil <= 7 ? 'high' : daysUntil <= 14 ? 'medium' : 'low';
+                        const impactScore = Math.min(100, topBookmarked.relevanceScore + (daysUntil <= 7 ? 10 : 0));
+                        
+                        insights.push({
+                            id: 'event-reminder',
+                            category: 'Event Recommendation',
+                            icon: '📅',
+                            color: 'blue',
+                            priority: 'high',
+                            title: `Upcoming Event: ${topBookmarked.title}`,
+                            message: `${topBookmarked.title} is in ${daysUntil} day${daysUntil !== 1 ? 's' : ''}. With a ${topBookmarked.relevanceScore}% relevance score, this ${topBookmarked.type.toLowerCase()} aligns perfectly with your interests in ${topBookmarked.skills.slice(0, 2).join(' and ')}.`,
+                            confidence: topBookmarked.relevanceScore,
+                            impact: impactScore,
+                            urgency: urgency,
+                            estimatedROI: 'High - Networking opportunities and skill development',
+                            actionable: true,
+                            actionText: 'View Event Details',
+                            actionEvent: () => {
+                                setActiveTab('events');
+                            },
+                            reasoning: `Based on your bookmarked events, this event has the highest relevance score (${topBookmarked.relevanceScore}%) and matches your skill interests.`,
+                            actionableSteps: [
+                                { id: 'step1', text: `Review event agenda and speaker lineup for ${topBookmarked.title}`, completed: false },
+                                { id: 'step2', text: 'Prepare questions for networking opportunities', completed: false },
+                                { id: 'step3', text: 'Set calendar reminder 1 day before the event', completed: false },
+                                { id: 'step4', text: 'Research attendees and speakers on LinkedIn', completed: false }
+                            ],
+                            quickActions: [
+                                { id: 'bookmark', label: 'Bookmark Event', icon: '🔖', action: () => handleBookmarkToggle(topBookmarked.id) },
+                                { id: 'calendar', label: 'Add to Calendar', icon: '📅', action: () => addToCalendar(topBookmarked) },
+                                { id: 'reminder', label: 'Set Reminder', icon: '⏰', action: () => setReminder(topBookmarked) }
+                            ],
+                            eventId: topBookmarked.id
+                        });
+                    }
+                }
+
+                // Analyze networking opportunities
+                const highRelevanceContacts = networkingOpportunities
+                    .filter(opp => opp.relevanceScore >= 85)
+                    .sort((a, b) => b.relevanceScore - a.relevanceScore)
+                    .slice(0, 3);
+                
+                if (highRelevanceContacts.length > 0) {
+                    const topContact = highRelevanceContacts[0];
+                    const hasFollowUp = followUps[topContact.id];
+                    
+                    if (!hasFollowUp || hasFollowUp.status === 'pending') {
+                        const contactUrgency = topContact.mutualConnections > 0 ? 'high' : 'medium';
+                        const contactImpact = Math.min(100, topContact.relevanceScore + (topContact.mutualConnections * 2));
+                        
+                        insights.push({
+                            id: 'networking-opportunity',
+                            category: 'Networking Strategy',
+                            icon: '🤝',
+                            color: 'green',
+                            priority: 'high',
+                            title: `High-Value Connection: ${topContact.name}`,
+                            message: `${topContact.name} (${topContact.title} at ${topContact.company}) has a ${topContact.relevanceScore}% relevance score. ${topContact.mutualConnections > 0 ? `You have ${topContact.mutualConnections} mutual connection${topContact.mutualConnections !== 1 ? 's' : ''}, making this an ideal networking opportunity.` : 'This is a prime networking opportunity.'}`,
+                            confidence: topContact.relevanceScore,
+                            impact: contactImpact,
+                            urgency: contactUrgency,
+                            estimatedROI: 'Very High - Potential job opportunities and industry connections',
+                            actionable: true,
+                            actionText: 'View Contact Details',
+                            actionEvent: () => setActiveTab('networking'),
+                            reasoning: `This contact has the highest relevance score (${topContact.relevanceScore}%) among your networking opportunities and ${topContact.mutualConnections > 0 ? 'has mutual connections' : 'is in your target industry'}.`,
+                            actionableSteps: [
+                                { id: 'step1', text: `Review ${topContact.name}'s LinkedIn profile and recent activity`, completed: false },
+                                { id: 'step2', text: `Prepare a personalized connection request mentioning ${topContact.mutualConnections > 0 ? 'mutual connections' : 'shared interests'}`, completed: false },
+                                { id: 'step3', text: 'Research their company and recent projects', completed: false },
+                                { id: 'step4', text: 'Schedule a follow-up reminder for 2 days after connecting', completed: false }
+                            ],
+                            quickActions: [
+                                { id: 'connect', label: 'Connect on LinkedIn', icon: '💼', action: () => window.open(topContact.linkedin, '_blank') },
+                                { id: 'message', label: 'Send Message', icon: '✉️', action: () => setActiveTab('networking') },
+                                { id: 'reminder', label: 'Set Reminder', icon: '⏰', action: () => setReminder(topContact) }
+                            ],
+                            contactId: topContact.id
+                        });
+                    }
+                }
+
+                // Analyze role models being followed
+                const followedRoleModels = roleModels.filter(m => m.isFollowing);
+                if (followedRoleModels.length > 0) {
+                    const topRoleModel = followedRoleModels.sort((a, b) => b.influenceScore - a.influenceScore)[0];
+                    const sharedSkills = topRoleModel.sharedInterests || [];
+                    
+                    if (sharedSkills.length > 0) {
+                        insights.push({
+                            id: 'role-model-learning',
+                            category: 'Skill Development',
+                            icon: '🎯',
+                            color: 'cyan',
+                            priority: 'medium',
+                            title: `Learn from ${topRoleModel.name}`,
+                            message: `You're following ${topRoleModel.name}, who shares your interests in ${sharedSkills.slice(0, 3).join(', ')}. Their content on ${topRoleModel.topSkills.slice(0, 2).join(' and ')} could accelerate your learning. Consider engaging with their recent posts for maximum visibility.`,
+                            confidence: topRoleModel.influenceScore,
+                            impact: Math.round(topRoleModel.influenceScore * 0.9),
+                            urgency: 'low',
+                            estimatedROI: 'Medium - Long-term skill development and career growth',
+                            actionable: true,
+                            actionText: 'View Role Model',
+                            actionEvent: () => setActiveTab('role-models'),
+                            reasoning: `You're following this role model with ${topRoleModel.influenceScore} influence score and ${sharedSkills.length} shared interests, indicating strong alignment with your career goals.`,
+                            actionableSteps: [
+                                { id: 'step1', text: `Engage with ${topRoleModel.name}'s most recent post on ${topRoleModel.topSkills[0]}`, completed: false },
+                                { id: 'step2', text: 'Review their learning path and recommended resources', completed: false },
+                                { id: 'step3', text: 'Save key takeaways from their content for future reference', completed: false },
+                                { id: 'step4', text: 'Consider asking a thoughtful question in their comments', completed: false }
+                            ],
+                            quickActions: [
+                                { id: 'view', label: 'View Profile', icon: '👤', action: () => window.open(topRoleModel.linkedinUrl, '_blank') },
+                                { id: 'posts', label: 'View Posts', icon: '📝', action: () => setActiveTab('role-models') },
+                                { id: 'follow', label: 'Already Following', icon: '✓', action: null, disabled: true }
+                            ],
+                            roleModelId: topRoleModel.id
+                        });
+                    }
+                }
+
+                // Analyze skill trends from events
+                const allSkills = careerEvents.flatMap(e => e.skills);
+                const skillFrequency = {};
+                allSkills.forEach(skill => {
+                    skillFrequency[skill] = (skillFrequency[skill] || 0) + 1;
+                });
+                const topSkills = Object.entries(skillFrequency)
+                    .sort((a, b) => b[1] - a[1])
+                    .slice(0, 3)
+                    .map(([skill]) => skill);
+                
+                if (topSkills.length > 0) {
+                    insights.push({
+                        id: 'skill-trend',
+                        category: 'Industry Trends',
+                        icon: '📊',
+                        color: 'pink',
+                        priority: 'medium',
+                        title: `Emerging Skills: ${topSkills.join(', ')}`,
+                        message: `Based on the events you're exploring, ${topSkills.join(', ')} ${topSkills.length === 1 ? 'is' : 'are'} appearing frequently. These skills are trending in your industry and could be valuable for your career growth.`,
+                        confidence: 75,
+                        impact: 80,
+                        urgency: 'medium',
+                        estimatedROI: 'High - Increased job marketability and salary potential',
+                        actionable: true,
+                        actionText: 'Explore Events',
+                        actionEvent: () => setActiveTab('events'),
+                        reasoning: `These skills appear in ${skillFrequency[topSkills[0]]} of the events you're viewing, indicating strong industry demand.`,
+                        actionableSteps: [
+                            { id: 'step1', text: `Research learning resources for ${topSkills[0]}`, completed: false },
+                            { id: 'step2', text: `Find events focused on ${topSkills.slice(0, 2).join(' and ')}`, completed: false },
+                            { id: 'step3', text: 'Identify role models who excel in these skills', completed: false },
+                            { id: 'step4', text: 'Create a learning plan with milestones', completed: false }
+                        ],
+                        quickActions: [
+                            { id: 'events', label: 'Find Events', icon: '📅', action: () => setActiveTab('events') },
+                            { id: 'learn', label: 'Start Learning', icon: '📚', action: () => console.log('Start learning') },
+                            { id: 'track', label: 'Track Progress', icon: '📈', action: () => console.log('Track progress') }
+                        ]
+                    });
+                }
+
+                // Analyze networking activity patterns
+                const stats = getNetworkingStats();
+                if (stats.totalOpportunities > 0) {
+                    const followUpRate = stats.followUpsSent / stats.totalOpportunities;
+                    if (followUpRate < 0.5 && stats.followUpsPending > 0) {
+                        insights.push({
+                            id: 'networking-followup',
+                            category: 'Career Growth',
+                            icon: '📈',
+                            color: 'orange',
+                            priority: 'high',
+                            title: `Follow Up on ${stats.followUpsPending} Connection${stats.followUpsPending !== 1 ? 's' : ''}`,
+                            message: `You have ${stats.followUpsPending} pending follow-up${stats.followUpsPending !== 1 ? 's' : ''} with high-value contacts. Following up within 48 hours of meeting increases response rates by 60%. Don't miss these opportunities!`,
+                            confidence: 85,
+                            impact: 90,
+                            urgency: 'high',
+                            estimatedROI: 'Very High - 60% increase in response rates with timely follow-ups',
+                            actionable: true,
+                            actionText: 'View Follow-ups',
+                            actionEvent: () => setActiveTab('networking'),
+                            reasoning: `You have ${stats.followUpsPending} pending follow-ups. Research shows that timely follow-ups significantly increase networking success rates.`,
+                            actionableSteps: [
+                                { id: 'step1', text: 'Review pending follow-up contacts and context', completed: false },
+                                { id: 'step2', text: 'Draft personalized follow-up messages', completed: false },
+                                { id: 'step3', text: 'Send follow-ups within the next 24 hours', completed: false },
+                                { id: 'step4', text: 'Schedule reminders for future follow-ups', completed: false }
+                            ],
+                            quickActions: [
+                                { id: 'view', label: 'View Contacts', icon: '👥', action: () => setActiveTab('networking') },
+                                { id: 'send', label: 'Send Follow-ups', icon: '✉️', action: () => setActiveTab('networking') },
+                                { id: 'schedule', label: 'Schedule Reminders', icon: '⏰', action: () => console.log('Schedule reminders') }
+                            ]
+                        });
+                    }
+                }
+
+                // Analyze event diversity
+                const eventTypes = [...new Set(careerEvents.map(e => e.type))];
+                const industries = [...new Set(careerEvents.map(e => e.industry))];
+                
+                if (eventTypes.length >= 3 && industries.length >= 2) {
+                    insights.push({
+                        id: 'event-diversity',
+                        category: 'Content Opportunity',
+                        icon: '📝',
+                        color: 'purple',
+                        priority: 'low',
+                        title: 'Diverse Event Portfolio',
+                        message: `You're exploring ${eventTypes.length} different event types across ${industries.length} industries. This diversity is great for building a well-rounded professional network. Consider sharing your learnings from these events to build your professional brand.`,
+                        confidence: 70,
+                        impact: 65,
+                        urgency: 'low',
+                        estimatedROI: 'Medium - Brand building and thought leadership opportunities',
+                        actionable: true,
+                        actionText: 'View Events',
+                        actionEvent: () => setActiveTab('events'),
+                        reasoning: `Your event exploration shows good diversity (${eventTypes.length} types, ${industries.length} industries), which indicates a strategic approach to career development.`
+                    });
+                }
+
+                // Sort insights by priority and confidence (default)
+                const priorityOrder = { 'high': 3, 'medium': 2, 'low': 1 };
+                return insights.sort((a, b) => {
+                    if (priorityOrder[a.priority] !== priorityOrder[b.priority]) {
+                        return priorityOrder[b.priority] - priorityOrder[a.priority];
+                    }
+                    return b.confidence - a.confidence;
+                });
+            };
+
+            // Sort and filter insights based on user preferences
+            const getSortedAndFilteredInsights = (insights) => {
+                // Filter by priority
+                let filtered = insights.filter(insight => {
+                    if (insightFilterPriority !== 'all' && insight.priority !== insightFilterPriority) {
+                        return false;
+                    }
+                    if (insightFilterCategory !== 'all' && insight.category !== insightFilterCategory) {
+                        return false;
+                    }
+                    return !dismissedInsights.has(insight.id);
+                });
+
+                // Sort based on selected option
+                const priorityOrder = { 'high': 3, 'medium': 2, 'low': 1 };
+                const urgencyOrder = { 'high': 3, 'medium': 2, 'low': 1 };
+                
+                filtered.sort((a, b) => {
+                    switch (insightSortBy) {
+                        case 'priority':
+                            if (priorityOrder[a.priority] !== priorityOrder[b.priority]) {
+                                return priorityOrder[b.priority] - priorityOrder[a.priority];
+                            }
+                            return b.confidence - a.confidence;
+                        case 'confidence':
+                            return b.confidence - a.confidence;
+                        case 'impact':
+                            return (b.impact || 0) - (a.impact || 0);
+                        case 'urgency':
+                            if (urgencyOrder[a.urgency] !== urgencyOrder[b.urgency]) {
+                                return urgencyOrder[b.urgency] - urgencyOrder[a.urgency];
+                            }
+                            return (b.impact || 0) - (a.impact || 0);
+                        default:
+                            return 0;
+                    }
+                });
+
+                return filtered;
             };
 
             const tabs = [
@@ -37759,77 +38117,1191 @@ Generate the repurposed content:`;
                         </div>
                     )}
 
-                    {activeTab === 'insights' && (
-                        <div className="space-y-8">
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
-                                    <div className="flex items-center gap-3 mb-4">
-                                        <div className="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center">
-                                            <div className="w-5 h-5 text-white text-xl">📅</div>
-                                        </div>
-                                        <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>Event Recommendation</h3>
+                    {activeTab === 'insights' && (() => {
+                        const allInsights = generateDynamicInsights();
+                        const dynamicInsights = getSortedAndFilteredInsights(allInsights);
+                        const uniqueCategories = [...new Set(allInsights.map(i => i.category))];
+                        
+                        const getColorClasses = (color) => {
+                            const colors = {
+                                'blue': { bg: 'bg-blue-500', text: isLightMode ? 'text-blue-600' : 'text-blue-400', bgLight: 'bg-blue-500/20', border: 'border-blue-500/50' },
+                                'green': { bg: 'bg-green-500', text: isLightMode ? 'text-green-600' : 'text-green-400', bgLight: 'bg-green-500/20', border: 'border-green-500/50' },
+                                'purple': { bg: 'bg-purple-500', text: isLightMode ? 'text-purple-600' : 'text-purple-400', bgLight: 'bg-purple-500/20', border: 'border-purple-500/50' },
+                                'orange': { bg: 'bg-orange-500', text: isLightMode ? 'text-orange-600' : 'text-orange-400', bgLight: 'bg-orange-500/20', border: 'border-orange-500/50' },
+                                'pink': { bg: 'bg-pink-500', text: isLightMode ? 'text-pink-600' : 'text-pink-400', bgLight: 'bg-pink-500/20', border: 'border-pink-500/50' },
+                                'cyan': { bg: 'bg-cyan-500', text: isLightMode ? 'text-cyan-600' : 'text-cyan-400', bgLight: 'bg-cyan-500/20', border: 'border-cyan-500/50' }
+                            };
+                            return colors[color] || colors.blue;
+                        };
+                        const getPriorityBadge = (priority) => {
+                            const badges = {
+                                'high': { text: isLightMode ? 'text-red-700' : 'text-red-400', bg: 'bg-red-500/20', label: 'High Priority' },
+                                'medium': { text: isLightMode ? 'text-yellow-700' : 'text-yellow-400', bg: 'bg-yellow-500/20', label: 'Medium Priority' },
+                                'low': { text: isLightMode ? 'text-blue-700' : 'text-blue-400', bg: 'bg-blue-500/20', label: 'Low Priority' }
+                            };
+                            return badges[priority] || badges.medium;
+                        };
+                        
+                        const getUrgencyBadge = (urgency) => {
+                            const badges = {
+                                'high': { text: isLightMode ? 'text-red-700' : 'text-red-400', bg: 'bg-red-500/20', border: 'border-red-500/50', label: 'Urgent', icon: '🔥' },
+                                'medium': { text: isLightMode ? 'text-yellow-700' : 'text-yellow-400', bg: 'bg-yellow-500/20', border: 'border-yellow-500/50', label: 'Moderate', icon: '⏰' },
+                                'low': { text: isLightMode ? 'text-blue-700' : 'text-blue-400', bg: 'bg-blue-500/20', border: 'border-blue-500/50', label: 'Low', icon: '📅' }
+                            };
+                            return badges[urgency] || badges.low;
+                        };
+
+                        const getImpactBadge = (impact) => {
+                            if (impact >= 85) return { text: isLightMode ? 'text-green-700' : 'text-green-400', bg: 'bg-green-500/20', label: 'Very High' };
+                            if (impact >= 70) return { text: isLightMode ? 'text-blue-700' : 'text-blue-400', bg: 'bg-blue-500/20', label: 'High' };
+                            if (impact >= 55) return { text: isLightMode ? 'text-yellow-700' : 'text-yellow-400', bg: 'bg-yellow-500/20', label: 'Medium' };
+                            return { text: isLightMode ? 'text-gray-700' : 'text-gray-400', bg: 'bg-gray-500/20', label: 'Low' };
+                        };
+
+                        // Category definitions with icons and descriptions
+                        const categoryDefinitions = {
+                            'Event Recommendation': { 
+                                icon: '📅', 
+                                description: 'Upcoming events and conferences tailored to your interests',
+                                color: 'blue'
+                            },
+                            'Networking Strategy': { 
+                                icon: '🤝', 
+                                description: 'High-value connections and networking opportunities',
+                                color: 'green'
+                            },
+                            'Skill Development': { 
+                                icon: '🎯', 
+                                description: 'Learning paths and skill enhancement opportunities',
+                                color: 'cyan'
+                            },
+                            'Career Growth': { 
+                                icon: '📈', 
+                                description: 'Actions to accelerate your career progression',
+                                color: 'orange'
+                            },
+                            'Industry Trends': { 
+                                icon: '📊', 
+                                description: 'Emerging skills and market intelligence',
+                                color: 'pink'
+                            },
+                            'Content Opportunity': { 
+                                icon: '📝', 
+                                description: 'Ways to build your professional brand through content',
+                                color: 'purple'
+                            }
+                        };
+
+                        // Get category statistics
+                        const getCategoryStats = (category) => {
+                            const categoryInsights = allInsights.filter(i => i.category === category);
+                            const avgImpact = categoryInsights.length > 0 
+                                ? Math.round(categoryInsights.reduce((sum, i) => sum + (i.impact || 0), 0) / categoryInsights.length)
+                                : 0;
+                            const highPriorityCount = categoryInsights.filter(i => i.priority === 'high').length;
+                            return {
+                                count: categoryInsights.length,
+                                avgImpact,
+                                highPriorityCount
+                            };
+                        };
+
+                        // Simple Bar Chart Component for insights visualization
+                        const SimpleBarChart = ({ data, maxValue, color, height = 200 }) => {
+                            const max = maxValue || Math.max(...data.map(d => d.value), 1);
+                            return (
+                                <div className="relative" style={{ height: `${height}px` }}>
+                                    <div className="absolute inset-0 flex items-end justify-between gap-2">
+                                        {data.map((item, index) => {
+                                            const barColor = item.color || color || 'bg-indigo-500';
+                                            const isHexColor = typeof barColor === 'string' && barColor.startsWith('#');
+                                            return (
+                                                <div key={index} className="flex-1 flex flex-col items-center gap-1">
+                                                    <div className="relative w-full" style={{ height: `${height - 40}px` }}>
+                                                        <div 
+                                                            className={`absolute bottom-0 w-full rounded-t transition-all duration-500 hover:opacity-80 ${!isHexColor ? barColor : ''}`}
+                                                            style={{ 
+                                                                height: `${(item.value / max) * 100}%`,
+                                                                backgroundColor: isHexColor ? barColor : undefined
+                                                            }}
+                                                            title={`${item.label}: ${item.value}`}
+                                                        ></div>
+                                                    </div>
+                                                    <div className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'} text-center truncate w-full`}>
+                                                        {item.label}
+                                                    </div>
+                                                    <div className={`text-xs font-semibold ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>
+                                                        {item.value}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
                                     </div>
-                                    <p className={`${isLightMode ? 'text-gray-600' : 'text-gray-300'} mb-4`}>Based on your interests, we recommend attending React Conf 2024 for networking opportunities.</p>
-                                    <div className={`text-sm ${isLightMode ? 'text-blue-600' : 'text-blue-400'}`}>High relevance for your career goals</div>
+                                </div>
+                            );
+                        };
+
+                        // Pie/Doughnut Chart Component
+                        const DoughnutChart = ({ data, size = 150 }) => {
+                            const total = data.reduce((sum, item) => sum + item.value, 0);
+                            let currentAngle = -90;
+                            const radius = size / 2 - 10;
+                            const center = size / 2;
+                            
+                            return (
+                                <div className="relative" style={{ width: `${size}px`, height: `${size}px` }}>
+                                    <svg width={size} height={size} className="transform -rotate-90">
+                                        {data.map((item, index) => {
+                                            const percentage = (item.value / total) * 100;
+                                            const angle = (percentage / 100) * 360;
+                                            const startAngle = currentAngle;
+                                            const endAngle = currentAngle + angle;
+                                            
+                                            const x1 = center + radius * Math.cos((startAngle * Math.PI) / 180);
+                                            const y1 = center + radius * Math.sin((startAngle * Math.PI) / 180);
+                                            const x2 = center + radius * Math.cos((endAngle * Math.PI) / 180);
+                                            const y2 = center + radius * Math.sin((endAngle * Math.PI) / 180);
+                                            
+                                            const largeArcFlag = angle > 180 ? 1 : 0;
+                                            
+                                            const pathData = [
+                                                `M ${center} ${center}`,
+                                                `L ${x1} ${y1}`,
+                                                `A ${radius} ${radius} 0 ${largeArcFlag} 1 ${x2} ${y2}`,
+                                                'Z'
+                                            ].join(' ');
+                                            
+                                            currentAngle += angle;
+                                            
+                                            return (
+                                                <path
+                                                    key={index}
+                                                    d={pathData}
+                                                    fill={item.color}
+                                                    className="transition-all duration-300 hover:opacity-80"
+                                                    title={`${item.label}: ${item.value} (${percentage.toFixed(1)}%)`}
+                                                />
+                                            );
+                                        })}
+                                    </svg>
+                                    <div className="absolute inset-0 flex items-center justify-center">
+                                        <div className="text-center">
+                                            <div className={`text-2xl font-bold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                {total}
+                                            </div>
+                                            <div className={`text-xs ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                Total
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        };
+
+                        // Prepare visualization data
+                        const getVisualizationData = () => {
+                            // Category distribution
+                            const categoryData = uniqueCategories.map(category => {
+                                const count = allInsights.filter(i => i.category === category).length;
+                                const catDef = categoryDefinitions[category] || { color: 'gray' };
+                                const colorMap = {
+                                    'blue': '#3b82f6',
+                                    'green': '#10b981',
+                                    'cyan': '#06b6d4',
+                                    'orange': '#f97316',
+                                    'pink': '#ec4899',
+                                    'purple': '#a855f7',
+                                    'gray': '#6b7280'
+                                };
+                                return {
+                                    label: category.split(' ')[0], // Short label
+                                    fullLabel: category,
+                                    value: count,
+                                    color: colorMap[catDef.color] || colorMap.gray
+                                };
+                            });
+
+                            // Priority distribution
+                            const priorityData = [
+                                { label: 'High', value: allInsights.filter(i => i.priority === 'high').length, color: '#ef4444' },
+                                { label: 'Medium', value: allInsights.filter(i => i.priority === 'medium').length, color: '#eab308' },
+                                { label: 'Low', value: allInsights.filter(i => i.priority === 'low').length, color: '#3b82f6' }
+                            ];
+
+                            // Urgency distribution
+                            const urgencyData = [
+                                { label: 'Urgent', value: allInsights.filter(i => i.urgency === 'high').length, color: '#ef4444' },
+                                { label: 'Moderate', value: allInsights.filter(i => i.urgency === 'medium').length, color: '#eab308' },
+                                { label: 'Low', value: allInsights.filter(i => i.urgency === 'low').length, color: '#3b82f6' }
+                            ];
+
+                            // Impact score distribution (buckets)
+                            const impactBuckets = [
+                                { label: '90-100', min: 90, max: 100, color: '#10b981' },
+                                { label: '80-89', min: 80, max: 89, color: '#3b82f6' },
+                                { label: '70-79', min: 70, max: 79, color: '#eab308' },
+                                { label: '<70', min: 0, max: 69, color: '#ef4444' }
+                            ];
+                            const impactData = impactBuckets.map(bucket => ({
+                                label: bucket.label,
+                                value: allInsights.filter(i => {
+                                    const impact = i.impact || 0;
+                                    return impact >= bucket.min && impact <= bucket.max;
+                                }).length,
+                                color: bucket.color
+                            }));
+
+                            // Progress tracking data
+                            const totalSteps = allInsights.reduce((sum, i) => sum + (i.actionableSteps?.length || 0), 0);
+                            const completedSteps = Object.values(insightProgress).reduce((sum, p) => sum + (p.completedSteps?.length || 0), 0);
+                            const progressData = {
+                                completed: completedSteps,
+                                pending: totalSteps - completedSteps,
+                                percentage: totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0
+                            };
+
+                            return {
+                                categoryData,
+                                priorityData,
+                                urgencyData,
+                                impactData,
+                                progressData
+                            };
+                        };
+
+                        const vizData = getVisualizationData();
+
+                        // Generate predictive analytics insights
+                        const generatePredictiveInsights = () => {
+                            const predictions = [];
+
+                            // 1. Event Attendance Prediction
+                            const upcomingEvents = careerEvents.filter(e => {
+                                const eventDate = new Date(e.date);
+                                return eventDate > new Date() && eventDate <= new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
+                            });
+                            
+                            if (upcomingEvents.length > 0) {
+                                const bookmarkedCount = careerEvents.filter(e => e.isBookmarked).length;
+                                const totalEvents = careerEvents.length;
+                                const bookmarkRate = totalEvents > 0 ? (bookmarkedCount / totalEvents) : 0;
+                                
+                                upcomingEvents.forEach(event => {
+                                    const relevanceWeight = event.relevanceScore / 100;
+                                    const bookmarkWeight = bookmarkRate;
+                                    const attendanceProbability = Math.round((relevanceWeight * 0.7 + bookmarkWeight * 0.3) * 100);
+                                    
+                                    if (attendanceProbability >= 60) {
+                                        predictions.push({
+                                            id: `event-prediction-${event.id}`,
+                                            type: 'event_attendance',
+                                            title: `Likely to Attend: ${event.title}`,
+                                            description: `Based on your interest patterns, you have a ${attendanceProbability}% probability of attending this event.`,
+                                            probability: attendanceProbability,
+                                            confidence: event.relevanceScore,
+                                            recommendation: attendanceProbability >= 80 
+                                                ? 'Highly recommended - Strong alignment with your goals'
+                                                : 'Consider attending - Good fit for your interests',
+                                            actionable: true,
+                                            eventId: event.id
+                                        });
+                                    }
+                                });
+                            }
+
+                            // 2. Networking Success Probability
+                            const highValueContacts = networkingOpportunities.filter(opp => opp.relevanceScore >= 85);
+                            if (highValueContacts.length > 0) {
+                                const avgMutualConnections = highValueContacts.reduce((sum, c) => sum + c.mutualConnections, 0) / highValueContacts.length;
+                                const successProbability = Math.min(95, Math.round(
+                                    50 + // Base probability
+                                    (avgMutualConnections * 5) + // Mutual connections boost
+                                    (highValueContacts[0].relevanceScore - 85) * 0.5 // Relevance boost
+                                ));
+                                
+                                predictions.push({
+                                    id: 'networking-success',
+                                    type: 'networking_success',
+                                    title: 'Networking Success Probability',
+                                    description: `Based on your ${highValueContacts.length} high-value contacts with an average of ${avgMutualConnections.toFixed(1)} mutual connections, your networking success probability is ${successProbability}%.`,
+                                    probability: successProbability,
+                                    confidence: 85,
+                                    recommendation: successProbability >= 80
+                                        ? 'Excellent networking opportunities - Act now for best results'
+                                        : 'Good networking potential - Focus on personalized outreach',
+                                    actionable: true
+                                });
+                            }
+
+                            // 3. Career Trajectory Projection
+                            const avgImpact = allInsights.length > 0
+                                ? allInsights.reduce((sum, i) => sum + (i.impact || 0), 0) / allInsights.length
+                                : 0;
+                            const highPriorityCount = allInsights.filter(i => i.priority === 'high').length;
+                            const progressRate = vizData.progressData.percentage;
+                            
+                            const careerGrowthScore = Math.round(
+                                (avgImpact * 0.4) +
+                                (highPriorityCount * 5) +
+                                (progressRate * 0.3)
+                            );
+                            
+                            let trajectoryProjection = 'Steady Growth';
+                            let timeline = '6-12 months';
+                            if (careerGrowthScore >= 80) {
+                                trajectoryProjection = 'Accelerated Growth';
+                                timeline = '3-6 months';
+                            } else if (careerGrowthScore >= 60) {
+                                trajectoryProjection = 'Strong Growth';
+                                timeline = '6-9 months';
+                            }
+                            
+                            predictions.push({
+                                id: 'career-trajectory',
+                                type: 'career_trajectory',
+                                title: `Career Trajectory: ${trajectoryProjection}`,
+                                description: `Based on your current insights activity (${highPriorityCount} high-priority actions, ${progressRate}% completion rate), you're projected for ${trajectoryProjection.toLowerCase()} in the next ${timeline}.`,
+                                probability: careerGrowthScore,
+                                confidence: 75,
+                                recommendation: careerGrowthScore >= 80
+                                    ? 'Maintain current momentum - You\'re on track for significant growth'
+                                    : 'Focus on completing high-priority actions to accelerate growth',
+                                actionable: true
+                            });
+
+                            // 4. Skill Gap Analysis
+                            const eventSkills = [...new Set(careerEvents.flatMap(e => e.skills))];
+                            const roleModelSkills = [...new Set(roleModels.flatMap(m => m.topSkills || []))];
+                            const allSkills = [...new Set([...eventSkills, ...roleModelSkills])];
+                            
+                            if (allSkills.length > 0) {
+                                const skillFrequency = {};
+                                allSkills.forEach(skill => {
+                                    const inEvents = eventSkills.filter(s => s.toLowerCase().includes(skill.toLowerCase()) || skill.toLowerCase().includes(s.toLowerCase())).length;
+                                    const inRoleModels = roleModelSkills.filter(s => s.toLowerCase().includes(skill.toLowerCase()) || skill.toLowerCase().includes(s.toLowerCase())).length;
+                                    skillFrequency[skill] = inEvents + inRoleModels;
+                                });
+                                
+                                const topMissingSkills = Object.entries(skillFrequency)
+                                    .sort((a, b) => b[1] - a[1])
+                                    .slice(0, 3)
+                                    .map(([skill]) => skill);
+                                
+                                if (topMissingSkills.length > 0) {
+                                    predictions.push({
+                                        id: 'skill-gap',
+                                        type: 'skill_gap',
+                                        title: 'Skill Gap Identified',
+                                        description: `Based on your event interests and role models, you may benefit from developing: ${topMissingSkills.join(', ')}. These skills appear frequently in your target opportunities.`,
+                                        probability: 70,
+                                        confidence: 80,
+                                        recommendation: `Consider focusing on ${topMissingSkills[0]} first - it appears most frequently in your target opportunities`,
+                                        actionable: true,
+                                        skills: topMissingSkills
+                                    });
+                                }
+                            }
+
+                            return predictions.sort((a, b) => b.probability - a.probability);
+                        };
+
+                        const predictiveInsights = generatePredictiveInsights();
+
+                        // Generate contextual recommendations for insights
+                        const getContextualRecommendations = (insight) => {
+                            const recommendations = {
+                                relatedEvents: [],
+                                relatedRoleModels: [],
+                                relatedContacts: [],
+                                optimalCombinations: []
+                            };
+
+                            // Get related events based on insight category and skills
+                            if (insight.category === 'Event Recommendation' || insight.eventId) {
+                                const eventId = insight.eventId;
+                                const currentEvent = careerEvents.find(e => e.id === eventId);
+                                
+                                if (currentEvent) {
+                                    // Find events with similar skills or in same industry
+                                    recommendations.relatedEvents = careerEvents
+                                        .filter(e => 
+                                            e.id !== eventId && 
+                                            (e.industry === currentEvent.industry || 
+                                             e.skills.some(skill => currentEvent.skills.includes(skill)))
+                                        )
+                                        .sort((a, b) => b.relevanceScore - a.relevanceScore)
+                                        .slice(0, 3);
+                                }
+                            } else if (insight.category === 'Skill Development' || insight.category === 'Industry Trends') {
+                                // Find events related to skills mentioned
+                                const insightSkills = insight.skills || [];
+                                recommendations.relatedEvents = careerEvents
+                                    .filter(e => 
+                                        e.skills.some(skill => 
+                                            insightSkills.some(is => 
+                                                skill.toLowerCase().includes(is.toLowerCase()) || 
+                                                is.toLowerCase().includes(skill.toLowerCase())
+                                            )
+                                        )
+                                    )
+                                    .sort((a, b) => b.relevanceScore - a.relevanceScore)
+                                    .slice(0, 3);
+                            }
+
+                            // Get related role models
+                            if (insight.category === 'Skill Development' || insight.roleModelId) {
+                                const roleModelId = insight.roleModelId;
+                                const currentRoleModel = roleModels.find(m => m.id === roleModelId);
+                                
+                                if (currentRoleModel) {
+                                    recommendations.relatedRoleModels = roleModels
+                                        .filter(m => 
+                                            m.id !== roleModelId &&
+                                            (m.industry === currentRoleModel.industry ||
+                                             m.topSkills.some(skill => 
+                                                 currentRoleModel.topSkills.includes(skill)
+                                             ))
+                                        )
+                                        .sort((a, b) => b.influenceScore - a.influenceScore)
+                                        .slice(0, 2);
+                                } else if (insight.skills) {
+                                    recommendations.relatedRoleModels = roleModels
+                                        .filter(m => 
+                                            m.topSkills.some(skill => 
+                                                insight.skills.some(is => 
+                                                    skill.toLowerCase().includes(is.toLowerCase())
+                                                )
+                                            )
+                                        )
+                                        .sort((a, b) => b.influenceScore - a.influenceScore)
+                                        .slice(0, 2);
+                                }
+                            }
+
+                            // Get related networking contacts
+                            if (insight.category === 'Networking Strategy' || insight.contactId) {
+                                const contactId = insight.contactId;
+                                const currentContact = networkingOpportunities.find(c => c.id === contactId);
+                                
+                                if (currentContact) {
+                                    recommendations.relatedContacts = networkingOpportunities
+                                        .filter(c => 
+                                            c.id !== contactId &&
+                                            (c.company === currentContact.company ||
+                                             c.relevanceScore >= 80)
+                                        )
+                                        .sort((a, b) => b.relevanceScore - a.relevanceScore)
+                                        .slice(0, 3);
+                                }
+                            }
+
+                            // Suggest optimal event combinations
+                            if (insight.category === 'Event Recommendation' && insight.eventId) {
+                                const currentEvent = careerEvents.find(e => e.id === insight.eventId);
+                                if (currentEvent) {
+                                    // Find complementary events (different type, similar skills)
+                                    const complementaryEvents = careerEvents
+                                        .filter(e => 
+                                            e.id !== insight.eventId &&
+                                            e.type !== currentEvent.type &&
+                                            e.skills.some(skill => currentEvent.skills.includes(skill)) &&
+                                            new Date(e.date) > new Date(currentEvent.date)
+                                        )
+                                        .sort((a, b) => b.relevanceScore - a.relevanceScore)
+                                        .slice(0, 2);
+                                    
+                                    if (complementaryEvents.length >= 2) {
+                                        recommendations.optimalCombinations = [{
+                                            events: [currentEvent, ...complementaryEvents],
+                                            benefit: `Attending these ${complementaryEvents.length + 1} events provides comprehensive coverage of ${currentEvent.skills[0]} and networking opportunities across different formats.`,
+                                            totalRelevance: Math.round(
+                                                (currentEvent.relevanceScore + 
+                                                 complementaryEvents.reduce((sum, e) => sum + e.relevanceScore, 0)) / 
+                                                (complementaryEvents.length + 1)
+                                            )
+                                        }];
+                                    }
+                                }
+                            }
+
+                            return recommendations;
+                        };
+                        
+                        return (
+                            <div className="space-y-8">
+                                {/* Header with summary and filters */}
+                                <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
+                                    <div className="flex items-center justify-between mb-4">
+                                        <div>
+                                            <h2 className={`text-2xl font-bold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-2`}>Personalized AI Insights</h2>
+                                            <p className={`${isLightMode ? 'text-gray-600' : 'text-gray-300'}`}>
+                                                {dynamicInsights.length > 0 
+                                                    ? `Based on your activity, we've identified ${allInsights.length} personalized insight${allInsights.length !== 1 ? 's' : ''}. Showing ${dynamicInsights.length} after filtering.`
+                                                    : 'Start exploring events, following role models, and networking to receive personalized insights.'}
+                                            </p>
+                                        </div>
+                                        <div className="text-right">
+                                            <div className={`text-3xl font-bold ${isLightMode ? 'text-indigo-600' : 'text-indigo-400'}`}>
+                                                {dynamicInsights.length}
+                                            </div>
+                                            <div className={`text-sm ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                {insightFilterPriority !== 'all' || insightFilterCategory !== 'all' ? 'Filtered' : 'Active'} Insights
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Category Tabs */}
+                                    <div className={`mt-4 pt-4 border-t ${isLightMode ? 'border-gray-200' : 'border-gray-700'}`}>
+                                        <div className="flex items-center justify-between mb-3">
+                                            <h3 className={`text-sm font-semibold ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>
+                                                Categories
+                                            </h3>
+                                            <button
+                                                onClick={() => setInsightFilterCategory('all')}
+                                                className={`text-xs ${isLightMode ? 'text-indigo-600 hover:text-indigo-700' : 'text-indigo-400 hover:text-indigo-300'} font-medium`}
+                                            >
+                                                Clear Filter
+                                            </button>
+                                        </div>
+                                        <div className="flex flex-wrap gap-2">
+                                            <button
+                                                onClick={() => setInsightFilterCategory('all')}
+                                                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-2 ${
+                                                    insightFilterCategory === 'all'
+                                                        ? 'bg-indigo-600 text-white shadow-lg'
+                                                        : isLightMode
+                                                            ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                                            : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                                                }`}
+                                            >
+                                                <span>📋</span>
+                                                <span>All Categories</span>
+                                                <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+                                                    insightFilterCategory === 'all'
+                                                        ? 'bg-white/20 text-white'
+                                                        : isLightMode
+                                                            ? 'bg-gray-200 text-gray-600'
+                                                            : 'bg-gray-700 text-gray-400'
+                                                }`}>
+                                                    {allInsights.length}
+                                                </span>
+                                            </button>
+                                            {uniqueCategories.map(category => {
+                                                const catDef = categoryDefinitions[category] || { icon: '📌', description: '', color: 'gray' };
+                                                const stats = getCategoryStats(category);
+                                                const isActive = insightFilterCategory === category;
+                                                const catColorClasses = getColorClasses(catDef.color);
+                                                
+                                                return (
+                                                    <button
+                                                        key={category}
+                                                        onClick={() => setInsightFilterCategory(category)}
+                                                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-2 ${
+                                                            isActive
+                                                                ? `${catColorClasses.bg} text-white shadow-lg`
+                                                                : isLightMode
+                                                                    ? 'bg-gray-100 text-gray-700 hover:bg-gray-200 border border-gray-200'
+                                                                    : 'bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-700'
+                                                        }`}
+                                                        title={catDef.description}
+                                                    >
+                                                        <span>{catDef.icon}</span>
+                                                        <span>{category}</span>
+                                                        <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+                                                            isActive
+                                                                ? 'bg-white/20 text-white'
+                                                                : isLightMode
+                                                                    ? 'bg-gray-200 text-gray-600'
+                                                                    : 'bg-gray-700 text-gray-400'
+                                                        }`}>
+                                                            {stats.count}
+                                                        </span>
+                                                        {stats.highPriorityCount > 0 && (
+                                                            <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+                                                                isActive
+                                                                    ? 'bg-red-500/30 text-white'
+                                                                    : 'bg-red-500/20 text-red-400'
+                                                            }`}>
+                                                                {stats.highPriorityCount} 🔥
+                                                            </span>
+                                                        )}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+
+                                    {/* Sorting and Filtering Controls */}
+                                    <div className={`grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 pt-4 border-t ${isLightMode ? 'border-gray-200' : 'border-gray-700'}`}>
+                                        <div>
+                                            <label className={`block text-sm font-medium ${isLightMode ? 'text-gray-700' : 'text-gray-300'} mb-2`}>
+                                                Sort By
+                                            </label>
+                                            <select
+                                                value={insightSortBy}
+                                                onChange={(e) => setInsightSortBy(e.target.value)}
+                                                className={`w-full px-3 py-2 ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-800 border-gray-700 text-gray-50'} border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm`}
+                                            >
+                                                <option value="priority">Priority (High → Low)</option>
+                                                <option value="impact">Impact (High → Low)</option>
+                                                <option value="urgency">Urgency (High → Low)</option>
+                                                <option value="confidence">Confidence (High → Low)</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className={`block text-sm font-medium ${isLightMode ? 'text-gray-700' : 'text-gray-300'} mb-2`}>
+                                                Filter by Priority
+                                            </label>
+                                            <select
+                                                value={insightFilterPriority}
+                                                onChange={(e) => setInsightFilterPriority(e.target.value)}
+                                                className={`w-full px-3 py-2 ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-800 border-gray-700 text-gray-50'} border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm`}
+                                            >
+                                                <option value="all">All Priorities</option>
+                                                <option value="high">High Priority</option>
+                                                <option value="medium">Medium Priority</option>
+                                                <option value="low">Low Priority</option>
+                                            </select>
+                                        </div>
+                                    </div>
                                 </div>
 
-                                <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
-                                    <div className="flex items-center gap-3 mb-4">
-                                        <div className="w-10 h-10 bg-green-500 rounded-lg flex items-center justify-center">
-                                            <div className="w-5 h-5 text-white text-xl">🤝</div>
-                                        </div>
-                                        <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>Networking Strategy</h3>
-                                    </div>
-                                    <p className={`${isLightMode ? 'text-gray-600' : 'text-gray-300'} mb-4`}>Focus on connecting with senior engineers at your target companies.</p>
-                                    <div className={`text-sm ${isLightMode ? 'text-green-600' : 'text-green-400'}`}>Strategic networking approach</div>
-                                </div>
+                                {/* Data Visualization Dashboard */}
+                                {allInsights.length > 0 && (
+                                    <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
+                                        <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-6`}>
+                                            Insights Analytics
+                                        </h3>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                                            {/* Category Distribution */}
+                                            <div className={`${isLightMode ? 'bg-white border-gray-200' : 'bg-gray-800 border-gray-700'} border rounded-lg p-4`}>
+                                                <h4 className={`text-sm font-semibold ${isLightMode ? 'text-gray-700' : 'text-gray-300'} mb-3`}>
+                                                    By Category
+                                                </h4>
+                                                {vizData.categoryData.length > 0 ? (
+                                                    <SimpleBarChart 
+                                                        data={vizData.categoryData} 
+                                                        height={150}
+                                                    />
+                                                ) : (
+                                                    <div className={`text-center py-8 text-xs ${isLightMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                                        No data
+                                                    </div>
+                                                )}
+                                            </div>
 
-                                <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
-                                    <div className="flex items-center gap-3 mb-4">
-                                        <div className="w-10 h-10 bg-purple-500 rounded-lg flex items-center justify-center">
-                                            <div className="w-5 h-5 text-white text-xl">📝</div>
-                                        </div>
-                                        <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>Content Opportunity</h3>
-                                    </div>
-                                    <p className={`${isLightMode ? 'text-gray-600' : 'text-gray-300'} mb-4`}>Share your experience at tech events to build your professional brand.</p>
-                                    <div className={`text-sm ${isLightMode ? 'text-purple-600' : 'text-purple-400'}`}>Content creation opportunity</div>
-                                </div>
+                                            {/* Priority Distribution */}
+                                            <div className={`${isLightMode ? 'bg-white border-gray-200' : 'bg-gray-800 border-gray-700'} border rounded-lg p-4`}>
+                                                <h4 className={`text-sm font-semibold ${isLightMode ? 'text-gray-700' : 'text-gray-300'} mb-3`}>
+                                                    By Priority
+                                                </h4>
+                                                <div className="flex items-center justify-center">
+                                                    <DoughnutChart data={vizData.priorityData.filter(d => d.value > 0)} size={150} />
+                                                </div>
+                                                <div className="mt-3 space-y-1">
+                                                    {vizData.priorityData.map((item, index) => (
+                                                        <div key={index} className="flex items-center justify-between text-xs">
+                                                            <div className="flex items-center gap-2">
+                                                                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }}></div>
+                                                                <span className={isLightMode ? 'text-gray-600' : 'text-gray-400'}>{item.label}</span>
+                                                            </div>
+                                                            <span className={`font-semibold ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>{item.value}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
 
-                                <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
-                                    <div className="flex items-center gap-3 mb-4">
-                                        <div className="w-10 h-10 bg-orange-500 rounded-lg flex items-center justify-center">
-                                            <div className="w-5 h-5 text-white text-xl">📈</div>
-                                        </div>
-                                        <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>Career Growth</h3>
-                                    </div>
-                                    <p className={`${isLightMode ? 'text-gray-600' : 'text-gray-300'} mb-4`}>Attending leadership workshops can accelerate your career progression.</p>
-                                    <div className={`text-sm ${isLightMode ? 'text-orange-600' : 'text-orange-400'}`}>Growth opportunity identified</div>
-                                </div>
+                                            {/* Urgency Distribution */}
+                                            <div className={`${isLightMode ? 'bg-white border-gray-200' : 'bg-gray-800 border-gray-700'} border rounded-lg p-4`}>
+                                                <h4 className={`text-sm font-semibold ${isLightMode ? 'text-gray-700' : 'text-gray-300'} mb-3`}>
+                                                    By Urgency
+                                                </h4>
+                                                <div className="flex items-center justify-center">
+                                                    <DoughnutChart data={vizData.urgencyData.filter(d => d.value > 0)} size={150} />
+                                                </div>
+                                                <div className="mt-3 space-y-1">
+                                                    {vizData.urgencyData.map((item, index) => (
+                                                        <div key={index} className="flex items-center justify-between text-xs">
+                                                            <div className="flex items-center gap-2">
+                                                                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }}></div>
+                                                                <span className={isLightMode ? 'text-gray-600' : 'text-gray-400'}>{item.label}</span>
+                                                            </div>
+                                                            <span className={`font-semibold ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>{item.value}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
 
-                                <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
-                                    <div className="flex items-center gap-3 mb-4">
-                                        <div className="w-10 h-10 bg-pink-500 rounded-lg flex items-center justify-center">
-                                            <div className="w-5 h-5 text-white text-xl">📊</div>
+                                            {/* Impact Score Distribution */}
+                                            <div className={`${isLightMode ? 'bg-white border-gray-200' : 'bg-gray-800 border-gray-700'} border rounded-lg p-4`}>
+                                                <h4 className={`text-sm font-semibold ${isLightMode ? 'text-gray-700' : 'text-gray-300'} mb-3`}>
+                                                    Impact Scores
+                                                </h4>
+                                                {vizData.impactData.some(d => d.value > 0) ? (
+                                                    <SimpleBarChart 
+                                                        data={vizData.impactData.filter(d => d.value > 0)} 
+                                                        height={150}
+                                                    />
+                                                ) : (
+                                                    <div className={`text-center py-8 text-xs ${isLightMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                                        No data
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
-                                        <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>Industry Trends</h3>
-                                    </div>
-                                    <p className={`${isLightMode ? 'text-gray-600' : 'text-gray-300'} mb-4`}>AI and machine learning events are trending in your industry.</p>
-                                    <div className={`text-sm ${isLightMode ? 'text-pink-600' : 'text-pink-400'}`}>Industry trend analysis</div>
-                                </div>
 
-                                <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
-                                    <div className="flex items-center gap-3 mb-4">
-                                        <div className="w-10 h-10 bg-cyan-500 rounded-lg flex items-center justify-center">
-                                            <div className="w-5 h-5 text-white text-xl">🎯</div>
-                                        </div>
-                                        <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>Skill Development</h3>
+                                        {/* Progress Tracking Summary */}
+                                        {vizData.progressData.completed + vizData.progressData.pending > 0 && (
+                                            <div className={`mt-6 pt-6 border-t ${isLightMode ? 'border-gray-200' : 'border-gray-700'}`}>
+                                                <div className="flex items-center justify-between mb-3">
+                                                    <h4 className={`text-sm font-semibold ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>
+                                                        Overall Progress
+                                                    </h4>
+                                                    <span className={`text-lg font-bold ${isLightMode ? 'text-indigo-600' : 'text-indigo-400'}`}>
+                                                        {vizData.progressData.percentage}%
+                                                    </span>
+                                                </div>
+                                                <div className={`w-full ${isLightMode ? 'bg-gray-200' : 'bg-gray-700'} rounded-full h-3 mb-2`}>
+                                                    <div 
+                                                        className="bg-gradient-to-r from-green-500 to-emerald-500 h-3 rounded-full transition-all duration-500"
+                                                        style={{ width: `${vizData.progressData.percentage}%` }}
+                                                    ></div>
+                                                </div>
+                                                <div className="flex items-center justify-between text-xs">
+                                                    <span className={isLightMode ? 'text-gray-600' : 'text-gray-400'}>
+                                                        {vizData.progressData.completed} completed
+                                                    </span>
+                                                    <span className={isLightMode ? 'text-gray-600' : 'text-gray-400'}>
+                                                        {vizData.progressData.pending} pending
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
-                                    <p className={`${isLightMode ? 'text-gray-600' : 'text-gray-300'} mb-4`}>Consider attending workshops on cloud architecture to expand your skills.</p>
-                                    <div className={`text-sm ${isLightMode ? 'text-cyan-600' : 'text-cyan-400'}`}>Skill development path</div>
-                                </div>
+                                )}
+
+                                {/* Predictive Analytics Section */}
+                                {showPredictiveInsights && predictiveInsights.length > 0 && (
+                                    <div className={`${isLightMode ? 'bg-gradient-to-br from-indigo-50 to-purple-50 border-indigo-200' : 'bg-gradient-to-br from-indigo-900/20 to-purple-900/20 border-indigo-500/30'} border rounded-2xl p-6`}>
+                                        <div className="flex items-center justify-between mb-6">
+                                            <div>
+                                                <h3 className={`text-xl font-bold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-2 flex items-center gap-2`}>
+                                                    <span>🔮</span>
+                                                    Predictive Analytics
+                                                </h3>
+                                                <p className={`text-sm ${isLightMode ? 'text-gray-600' : 'text-gray-300'}`}>
+                                                    AI-powered predictions based on your activity patterns and goals
+                                                </p>
+                                            </div>
+                                            <button
+                                                onClick={() => setShowPredictiveInsights(false)}
+                                                className={`p-2 rounded-lg ${isLightMode ? 'hover:bg-indigo-100' : 'hover:bg-indigo-800/30'} transition-colors duration-200`}
+                                                title="Hide predictive insights"
+                                            >
+                                                <div className="w-4 h-4 text-gray-400">✕</div>
+                                            </button>
+                                        </div>
+                                        
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            {predictiveInsights.map((prediction) => {
+                                                const getPredictionIcon = (type) => {
+                                                    switch(type) {
+                                                        case 'event_attendance': return '📅';
+                                                        case 'networking_success': return '🤝';
+                                                        case 'career_trajectory': return '📈';
+                                                        case 'skill_gap': return '🎯';
+                                                        default: return '🔮';
+                                                    }
+                                                };
+                                                
+                                                const getProbabilityColor = (prob) => {
+                                                    if (prob >= 80) return { bg: 'bg-green-500', text: 'text-green-700', light: 'bg-green-500/20' };
+                                                    if (prob >= 60) return { bg: 'bg-blue-500', text: 'text-blue-700', light: 'bg-blue-500/20' };
+                                                    return { bg: 'bg-yellow-500', text: 'text-yellow-700', light: 'bg-yellow-500/20' };
+                                                };
+                                                
+                                                const probColor = getProbabilityColor(prediction.probability);
+                                                
+                                                return (
+                                                    <div
+                                                        key={prediction.id}
+                                                        className={`${isLightMode ? 'bg-white border-gray-200' : 'bg-gray-800/50 border-gray-700'} border rounded-lg p-5 hover:shadow-lg transition-all duration-200`}
+                                                    >
+                                                        <div className="flex items-start justify-between mb-3">
+                                                            <div className="flex items-center gap-3">
+                                                                <div className={`w-10 h-10 ${probColor.light} rounded-lg flex items-center justify-center`}>
+                                                                    <span className="text-xl">{getPredictionIcon(prediction.type)}</span>
+                                                                </div>
+                                                                <div className="flex-1">
+                                                                    <h4 className={`font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                                        {prediction.title}
+                                                                    </h4>
+                                                                </div>
+                                                            </div>
+                                                            <div className="text-right">
+                                                                <div className={`text-2xl font-bold ${probColor.text}`}>
+                                                                    {prediction.probability}%
+                                                                </div>
+                                                                <div className={`text-xs ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                                    Probability
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        
+                                                        <p className={`text-sm ${isLightMode ? 'text-gray-600' : 'text-gray-300'} mb-3`}>
+                                                            {prediction.description}
+                                                        </p>
+                                                        
+                                                        <div className={`${probColor.light} border ${isLightMode ? 'border-green-200' : 'border-green-500/30'} rounded-lg p-3 mb-3`}>
+                                                            <div className="flex items-start gap-2">
+                                                                <span className="text-green-500">💡</span>
+                                                                <div>
+                                                                    <div className={`text-xs font-semibold ${isLightMode ? 'text-green-800' : 'text-green-400'} mb-1`}>
+                                                                        Recommendation
+                                                                    </div>
+                                                                    <p className={`text-xs ${isLightMode ? 'text-green-700' : 'text-green-300'}`}>
+                                                                        {prediction.recommendation}
+                                                                    </p>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        
+                                                        {/* Probability Bar */}
+                                                        <div className="mb-3">
+                                                            <div className="flex items-center justify-between text-xs mb-1">
+                                                                <span className={isLightMode ? 'text-gray-600' : 'text-gray-400'}>Confidence</span>
+                                                                <span className={`font-semibold ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>
+                                                                    {prediction.confidence}%
+                                                                </span>
+                                                            </div>
+                                                            <div className={`w-full ${isLightMode ? 'bg-gray-200' : 'bg-gray-700'} rounded-full h-2`}>
+                                                                <div 
+                                                                    className={`${probColor.bg} h-2 rounded-full transition-all duration-500`}
+                                                                    style={{ width: `${prediction.probability}%` }}
+                                                                ></div>
+                                                            </div>
+                                                        </div>
+                                                        
+                                                        {/* Action Button */}
+                                                        {prediction.actionable && (
+                                                            <button
+                                                                onClick={() => {
+                                                                    if (prediction.eventId) {
+                                                                        setActiveTab('events');
+                                                                    } else if (prediction.type === 'networking_success' || prediction.type === 'skill_gap') {
+                                                                        setActiveTab('networking');
+                                                                    } else {
+                                                                        // Scroll to relevant insights
+                                                                    }
+                                                                }}
+                                                                className={`w-full ${probColor.bg} text-white py-2 px-4 rounded-lg font-medium hover:opacity-90 transition-all duration-200 text-sm`}
+                                                            >
+                                                                {prediction.eventId ? 'View Event' : 
+                                                                 prediction.type === 'skill_gap' ? 'Explore Learning Path' :
+                                                                 'View Details'}
+                                                            </button>
+                                                        )}
+                                                        
+                                                        {/* Skills list for skill gap */}
+                                                        {prediction.skills && prediction.skills.length > 0 && (
+                                                            <div className={`mt-3 pt-3 border-t ${isLightMode ? 'border-gray-200' : 'border-gray-700'}`}>
+                                                                <div className="flex flex-wrap gap-2">
+                                                                    {prediction.skills.map((skill, idx) => (
+                                                                        <span
+                                                                            key={idx}
+                                                                            className={`px-2 py-1 ${probColor.light} ${probColor.text} text-xs rounded-full`}
+                                                                        >
+                                                                            {skill}
+                                                                        </span>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Category Overview (when viewing all categories) */}
+                                {insightFilterCategory === 'all' && uniqueCategories.length > 0 && (
+                                    <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
+                                        <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-4`}>
+                                            Category Overview
+                                        </h3>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                            {uniqueCategories.map(category => {
+                                                const catDef = categoryDefinitions[category] || { icon: '📌', description: '', color: 'gray' };
+                                                const stats = getCategoryStats(category);
+                                                const catColorClasses = getColorClasses(catDef.color);
+                                                
+                                                return (
+                                                    <div
+                                                        key={category}
+                                                        onClick={() => setInsightFilterCategory(category)}
+                                                        className={`${isLightMode ? 'bg-white border-gray-200' : 'bg-gray-800 border-gray-700'} border rounded-lg p-4 cursor-pointer hover:shadow-lg transition-all duration-200 transform hover:-translate-y-1`}
+                                                    >
+                                                        <div className="flex items-center gap-3 mb-2">
+                                                            <div className={`w-10 h-10 ${catColorClasses.bg} rounded-lg flex items-center justify-center`}>
+                                                                <span className="text-xl">{catDef.icon}</span>
+                                                            </div>
+                                                            <div className="flex-1">
+                                                                <h4 className={`font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                                    {category}
+                                                                </h4>
+                                                                <p className={`text-xs ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                                    {catDef.description}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                        <div className={`flex items-center justify-between mt-3 pt-3 border-t ${isLightMode ? 'border-gray-200' : 'border-gray-700'}`}>
+                                                            <div>
+                                                                <div className={`text-lg font-bold ${catColorClasses.text}`}>
+                                                                    {stats.count}
+                                                                </div>
+                                                                <div className={`text-xs ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                                    Insights
+                                                                </div>
+                                                            </div>
+                                                            <div>
+                                                                <div className={`text-lg font-bold ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>
+                                                                    {stats.avgImpact}
+                                                                </div>
+                                                                <div className={`text-xs ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                                    Avg Impact
+                                                                </div>
+                                                            </div>
+                                                            {stats.highPriorityCount > 0 && (
+                                                                <div>
+                                                                    <div className="text-lg font-bold text-red-400">
+                                                                        {stats.highPriorityCount}
+                                                                    </div>
+                                                                    <div className={`text-xs ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                                        High Priority
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Dynamic Insights Grid */}
+                                {dynamicInsights.filter(insight => !dismissedInsights.has(insight.id)).length > 0 ? (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                        {dynamicInsights
+                                            .filter(insight => !dismissedInsights.has(insight.id))
+                                            .map((insight) => {
+                                            const colorClasses = getColorClasses(insight.color);
+                                            const priorityBadge = getPriorityBadge(insight.priority);
+                                            const isExpanded = expandedInsights[insight.id];
+                                            const progress = insightProgress[insight.id] || { completedSteps: [], totalSteps: insight.actionableSteps?.length || 0 };
+                                            const completedSteps = progress.completedSteps || [];
+                                            const totalSteps = insight.actionableSteps?.length || 0;
+                                            const progressPercentage = totalSteps > 0 ? Math.round((completedSteps.length / totalSteps) * 100) : 0;
+                                            
+                                            return (
+                                                <div 
+                                                    key={insight.id} 
+                                                    className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 relative`}
+                                                >
+                                                    {/* Dismiss Button */}
+                                                    <button
+                                                        onClick={() => dismissInsight(insight.id)}
+                                                        className={`absolute top-4 right-4 p-1.5 rounded-lg ${isLightMode ? 'hover:bg-gray-200' : 'hover:bg-gray-700'} transition-colors duration-200`}
+                                                        title="Dismiss insight"
+                                                    >
+                                                        <div className="w-4 h-4 text-gray-400">✕</div>
+                                                    </button>
+
+                                                    <div className="flex items-start justify-between mb-4 pr-8">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className={`w-10 h-10 ${colorClasses.bg} rounded-lg flex items-center justify-center`}>
+                                                                <div className="w-5 h-5 text-white text-xl">{insight.icon}</div>
+                                                            </div>
+                                                            <div>
+                                                                <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                                    {insight.title}
+                                                                </h3>
+                                                                <span className={`text-xs ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                                    {insight.category}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    <p className={`${isLightMode ? 'text-gray-600' : 'text-gray-300'} mb-4 text-sm leading-relaxed`}>
+                                                        {insight.message}
+                                                    </p>
+                                                    
+                                                    {/* Enhanced Priority, Impact, Urgency, and Confidence Indicators */}
+                                                    <div className="space-y-2 mb-4">
+                                                        <div className="flex items-center gap-2 flex-wrap">
+                                                            <span className={`px-2 py-1 rounded-full text-xs font-medium border ${priorityBadge.bg} ${priorityBadge.text} ${priorityBadge.border || ''}`}>
+                                                                {priorityBadge.label}
+                                                            </span>
+                                                            {insight.impact && (() => {
+                                                                const impactBadge = getImpactBadge(insight.impact);
+                                                                return (
+                                                                    <span className={`px-2 py-1 rounded-full text-xs font-medium border ${impactBadge.bg} ${impactBadge.text} border-green-500/50`}>
+                                                                        💎 {impactBadge.label} Impact ({insight.impact})
+                                                                    </span>
+                                                                );
+                                                            })()}
+                                                            {insight.urgency && (() => {
+                                                                const urgencyBadge = getUrgencyBadge(insight.urgency);
+                                                                return (
+                                                                    <span className={`px-2 py-1 rounded-full text-xs font-medium border ${urgencyBadge.bg} ${urgencyBadge.text} ${urgencyBadge.border}`}>
+                                                                        {urgencyBadge.icon} {urgencyBadge.label}
+                                                                    </span>
+                                                                );
+                                                            })()}
+                                                        </div>
+                                                        <div className="flex items-center gap-2 flex-wrap">
+                                                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${colorClasses.bgLight} ${colorClasses.text}`}>
+                                                                {insight.confidence}% Confidence
+                                                            </span>
+                                                            {insight.estimatedROI && (
+                                                                <span className={`px-2 py-1 rounded-full text-xs font-medium ${isLightMode ? 'bg-purple-100 text-purple-700' : 'bg-purple-500/20 text-purple-400'}`}>
+                                                                    💰 {insight.estimatedROI.split(' - ')[0]}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Progress Bar (if actionable steps exist) */}
+                                                    {totalSteps > 0 && (
+                                                        <div className="mb-4">
+                                                            <div className="flex items-center justify-between text-xs mb-1">
+                                                                <span className={isLightMode ? 'text-gray-600' : 'text-gray-400'}>Progress</span>
+                                                                <span className={`font-medium ${progressPercentage === 100 ? 'text-green-500' : isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>
+                                                                    {completedSteps.length}/{totalSteps} steps
+                                                                </span>
+                                                            </div>
+                                                            <div className={`w-full ${isLightMode ? 'bg-gray-200' : 'bg-gray-700'} rounded-full h-2`}>
+                                                                <div 
+                                                                    className={`h-2 rounded-full transition-all duration-300 ${
+                                                                        progressPercentage === 100 ? 'bg-green-500' : colorClasses.bg
+                                                                    }`}
+                                                                    style={{ width: `${progressPercentage}%` }}
+                                                                ></div>
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                    
+                                                    {/* Quick Actions */}
+                                                    {insight.quickActions && insight.quickActions.length > 0 && (
+                                                        <div className="flex flex-wrap gap-2 mb-4">
+                                                            {insight.quickActions.map((action) => (
+                                                                <button
+                                                                    key={action.id}
+                                                                    onClick={action.action}
+                                                                    disabled={action.disabled}
+                                                                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 flex items-center gap-1.5 ${
+                                                                        action.disabled
+                                                                            ? `${isLightMode ? 'bg-gray-200 text-gray-400' : 'bg-gray-700 text-gray-500'} cursor-not-allowed`
+                                                                            : `${colorClasses.bgLight} ${colorClasses.text} hover:opacity-80`
+                                                                    }`}
+                                                                >
+                                                                    <span>{action.icon}</span>
+                                                                    <span>{action.label}</span>
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                    
+                                                    {/* Main Action Button */}
+                                                    {insight.actionable && insight.actionEvent && (
+                                                        <button
+                                                            onClick={insight.actionEvent}
+                                                            className={`w-full ${colorClasses.bg} text-white py-2 px-4 rounded-lg font-medium hover:opacity-90 transition-all duration-200 text-sm mb-4`}
+                                                        >
+                                                            {insight.actionText}
+                                                        </button>
+                                                    )}
+
+                                                    {/* Expandable Actionable Steps */}
+                                                    {insight.actionableSteps && insight.actionableSteps.length > 0 && (
+                                                        <div className="mt-4">
+                                                            <button
+                                                                onClick={() => toggleInsightExpanded(insight.id)}
+                                                                className={`w-full flex items-center justify-between p-2 rounded-lg ${isLightMode ? 'hover:bg-gray-100' : 'hover:bg-gray-800'} transition-colors duration-200`}
+                                                            >
+                                                                <span className={`text-sm font-medium ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>
+                                                                    Actionable Steps
+                                                                </span>
+                                                                <span className={`text-xs ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                                    {isExpanded ? '▼' : '▶'}
+                                                                </span>
+                                                            </button>
+                                                            
+                                                            {isExpanded && (
+                                                                <div className="mt-2 space-y-2">
+                                                                    {insight.actionableSteps.map((step) => {
+                                                                        const isCompleted = completedSteps.includes(step.id);
+                                                                        return (
+                                                                            <label
+                                                                                key={step.id}
+                                                                                className={`flex items-start gap-3 p-2 rounded-lg cursor-pointer transition-colors duration-200 ${
+                                                                                    isCompleted
+                                                                                        ? `${isLightMode ? 'bg-green-50 border-green-200' : 'bg-green-500/10 border-green-500/30'} border`
+                                                                                        : `${isLightMode ? 'hover:bg-gray-50' : 'hover:bg-gray-800'}`
+                                                                                }`}
+                                                                            >
+                                                                                <input
+                                                                                    type="checkbox"
+                                                                                    checked={isCompleted}
+                                                                                    onChange={() => toggleInsightStep(insight.id, step.id)}
+                                                                                    className={`mt-0.5 w-4 h-4 ${colorClasses.bg} ${isLightMode ? 'border-gray-300' : 'border-gray-600'} rounded focus:ring-2 focus:ring-offset-0 focus:ring-${insight.color}-500`}
+                                                                                />
+                                                                                <span className={`text-sm flex-1 ${isCompleted ? (isLightMode ? 'text-gray-500 line-through' : 'text-gray-500 line-through') : (isLightMode ? 'text-gray-700' : 'text-gray-300')}`}>
+                                                                                    {step.text}
+                                                                                </span>
+                                                                            </label>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                    
+                                                    {/* Reasoning (expandable) */}
+                                                    <details className="mt-4">
+                                                        <summary className={`text-xs ${isLightMode ? 'text-gray-500 hover:text-gray-700' : 'text-gray-400 hover:text-gray-300'} cursor-pointer`}>
+                                                            Why this insight?
+                                                        </summary>
+                                                        <p className={`text-xs ${isLightMode ? 'text-gray-500' : 'text-gray-400'} mt-2 pt-2 border-t ${isLightMode ? 'border-gray-200' : 'border-gray-700'}`}>
+                                                            {insight.reasoning}
+                                                        </p>
+                                                    </details>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                ) : (
+                                    <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-12 text-center`}>
+                                        <div className="text-6xl mb-4">💡</div>
+                                        <h3 className={`text-xl font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-2`}>
+                                            No Insights Yet
+                                        </h3>
+                                        <p className={`${isLightMode ? 'text-gray-600' : 'text-gray-300'} mb-6`}>
+                                            Start exploring events, bookmarking opportunities, and following role models to receive personalized AI insights.
+                                        </p>
+                                        <button
+                                            onClick={() => setActiveTab('events')}
+                                            className="bg-indigo-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-indigo-700 transition-colors duration-200"
+                                        >
+                                            Explore Events
+                                        </button>
+                                    </div>
+                                )}
                             </div>
-                        </div>
-                    )}
+                        );
+                    })()}
                 </div>
             );
         };
