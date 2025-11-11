@@ -33469,6 +33469,126 @@ Generate the repurposed content:`;
                 setShowGoalsModal(false);
             };
 
+            // Smart Recommendations Functions
+            const getBestTimeToReachOut = (opportunity) => {
+                // Simulate optimal times based on role and company
+                const timeRecommendations = {
+                    'Product Manager': {
+                        bestDays: ['Monday', 'Tuesday', 'Wednesday'],
+                        bestTime: '10:00 AM - 12:00 PM',
+                        reason: 'Product managers are most responsive mid-morning on weekdays'
+                    },
+                    'AI Research Director': {
+                        bestDays: ['Tuesday', 'Wednesday', 'Thursday'],
+                        bestTime: '2:00 PM - 4:00 PM',
+                        reason: 'Research directors prefer afternoon communication after meetings'
+                    },
+                    'Engineering Manager': {
+                        bestDays: ['Monday', 'Wednesday', 'Friday'],
+                        bestTime: '9:00 AM - 11:00 AM',
+                        reason: 'Engineering managers check messages early morning'
+                    },
+                    'Senior Software Engineer': {
+                        bestDays: ['Tuesday', 'Thursday'],
+                        bestTime: '11:00 AM - 1:00 PM',
+                        reason: 'Engineers are most responsive during lunch hours'
+                    },
+                    'VP of Engineering': {
+                        bestDays: ['Monday', 'Tuesday'],
+                        bestTime: '8:00 AM - 10:00 AM',
+                        reason: 'VPs prefer early morning communication'
+                    },
+                    'CTO': {
+                        bestDays: ['Monday', 'Wednesday'],
+                        bestTime: '7:00 AM - 9:00 AM',
+                        reason: 'CTOs check messages first thing in the morning'
+                    }
+                };
+
+                return timeRecommendations[opportunity.title] || {
+                    bestDays: ['Tuesday', 'Wednesday', 'Thursday'],
+                    bestTime: '10:00 AM - 2:00 PM',
+                    reason: 'General best practice for professional communication'
+                };
+            };
+
+            const getSuggestedEvents = (opportunity) => {
+                // Suggest events based on their interests and company
+                const eventSuggestions = [];
+                
+                // Based on company
+                if (opportunity.company === 'Microsoft' || opportunity.company === 'Google' || opportunity.company === 'Amazon') {
+                    eventSuggestions.push({
+                        name: 'Cloud Summit 2024',
+                        date: '2024-04-15',
+                        location: 'San Francisco, CA',
+                        reason: 'Perfect for cloud technology professionals'
+                    });
+                }
+                
+                if (opportunity.company === 'OpenAI' || opportunity.title.includes('AI')) {
+                    eventSuggestions.push({
+                        name: 'AI & Machine Learning Conference',
+                        date: '2024-05-20',
+                        location: 'Virtual',
+                        reason: 'Great for AI professionals'
+                    });
+                }
+                
+                // Based on role
+                if (opportunity.title.includes('Engineering') || opportunity.title.includes('Manager')) {
+                    eventSuggestions.push({
+                        name: 'Engineering Leadership Summit',
+                        date: '2024-06-10',
+                        location: 'Seattle, WA',
+                        reason: 'Ideal for engineering leaders'
+                    });
+                }
+                
+                // General tech events
+                eventSuggestions.push({
+                    name: 'Tech Networking Mixer',
+                    date: '2024-04-30',
+                    location: 'Virtual',
+                    reason: 'Great opportunity to connect with tech professionals'
+                });
+
+                return eventSuggestions.slice(0, 3); // Return top 3
+            };
+
+            const getMutualConnectionsForIntroduction = (opportunity) => {
+                // Simulate mutual connections who could introduce
+                const mutualConnectors = [
+                    { name: 'Sarah Johnson', title: 'Senior Engineer', company: 'Microsoft', mutualCount: 5 },
+                    { name: 'Mike Chen', title: 'Product Lead', company: 'Google', mutualCount: 3 },
+                    { name: 'Emily Rodriguez', title: 'Engineering Manager', company: 'Amazon', mutualCount: 4 }
+                ];
+
+                // Filter based on relevance
+                return mutualConnectors
+                    .filter(conn => conn.mutualCount >= opportunity.mutualConnections)
+                    .slice(0, 2);
+            };
+
+            const getSimilarProfessionals = (opportunity) => {
+                // Find similar professionals from networking opportunities
+                return networkingOpportunities
+                    .filter(opp => 
+                        opp.id !== opportunity.id &&
+                        (opp.company === opportunity.company || 
+                         opp.title === opportunity.title ||
+                         opp.relevanceScore >= 80)
+                    )
+                    .slice(0, 3)
+                    .map(opp => ({
+                        name: opp.name,
+                        title: opp.title,
+                        company: opp.company,
+                        relevanceScore: opp.relevanceScore,
+                        mutualConnections: opp.mutualConnections
+                    }));
+            };
+
             // Load saved notes and tags from localStorage on mount
             React.useEffect(() => {
                 const savedNotes = JSON.parse(localStorage.getItem('roleModelNotes') || '{}');
@@ -35292,6 +35412,126 @@ Generate the repurposed content:`;
                                                                                 </p>
                                                                             )}
                                                                         </div>
+                                                                    </div>
+                                                                );
+                                                            })()}
+                                                        </div>
+
+                                                        {/* Smart Recommendations */}
+                                                        <div className="mb-4">
+                                                            <button
+                                                                onClick={() => toggleNetworkingDetails(opportunity.id, 'recommendations')}
+                                                                className={`flex items-center gap-2 text-sm font-medium ${isLightMode ? 'text-gray-700 hover:text-gray-900' : 'text-gray-300 hover:text-white'} mb-2`}
+                                                            >
+                                                                <span>✨</span>
+                                                                Smart Recommendations {expandedNetworkingDetails[opportunity.id]?.recommendations ? '▼' : '▶'}
+                                                            </button>
+                                                            {expandedNetworkingDetails[opportunity.id]?.recommendations && (() => {
+                                                                const bestTime = getBestTimeToReachOut(opportunity);
+                                                                const suggestedEvents = getSuggestedEvents(opportunity);
+                                                                const mutualConnectors = getMutualConnectionsForIntroduction(opportunity);
+                                                                const similarProfessionals = getSimilarProfessionals(opportunity);
+                                                                
+                                                                return (
+                                                                    <div className={`${isLightMode ? 'bg-white/30 backdrop-blur-xl border-white/20' : 'bg-gray-800 border-gray-700'} border rounded-lg p-4 space-y-4`}>
+                                                                        {/* Best Time to Reach Out */}
+                                                                        <div>
+                                                                            <h5 className={`text-sm font-medium ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-2 flex items-center gap-2`}>
+                                                                                <span>⏰</span>
+                                                                                Best Time to Reach Out
+                                                                            </h5>
+                                                                            <div className={`${isLightMode ? 'bg-blue-50' : 'bg-blue-500/10'} rounded-lg p-3`}>
+                                                                                <div className={`text-sm font-medium ${isLightMode ? 'text-blue-900' : 'text-blue-300'} mb-1`}>
+                                                                                    {bestTime.bestDays.join(', ')}
+                                                                                </div>
+                                                                                <div className={`text-xs ${isLightMode ? 'text-blue-700' : 'text-blue-400'} mb-1`}>
+                                                                                    {bestTime.bestTime}
+                                                                                </div>
+                                                                                <div className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'} mt-2`}>
+                                                                                    {bestTime.reason}
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
+
+                                                                        {/* Suggested Events */}
+                                                                        {suggestedEvents.length > 0 && (
+                                                                            <div>
+                                                                                <h5 className={`text-sm font-medium ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-2 flex items-center gap-2`}>
+                                                                                    <span>📅</span>
+                                                                                    Suggested Events
+                                                                                </h5>
+                                                                                <div className="space-y-2">
+                                                                                    {suggestedEvents.map((event, idx) => (
+                                                                                        <div key={idx} className={`${isLightMode ? 'bg-purple-50' : 'bg-purple-500/10'} rounded-lg p-3`}>
+                                                                                            <div className={`text-sm font-medium ${isLightMode ? 'text-purple-900' : 'text-purple-300'} mb-1`}>
+                                                                                                {event.name}
+                                                                                            </div>
+                                                                                            <div className={`text-xs ${isLightMode ? 'text-purple-700' : 'text-purple-400'} mb-1`}>
+                                                                                                {new Date(event.date).toLocaleDateString()} • {event.location}
+                                                                                            </div>
+                                                                                            <div className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>
+                                                                                                {event.reason}
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    ))}
+                                                                                </div>
+                                                                            </div>
+                                                                        )}
+
+                                                                        {/* Mutual Connections for Introduction */}
+                                                                        {mutualConnectors.length > 0 && (
+                                                                            <div>
+                                                                                <h5 className={`text-sm font-medium ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-2 flex items-center gap-2`}>
+                                                                                    <span>🤝</span>
+                                                                                    Ask for Introduction
+                                                                                </h5>
+                                                                                <div className="space-y-2">
+                                                                                    {mutualConnectors.map((connector, idx) => (
+                                                                                        <div key={idx} className={`${isLightMode ? 'bg-green-50' : 'bg-green-500/10'} rounded-lg p-3`}>
+                                                                                            <div className={`text-sm font-medium ${isLightMode ? 'text-green-900' : 'text-green-300'} mb-1`}>
+                                                                                                {connector.name}
+                                                                                            </div>
+                                                                                            <div className={`text-xs ${isLightMode ? 'text-green-700' : 'text-green-400'} mb-1`}>
+                                                                                                {connector.title} at {connector.company}
+                                                                                            </div>
+                                                                                            <div className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>
+                                                                                                {connector.mutualCount} mutual connections
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    ))}
+                                                                                </div>
+                                                                            </div>
+                                                                        )}
+
+                                                                        {/* Similar Professionals */}
+                                                                        {similarProfessionals.length > 0 && (
+                                                                            <div>
+                                                                                <h5 className={`text-sm font-medium ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-2 flex items-center gap-2`}>
+                                                                                    <span>👥</span>
+                                                                                    Similar Professionals
+                                                                                </h5>
+                                                                                <div className="space-y-2">
+                                                                                    {similarProfessionals.map((prof, idx) => (
+                                                                                        <div key={idx} className={`${isLightMode ? 'bg-indigo-50' : 'bg-indigo-500/10'} rounded-lg p-3`}>
+                                                                                            <div className="flex items-center justify-between mb-1">
+                                                                                                <div className={`text-sm font-medium ${isLightMode ? 'text-indigo-900' : 'text-indigo-300'}`}>
+                                                                                                    {prof.name}
+                                                                                                </div>
+                                                                                                <span className={`px-2 py-0.5 rounded text-xs ${getRelevanceColor(prof.relevanceScore)}`}>
+                                                                                                    {prof.relevanceScore}%
+                                                                                                </span>
+                                                                                            </div>
+                                                                                            <div className={`text-xs ${isLightMode ? 'text-indigo-700' : 'text-indigo-400'} mb-1`}>
+                                                                                                {prof.title} at {prof.company}
+                                                                                            </div>
+                                                                                            <div className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>
+                                                                                                {prof.mutualConnections} mutual connections
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    ))}
+                                                                                </div>
+                                                                            </div>
+                                                                        )}
                                                                     </div>
                                                                 );
                                                             })()}
