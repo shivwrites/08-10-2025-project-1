@@ -32474,6 +32474,20 @@ Generate the repurposed content:`;
             const [roleModelFilterEngagement, setRoleModelFilterEngagement] = useState('all');
             const [roleModelSortBy, setRoleModelSortBy] = useState('relevance');
             
+            // Networking filters and search
+            const [networkingSearchQuery, setNetworkingSearchQuery] = useState('');
+            const [networkingFilterType, setNetworkingFilterType] = useState('all');
+            const [networkingFilterRelevance, setNetworkingFilterRelevance] = useState('all');
+            const [networkingFilterConnections, setNetworkingFilterConnections] = useState('all');
+            const [networkingSortBy, setNetworkingSortBy] = useState('relevance');
+            
+            // Interactive features state
+            const [notes, setNotes] = useState({}); // { roleModelId: 'note text' }
+            const [tags, setTags] = useState({}); // { roleModelId: ['tag1', 'tag2'] }
+            const [selectedForComparison, setSelectedForComparison] = useState([]);
+            const [showComparison, setShowComparison] = useState(false);
+            const [expandedNotes, setExpandedNotes] = useState({}); // { roleModelId: true/false }
+            
             // Check for light mode
             const isLightMode = !document.documentElement.classList.contains('dark');
 
@@ -32727,6 +32741,54 @@ Generate the repurposed content:`;
                     contactInfo: 'lisa.wang@openai.com',
                     suggestedApproach: 'Reference their recent research paper and ask about future AI trends',
                     eventContext: 'AI in Healthcare Workshop'
+                },
+                {
+                    id: 3,
+                    type: 'Organizer',
+                    name: 'Sarah Chen',
+                    title: 'Engineering Manager',
+                    company: 'Google',
+                    mutualConnections: 7,
+                    relevanceScore: 88,
+                    contactInfo: 'sarah.chen@google.com',
+                    suggestedApproach: 'Discuss the event organization and ask about upcoming tech conferences',
+                    eventContext: 'Tech Leadership Summit 2024'
+                },
+                {
+                    id: 4,
+                    type: 'Event Attendee',
+                    name: 'Michael Johnson',
+                    title: 'Senior Software Engineer',
+                    company: 'Amazon',
+                    mutualConnections: 2,
+                    relevanceScore: 75,
+                    contactInfo: 'michael.j@amazon.com',
+                    suggestedApproach: 'Connect over shared experience at the conference and discuss cloud architecture',
+                    eventContext: 'AWS re:Invent 2024'
+                },
+                {
+                    id: 5,
+                    type: 'Speaker',
+                    name: 'Emily Davis',
+                    title: 'VP of Engineering',
+                    company: 'Netflix',
+                    mutualConnections: 5,
+                    relevanceScore: 95,
+                    contactInfo: 'emily.davis@netflix.com',
+                    suggestedApproach: 'Reference their talk on scalable systems and ask for career advice',
+                    eventContext: 'ScaleConf 2024'
+                },
+                {
+                    id: 6,
+                    type: 'Sponsor',
+                    name: 'James Wilson',
+                    title: 'CTO',
+                    company: 'Stripe',
+                    mutualConnections: 4,
+                    relevanceScore: 82,
+                    contactInfo: 'james.wilson@stripe.com',
+                    suggestedApproach: 'Discuss their company\'s sponsorship and explore potential collaboration',
+                    eventContext: 'Startup Tech Expo 2024'
                 }
             ];
 
@@ -32771,6 +32833,63 @@ Generate the repurposed content:`;
                 }
             };
 
+            // Filter and sort networking opportunities
+            const getFilteredNetworkingOpportunities = () => {
+                let filtered = [...networkingOpportunities];
+
+                // Search filter
+                if (networkingSearchQuery) {
+                    const query = networkingSearchQuery.toLowerCase();
+                    filtered = filtered.filter(opp => 
+                        opp.name.toLowerCase().includes(query) ||
+                        opp.company.toLowerCase().includes(query) ||
+                        opp.title.toLowerCase().includes(query) ||
+                        opp.eventContext.toLowerCase().includes(query)
+                    );
+                }
+
+                // Type filter
+                if (networkingFilterType !== 'all') {
+                    filtered = filtered.filter(opp => 
+                        opp.type.toLowerCase() === networkingFilterType.toLowerCase()
+                    );
+                }
+
+                // Relevance score filter
+                if (networkingFilterRelevance !== 'all') {
+                    filtered = filtered.filter(opp => {
+                        if (networkingFilterRelevance === '90+') return opp.relevanceScore >= 90;
+                        if (networkingFilterRelevance === '80+') return opp.relevanceScore >= 80;
+                        if (networkingFilterRelevance === '70+') return opp.relevanceScore >= 70;
+                        return true;
+                    });
+                }
+
+                // Mutual connections filter
+                if (networkingFilterConnections !== 'all') {
+                    filtered = filtered.filter(opp => {
+                        if (networkingFilterConnections === '5+') return opp.mutualConnections >= 5;
+                        if (networkingFilterConnections === '3+') return opp.mutualConnections >= 3;
+                        if (networkingFilterConnections === '1+') return opp.mutualConnections >= 1;
+                        return true;
+                    });
+                }
+
+                // Sort
+                filtered.sort((a, b) => {
+                    if (networkingSortBy === 'relevance') {
+                        return b.relevanceScore - a.relevanceScore;
+                    } else if (networkingSortBy === 'connections') {
+                        return b.mutualConnections - a.mutualConnections;
+                    } else if (networkingSortBy === 'name') {
+                        return a.name.localeCompare(b.name);
+                    }
+                    return 0;
+                });
+
+                return filtered;
+            };
+
             const handleBookmarkToggle = (eventId) => {
                 // Toggle bookmark functionality would be implemented here
                 console.log('Toggle bookmark for event:', eventId);
@@ -32780,6 +32899,62 @@ Generate the repurposed content:`;
                 // Toggle follow functionality would be implemented here
                 console.log('Toggle follow for role model:', roleModelId);
             };
+
+            // Notes management
+            const handleNoteChange = (roleModelId, note) => {
+                setNotes(prev => ({ ...prev, [roleModelId]: note }));
+            };
+
+            const handleNoteSave = (roleModelId) => {
+                // Save note to localStorage or backend
+                const savedNotes = JSON.parse(localStorage.getItem('roleModelNotes') || '{}');
+                savedNotes[roleModelId] = notes[roleModelId] || '';
+                localStorage.setItem('roleModelNotes', JSON.stringify(savedNotes));
+            };
+
+            // Tags management
+            const handleAddTag = (roleModelId, tag) => {
+                if (!tag.trim()) return;
+                setTags(prev => ({
+                    ...prev,
+                    [roleModelId]: [...(prev[roleModelId] || []), tag.trim()]
+                }));
+                // Save to localStorage
+                const savedTags = JSON.parse(localStorage.getItem('roleModelTags') || '{}');
+                savedTags[roleModelId] = [...(savedTags[roleModelId] || []), tag.trim()];
+                localStorage.setItem('roleModelTags', JSON.stringify(savedTags));
+            };
+
+            const handleRemoveTag = (roleModelId, tagToRemove) => {
+                setTags(prev => ({
+                    ...prev,
+                    [roleModelId]: (prev[roleModelId] || []).filter(tag => tag !== tagToRemove)
+                }));
+                // Update localStorage
+                const savedTags = JSON.parse(localStorage.getItem('roleModelTags') || '{}');
+                savedTags[roleModelId] = (savedTags[roleModelId] || []).filter(tag => tag !== tagToRemove);
+                localStorage.setItem('roleModelTags', JSON.stringify(savedTags));
+            };
+
+            // Comparison management
+            const handleToggleComparison = (roleModelId) => {
+                setSelectedForComparison(prev => {
+                    if (prev.includes(roleModelId)) {
+                        return prev.filter(id => id !== roleModelId);
+                    } else if (prev.length < 3) {
+                        return [...prev, roleModelId];
+                    }
+                    return prev;
+                });
+            };
+
+            // Load saved notes and tags from localStorage on mount
+            React.useEffect(() => {
+                const savedNotes = JSON.parse(localStorage.getItem('roleModelNotes') || '{}');
+                const savedTags = JSON.parse(localStorage.getItem('roleModelTags') || '{}');
+                setNotes(savedNotes);
+                setTags(savedTags);
+            }, []);
 
             // Filter and sort role models
             const getFilteredAndSortedRoleModels = () => {
@@ -32999,6 +33174,44 @@ Generate the repurposed content:`;
                     totalMutualConnections,
                     trendingPosts
                 };
+            };
+
+            // Get industry icon
+            const getIndustryIcon = (industry) => {
+                const icons = {
+                    'Technology': '💻',
+                    'Fintech': '💰',
+                    'Healthcare': '🏥',
+                    'Education': '📚',
+                    'Marketing': '📢',
+                    'Design': '🎨',
+                    'Engineering': '⚙️',
+                    'Business': '💼'
+                };
+                return icons[industry] || '🏢';
+            };
+
+            // Get industry badge color
+            const getIndustryBadgeColor = (industry) => {
+                const colors = {
+                    'Technology': 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+                    'Fintech': 'bg-green-500/20 text-green-400 border-green-500/30',
+                    'Healthcare': 'bg-red-500/20 text-red-400 border-red-500/30',
+                    'Education': 'bg-purple-500/20 text-purple-400 border-purple-500/30',
+                    'Marketing': 'bg-pink-500/20 text-pink-400 border-pink-500/30',
+                    'Design': 'bg-orange-500/20 text-orange-400 border-orange-500/30',
+                    'Engineering': 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30',
+                    'Business': 'bg-gray-500/20 text-gray-400 border-gray-500/30'
+                };
+                return colors[industry] || 'bg-gray-500/20 text-gray-400 border-gray-500/30';
+            };
+
+            // Get influence level
+            const getInfluenceLevel = (score) => {
+                if (score >= 90) return { level: 'Elite', color: 'text-purple-400', bg: 'bg-purple-500/20' };
+                if (score >= 80) return { level: 'High', color: 'text-blue-400', bg: 'bg-blue-500/20' };
+                if (score >= 70) return { level: 'Medium', color: 'text-green-400', bg: 'bg-green-500/20' };
+                return { level: 'Rising', color: 'text-yellow-400', bg: 'bg-yellow-500/20' };
             };
 
             const tabs = [
@@ -33296,11 +33509,110 @@ Generate the repurposed content:`;
                                     </div>
                                 </div>
 
+                                {/* Comparison View Toggle */}
+                                {selectedForComparison.length > 0 && (
+                                    <div className={`${isLightMode ? 'bg-indigo-50 border-indigo-200' : 'bg-indigo-500/10 border-indigo-500/30'} border rounded-2xl p-4 mb-6`}>
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-3">
+                                                <span className="text-2xl">⚖️</span>
+                                                <div>
+                                                    <h3 className={`font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                        {selectedForComparison.length} role model{selectedForComparison.length !== 1 ? 's' : ''} selected for comparison
+                                                    </h3>
+                                                    <p className={`text-sm ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>
+                                                        Click "View Comparison" to see side-by-side comparison
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <button
+                                                    onClick={() => setShowComparison(!showComparison)}
+                                                    className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors duration-200 text-sm font-medium"
+                                                >
+                                                    {showComparison ? 'Hide Comparison' : 'View Comparison'}
+                                                </button>
+                                                <button
+                                                    onClick={() => setSelectedForComparison([])}
+                                                    className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors duration-200 text-sm font-medium"
+                                                >
+                                                    Clear All
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Comparison View */}
+                                {showComparison && selectedForComparison.length > 0 && (
+                                    <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6 mb-6 overflow-x-auto`}>
+                                        <h3 className={`text-xl font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-4`}>
+                                            Side-by-Side Comparison
+                                        </h3>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 min-w-max">
+                                            {selectedForComparison.map((modelId) => {
+                                                const model = roleModels.find(m => m.id === modelId);
+                                                if (!model) return null;
+                                                return (
+                                                    <div key={modelId} className={`${isLightMode ? 'bg-white border-gray-200' : 'bg-gray-800 border-gray-700'} border rounded-lg p-4 min-w-[280px]`}>
+                                                        <div className="flex items-center gap-3 mb-3">
+                                                            <div className={`w-12 h-12 bg-gradient-to-br ${getAvatarGradient(model.name)} rounded-full flex items-center justify-center flex-shrink-0 shadow-md`}>
+                                                                <span className="text-white text-sm font-bold">{getInitials(model.name)}</span>
+                                                            </div>
+                                                            <div>
+                                                                <h4 className={`font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} text-sm`}>
+                                                                    {model.name}
+                                                                </h4>
+                                                                <p className={`text-xs ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                                    {model.title}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                        <div className="space-y-2 text-sm">
+                                                            <div className="flex justify-between">
+                                                                <span className={isLightMode ? 'text-gray-600' : 'text-gray-400'}>Influence:</span>
+                                                                <span className={`font-medium ${getRelevanceColor(model.influenceScore)}`}>
+                                                                    {model.influenceScore}
+                                                                </span>
+                                                            </div>
+                                                            <div className="flex justify-between">
+                                                                <span className={isLightMode ? 'text-gray-600' : 'text-gray-400'}>Engagement:</span>
+                                                                <span className={`font-medium ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                                    {model.engagementRate}%
+                                                                </span>
+                                                            </div>
+                                                            <div className="flex justify-between">
+                                                                <span className={isLightMode ? 'text-gray-600' : 'text-gray-400'}>Followers:</span>
+                                                                <span className={`font-medium ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                                    {formatEngagement(model.followersCount)}
+                                                                </span>
+                                                            </div>
+                                                            <div className="flex justify-between">
+                                                                <span className={isLightMode ? 'text-gray-600' : 'text-gray-400'}>Industry:</span>
+                                                                <span className={`font-medium ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                                    {model.industry}
+                                                                </span>
+                                                            </div>
+                                                            {model.mutualConnections > 0 && (
+                                                                <div className="flex justify-between">
+                                                                    <span className={isLightMode ? 'text-gray-600' : 'text-gray-400'}>Mutual:</span>
+                                                                    <span className={`font-medium ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                                        {model.mutualConnections}
+                                                                    </span>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                )}
+
                                 {/* Role Models List */}
                                 <div className="space-y-4">
                                     {getFilteredAndSortedRoleModels().length > 0 ? (
                                         getFilteredAndSortedRoleModels().map((model) => (
-                                        <div key={model.id} className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6 hover:border-indigo-500/50 transition-all duration-300`}>
+                                        <div key={model.id} className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6 hover:border-indigo-500/50 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1`}>
                                             <div className="flex items-start gap-4 mb-6">
                                                 {/* Enhanced Avatar */}
                                                 <div className={`w-20 h-20 bg-gradient-to-br ${getAvatarGradient(model.name)} rounded-full flex items-center justify-center flex-shrink-0 shadow-lg`}>
@@ -33308,26 +33620,66 @@ Generate the repurposed content:`;
                                                 </div>
                                                 <div className="flex-1">
                                                     <div className="flex items-start justify-between mb-3">
-                                                        <div>
-                                                            <h3 className={`text-xl font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>{model.name}</h3>
-                                                            <p className={isLightMode ? 'text-gray-600' : 'text-gray-400'}>{model.title} at {model.company}</p>
-                                                            <div className={`flex items-center gap-4 text-sm ${isLightMode ? 'text-gray-500' : 'text-gray-400'} mt-1`}>
-                                                                <span>{model.followersCount.toLocaleString()} followers</span>
-                                                                <span>{model.engagementRate}% engagement</span>
-                                                                <span className={`px-2 py-1 rounded-full text-xs font-medium ${getRelevanceColor(model.influenceScore)}`}>
-                                                                    {model.influenceScore} Influence
+                                                        <div className="flex-1">
+                                                            <div className="flex items-center gap-2 mb-1">
+                                                                <h3 className={`text-xl font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>{model.name}</h3>
+                                                                {/* Industry Badge */}
+                                                                <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${getIndustryBadgeColor(model.industry)} flex items-center gap-1`}>
+                                                                    <span>{getIndustryIcon(model.industry)}</span>
+                                                                    {model.industry}
                                                                 </span>
+                                                            </div>
+                                                            <p className={isLightMode ? 'text-gray-600' : 'text-gray-400'}>{model.title} at {model.company}</p>
+                                                            
+                                                            {/* Enhanced Stats with Visual Indicators */}
+                                                            <div className="flex items-center gap-4 text-sm mt-2 flex-wrap">
+                                                                <div className="flex items-center gap-1.5">
+                                                                    <span className={isLightMode ? 'text-gray-500' : 'text-gray-400'}>👥</span>
+                                                                    <span className={isLightMode ? 'text-gray-600' : 'text-gray-300'}>{model.followersCount.toLocaleString()}</span>
+                                                                </div>
+                                                                <div className="flex items-center gap-1.5">
+                                                                    <span className={isLightMode ? 'text-gray-500' : 'text-gray-400'}>💬</span>
+                                                                    <div className="flex items-center gap-1.5">
+                                                                        <span className={isLightMode ? 'text-gray-600' : 'text-gray-300'}>{model.engagementRate}%</span>
+                                                                        {/* Engagement Progress Bar */}
+                                                                        <div className={`w-12 h-1.5 rounded-full ${isLightMode ? 'bg-gray-200' : 'bg-gray-700'} overflow-hidden`}>
+                                                                            <div 
+                                                                                className={`h-full rounded-full transition-all duration-500 ${
+                                                                                    model.engagementRate >= 8 ? 'bg-green-500' :
+                                                                                    model.engagementRate >= 6 ? 'bg-blue-500' :
+                                                                                    model.engagementRate >= 4 ? 'bg-yellow-500' : 'bg-orange-500'
+                                                                                }`}
+                                                                                style={{ width: `${Math.min(model.engagementRate * 10, 100)}%` }}
+                                                                            ></div>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                                {/* Enhanced Influence Badge */}
+                                                                {(() => {
+                                                                    const influence = getInfluenceLevel(model.influenceScore);
+                                                                    const borderColor = influence.color === 'text-purple-400' ? 'border-purple-500/30' :
+                                                                                        influence.color === 'text-blue-400' ? 'border-blue-500/30' :
+                                                                                        influence.color === 'text-green-400' ? 'border-green-500/30' :
+                                                                                        'border-yellow-500/30';
+                                                                    return (
+                                                                        <div className={`px-2 py-1 rounded-full text-xs font-medium ${influence.bg} ${influence.color} border ${borderColor} flex items-center gap-1`}>
+                                                                            <span>⭐</span>
+                                                                            <span>{model.influenceScore}</span>
+                                                                            <span className="text-[10px] opacity-75">({influence.level})</span>
+                                                                        </div>
+                                                                    );
+                                                                })()}
                                                             </div>
                                                         </div>
                                                         <button
                                                             onClick={() => handleFollowToggle(model.id)}
-                                                            className={`px-4 py-2 rounded-lg font-medium transition-colors duration-200 ${
+                                                            className={`px-4 py-2 rounded-lg font-medium transition-all duration-200 shadow-md hover:shadow-lg ${
                                                                 model.isFollowing 
-                                                                    ? 'bg-gray-600 text-white' 
-                                                                    : 'bg-indigo-600 text-white hover:bg-indigo-700'
+                                                                    ? 'bg-gray-600 text-white hover:bg-gray-700' 
+                                                                    : 'bg-indigo-600 text-white hover:bg-indigo-700 hover:scale-105'
                                                             }`}
                                                         >
-                                                            {model.isFollowing ? 'Following' : 'Follow'}
+                                                            {model.isFollowing ? '✓ Following' : '+ Follow'}
                                                         </button>
                                                     </div>
                                                     
@@ -33373,8 +33725,93 @@ Generate the repurposed content:`;
                                                             </div>
                                                         </div>
                                                     )}
+
+                                                    {/* Interactive Actions */}
+                                                    <div className="flex items-center gap-2 mb-4">
+                                                        <button
+                                                            onClick={() => handleToggleComparison(model.id)}
+                                                            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors duration-200 ${
+                                                                selectedForComparison.includes(model.id)
+                                                                    ? 'bg-indigo-600 text-white'
+                                                                    : isLightMode
+                                                                        ? 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                                                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                                                            }`}
+                                                            title={selectedForComparison.includes(model.id) ? 'Remove from comparison' : 'Add to comparison (max 3)'}
+                                                        >
+                                                            {selectedForComparison.includes(model.id) ? '✓ Compare' : '⚖️ Compare'}
+                                                        </button>
+                                                        <button
+                                                            onClick={() => setExpandedNotes(prev => ({ ...prev, [model.id]: !prev[model.id] }))}
+                                                            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors duration-200 ${
+                                                                isLightMode
+                                                                    ? 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                                                    : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                                                            }`}
+                                                        >
+                                                            📝 {expandedNotes[model.id] ? 'Hide Notes' : 'Add Notes'}
+                                                        </button>
+                                                    </div>
                                                 </div>
                                             </div>
+
+                                            {/* Custom Tags */}
+                                            {(tags[model.id] && tags[model.id].length > 0) && (
+                                                <div className="mb-4">
+                                                    <h4 className={`font-medium ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-2 text-sm`}>Your Tags</h4>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {tags[model.id].map((tag, idx) => (
+                                                            <span key={idx} className="px-2 py-1 bg-teal-500/20 text-teal-400 text-xs rounded-full flex items-center gap-1">
+                                                                {tag}
+                                                                <button
+                                                                    onClick={() => handleRemoveTag(model.id, tag)}
+                                                                    className="hover:text-teal-300"
+                                                                >
+                                                                    ×
+                                                                </button>
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Notes Section */}
+                                            {expandedNotes[model.id] && (
+                                                <div className="mb-4">
+                                                    <div className={`${isLightMode ? 'bg-yellow-50 border-yellow-200' : 'bg-yellow-500/10 border-yellow-500/30'} border rounded-lg p-4`}>
+                                                        <h4 className={`font-medium ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-2 text-sm flex items-center gap-2`}>
+                                                            <span>📝</span>
+                                                            Your Notes
+                                                        </h4>
+                                                        <textarea
+                                                            value={notes[model.id] || ''}
+                                                            onChange={(e) => handleNoteChange(model.id, e.target.value)}
+                                                            onBlur={() => handleNoteSave(model.id)}
+                                                            placeholder="Add your personal notes about this role model..."
+                                                            className={`w-full p-2 rounded-lg text-sm resize-none ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-800 border-gray-700 text-gray-50'} border focus:outline-none focus:ring-2 focus:ring-yellow-500`}
+                                                            rows="3"
+                                                        />
+                                                        <div className="mt-2 flex items-center justify-between">
+                                                            <span className={`text-xs ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                                Notes are saved automatically
+                                                            </span>
+                                                            <div className="flex gap-2">
+                                                                <input
+                                                                    type="text"
+                                                                    placeholder="Add tag..."
+                                                                    onKeyPress={(e) => {
+                                                                        if (e.key === 'Enter') {
+                                                                            handleAddTag(model.id, e.target.value);
+                                                                            e.target.value = '';
+                                                                        }
+                                                                    }}
+                                                                    className={`px-2 py-1 rounded text-xs ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-800 border-gray-700 text-gray-50'} border focus:outline-none focus:ring-1 focus:ring-yellow-500`}
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
 
                                             {/* Top Skills */}
                                             {model.topSkills && model.topSkills.length > 0 && (
@@ -33719,35 +34156,54 @@ Generate the repurposed content:`;
                                                 Your Stats
                                             </h3>
                                             <div className="grid grid-cols-2 gap-4">
-                                                <div className={`${isLightMode ? 'bg-white/60' : 'bg-gray-800/40'} rounded-lg p-3`}>
-                                                    <div className={`text-2xl font-bold ${isLightMode ? 'text-indigo-600' : 'text-indigo-400'}`}>
-                                                        {stats.totalFollowing}
+                                                <div className={`${isLightMode ? 'bg-white/60' : 'bg-gray-800/40'} rounded-lg p-3 hover:shadow-md transition-shadow duration-200 border ${isLightMode ? 'border-indigo-200' : 'border-indigo-500/20'}`}>
+                                                    <div className="flex items-center justify-between mb-1">
+                                                        <span className="text-lg">👥</span>
+                                                        <div className={`text-2xl font-bold ${isLightMode ? 'text-indigo-600' : 'text-indigo-400'}`}>
+                                                            {stats.totalFollowing}
+                                                        </div>
                                                     </div>
-                                                    <div className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'} mt-1`}>
+                                                    <div className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>
                                                         Following
                                                     </div>
                                                 </div>
-                                                <div className={`${isLightMode ? 'bg-white/60' : 'bg-gray-800/40'} rounded-lg p-3`}>
-                                                    <div className={`text-2xl font-bold ${isLightMode ? 'text-purple-600' : 'text-purple-400'}`}>
-                                                        {stats.avgEngagement}%
+                                                <div className={`${isLightMode ? 'bg-white/60' : 'bg-gray-800/40'} rounded-lg p-3 hover:shadow-md transition-shadow duration-200 border ${isLightMode ? 'border-purple-200' : 'border-purple-500/20'}`}>
+                                                    <div className="flex items-center justify-between mb-1">
+                                                        <span className="text-lg">💬</span>
+                                                        <div className={`text-2xl font-bold ${isLightMode ? 'text-purple-600' : 'text-purple-400'}`}>
+                                                            {stats.avgEngagement}%
+                                                        </div>
                                                     </div>
-                                                    <div className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'} mt-1`}>
+                                                    <div className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>
                                                         Avg Engagement
                                                     </div>
-                                                </div>
-                                                <div className={`${isLightMode ? 'bg-white/60' : 'bg-gray-800/40'} rounded-lg p-3`}>
-                                                    <div className={`text-2xl font-bold ${isLightMode ? 'text-green-600' : 'text-green-400'}`}>
-                                                        {stats.totalMutualConnections}
+                                                    {/* Mini progress bar */}
+                                                    <div className={`w-full h-1 rounded-full ${isLightMode ? 'bg-purple-100' : 'bg-purple-900/30'} mt-2 overflow-hidden`}>
+                                                        <div 
+                                                            className="h-full bg-purple-500 rounded-full transition-all duration-500"
+                                                            style={{ width: `${Math.min(parseFloat(stats.avgEngagement) * 10, 100)}%` }}
+                                                        ></div>
                                                     </div>
-                                                    <div className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'} mt-1`}>
+                                                </div>
+                                                <div className={`${isLightMode ? 'bg-white/60' : 'bg-gray-800/40'} rounded-lg p-3 hover:shadow-md transition-shadow duration-200 border ${isLightMode ? 'border-green-200' : 'border-green-500/20'}`}>
+                                                    <div className="flex items-center justify-between mb-1">
+                                                        <span className="text-lg">🤝</span>
+                                                        <div className={`text-2xl font-bold ${isLightMode ? 'text-green-600' : 'text-green-400'}`}>
+                                                            {stats.totalMutualConnections}
+                                                        </div>
+                                                    </div>
+                                                    <div className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>
                                                         Mutual Connections
                                                     </div>
                                                 </div>
-                                                <div className={`${isLightMode ? 'bg-white/60' : 'bg-gray-800/40'} rounded-lg p-3`}>
-                                                    <div className={`text-2xl font-bold ${isLightMode ? 'text-orange-600' : 'text-orange-400'}`}>
-                                                        {stats.trendingPosts}
+                                                <div className={`${isLightMode ? 'bg-white/60' : 'bg-gray-800/40'} rounded-lg p-3 hover:shadow-md transition-shadow duration-200 border ${isLightMode ? 'border-orange-200' : 'border-orange-500/20'}`}>
+                                                    <div className="flex items-center justify-between mb-1">
+                                                        <span className="text-lg">🔥</span>
+                                                        <div className={`text-2xl font-bold ${isLightMode ? 'text-orange-600' : 'text-orange-400'}`}>
+                                                            {stats.trendingPosts}
+                                                        </div>
                                                     </div>
-                                                    <div className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'} mt-1`}>
+                                                    <div className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>
                                                         Trending Posts
                                                     </div>
                                                 </div>
@@ -33895,8 +34351,85 @@ Generate the repurposed content:`;
                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                             {/* Main Content */}
                             <div className="lg:col-span-2 space-y-6">
+                                {/* Search and Filters */}
+                                <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
+                                    <div className="flex flex-col gap-4">
+                                        {/* Search Bar */}
+                                        <div className="relative">
+                                            <div className={`absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none`}>
+                                                <div className={`w-4 h-4 ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>🔍</div>
+                                            </div>
+                                            <input
+                                                type="text"
+                                                value={networkingSearchQuery}
+                                                onChange={(e) => setNetworkingSearchQuery(e.target.value)}
+                                                placeholder="Search by name, company, title, or event..."
+                                                className={`w-full pl-10 pr-4 py-3 ${isLightMode ? 'bg-white border-gray-300 text-gray-900 placeholder-gray-500' : 'bg-gray-800 border-gray-700 text-gray-50 placeholder-gray-400'} border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                                            />
+                                        </div>
+                                        
+                                        {/* Filters Row */}
+                                        <div className="flex flex-col sm:flex-row gap-3">
+                                            {/* Type Filter */}
+                                            <select
+                                                value={networkingFilterType}
+                                                onChange={(e) => setNetworkingFilterType(e.target.value)}
+                                                className={`flex-1 px-4 py-3 ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-800 border-gray-700 text-gray-50'} border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                                            >
+                                                <option value="all">All Types</option>
+                                                <option value="Event Attendee">Event Attendee</option>
+                                                <option value="Speaker">Speaker</option>
+                                                <option value="Organizer">Organizer</option>
+                                                <option value="Sponsor">Sponsor</option>
+                                            </select>
+                                            
+                                            {/* Relevance Filter */}
+                                            <select
+                                                value={networkingFilterRelevance}
+                                                onChange={(e) => setNetworkingFilterRelevance(e.target.value)}
+                                                className={`flex-1 px-4 py-3 ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-800 border-gray-700 text-gray-50'} border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                                            >
+                                                <option value="all">All Relevance</option>
+                                                <option value="90+">90%+ Match</option>
+                                                <option value="80+">80%+ Match</option>
+                                                <option value="70+">70%+ Match</option>
+                                            </select>
+                                            
+                                            {/* Mutual Connections Filter */}
+                                            <select
+                                                value={networkingFilterConnections}
+                                                onChange={(e) => setNetworkingFilterConnections(e.target.value)}
+                                                className={`flex-1 px-4 py-3 ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-800 border-gray-700 text-gray-50'} border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                                            >
+                                                <option value="all">All Connections</option>
+                                                <option value="5+">5+ Mutual</option>
+                                                <option value="3+">3+ Mutual</option>
+                                                <option value="1+">1+ Mutual</option>
+                                            </select>
+                                            
+                                            {/* Sort By */}
+                                            <select
+                                                value={networkingSortBy}
+                                                onChange={(e) => setNetworkingSortBy(e.target.value)}
+                                                className={`flex-1 px-4 py-3 ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-800 border-gray-700 text-gray-50'} border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                                            >
+                                                <option value="relevance">Sort by Relevance</option>
+                                                <option value="connections">Sort by Connections</option>
+                                                <option value="name">Sort by Name</option>
+                                            </select>
+                                        </div>
+                                        
+                                        {/* Results Count */}
+                                        <div className={`text-sm ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>
+                                            Showing {getFilteredNetworkingOpportunities().length} of {networkingOpportunities.length} opportunities
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                {/* Networking Opportunities List */}
                                 <div className="space-y-4">
-                                    {networkingOpportunities.map((opportunity) => (
+                                    {getFilteredNetworkingOpportunities().length > 0 ? (
+                                        getFilteredNetworkingOpportunities().map((opportunity) => (
                                         <div key={opportunity.id} className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
                                             <div className="flex items-start justify-between mb-4">
                                                 <div className="flex items-start gap-4">
@@ -33941,7 +34474,18 @@ Generate the repurposed content:`;
                                                 </div>
                                             </div>
                                         </div>
-                                    ))}
+                                        ))
+                                    ) : (
+                                        <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-12 text-center`}>
+                                            <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-4">
+                                                <div className="w-8 h-8 text-gray-400 text-2xl">🔍</div>
+                                            </div>
+                                            <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-2`}>No networking opportunities found</h3>
+                                            <p className={`text-sm ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>
+                                                Try adjusting your search or filters to find more opportunities.
+                                            </p>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 
