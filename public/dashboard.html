@@ -32501,6 +32501,18 @@ Generate the repurposed content:`;
             const [showFollowUpModal, setShowFollowUpModal] = useState({}); // { opportunityId: bool }
             const [followUpForm, setFollowUpForm] = useState({}); // { opportunityId: {date, message, template} }
             
+            // Conversation starters state
+            const [conversationStarterCategory, setConversationStarterCategory] = useState({}); // { opportunityId: 'icebreakers' | 'eventSpecific' | etc }
+            const [selectedStarter, setSelectedStarter] = useState({}); // { opportunityId: starterText }
+            
+            // Networking goals and tracking state
+            const [networkingGoals, setNetworkingGoals] = useState({
+                monthly: { connections: 10, events: 2, followUps: 15 },
+                quarterly: { connections: 30, events: 6, followUps: 45 }
+            });
+            const [showGoalsModal, setShowGoalsModal] = useState(false);
+            const [networkingActivity, setNetworkingActivity] = useState({}); // Track daily activity for streaks
+            
             // Check for light mode
             const isLightMode = !document.documentElement.classList.contains('dark');
 
@@ -33199,6 +33211,264 @@ Generate the repurposed content:`;
                 return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${startDate}/${endDate}&details=${details}`;
             };
 
+            // Conversation Starters
+            const getConversationStarters = (opportunity) => {
+                const starters = {
+                    icebreakers: [],
+                    eventSpecific: [],
+                    industrySpecific: [],
+                    roleSpecific: [],
+                    questions: []
+                };
+
+                const firstName = opportunity.name.split(' ')[0];
+                const company = opportunity.company;
+                const title = opportunity.title;
+                const event = opportunity.eventContext;
+                const type = opportunity.type;
+
+                // Personalized Icebreakers
+                starters.icebreakers = [
+                    `Hi ${firstName}! I noticed you're a ${title} at ${company}. I'd love to learn more about your journey there.`,
+                    `Hey ${firstName}, I saw we both attended ${event}. What was your biggest takeaway from the event?`,
+                    `Hi ${firstName}! I'm really interested in ${company}'s work in the industry. What's the most exciting project you're working on right now?`,
+                    `Hello ${firstName}, I noticed we have ${opportunity.mutualConnections} mutual connections. Small world! How did you get into ${title}?`,
+                    `Hi ${firstName}! I'm curious about your experience at ${company}. What do you enjoy most about working there?`
+                ];
+
+                // Event-Specific Starters
+                if (event) {
+                    starters.eventSpecific = [
+                        `I really enjoyed ${event}! What session or talk did you find most valuable?`,
+                        `Great to see you at ${event}! Are you planning to attend any follow-up events?`,
+                        `Hi! I saw you at ${event}. I found the discussion on [topic] really interesting. What were your thoughts?`,
+                        `It was great connecting at ${event}! I'd love to continue our conversation about [topic we discussed].`,
+                        `Hey! ${event} was fantastic. Did you get a chance to attend the [specific session]? I'd love to hear your perspective.`
+                    ];
+                }
+
+                // Industry-Specific Talking Points
+                const industryTopics = {
+                    'Microsoft': ['cloud computing', 'enterprise software', 'AI and machine learning'],
+                    'OpenAI': ['artificial intelligence', 'machine learning research', 'AI ethics'],
+                    'Google': ['search technology', 'cloud infrastructure', 'AI innovation'],
+                    'Amazon': ['cloud services', 'e-commerce', 'logistics'],
+                    'Netflix': ['streaming technology', 'content recommendation', 'scalable systems'],
+                    'Stripe': ['payment processing', 'fintech', 'developer tools']
+                };
+
+                const topics = industryTopics[company] || ['technology', 'innovation', 'industry trends'];
+                starters.industrySpecific = [
+                    `I'm really interested in ${company}'s approach to ${topics[0]}. How do you see that evolving?`,
+                    `What trends in ${topics[0]} are you most excited about right now?`,
+                    `I've been following ${company}'s work in ${topics[0]}. What's the biggest challenge you're facing?`,
+                    `How is ${company} staying ahead in the ${topics[0]} space?`,
+                    `What's your perspective on the future of ${topics[0]}?`
+                ];
+
+                // Role-Specific Questions
+                const roleQuestions = {
+                    'Product Manager': [
+                        'How do you prioritize features in your product roadmap?',
+                        'What\'s your approach to gathering user feedback?',
+                        'How do you balance technical constraints with user needs?',
+                        'What metrics do you use to measure product success?'
+                    ],
+                    'AI Research Director': [
+                        'What research areas are you most excited about?',
+                        'How do you see AI evolving in the next 5 years?',
+                        'What are the biggest challenges in AI research today?',
+                        'How do you balance innovation with ethical considerations?'
+                    ],
+                    'Engineering Manager': [
+                        'How do you build and maintain high-performing engineering teams?',
+                        'What\'s your approach to technical debt?',
+                        'How do you balance speed and quality in development?',
+                        'What leadership principles guide your management style?'
+                    ],
+                    'Senior Software Engineer': [
+                        'What technologies are you most excited about?',
+                        'How do you stay current with new developments?',
+                        'What\'s been your most challenging technical problem?',
+                        'How do you approach system design?'
+                    ],
+                    'VP of Engineering': [
+                        'How do you scale engineering organizations?',
+                        'What\'s your strategy for technical leadership?',
+                        'How do you balance innovation with stability?',
+                        'What trends are shaping engineering leadership?'
+                    ],
+                    'CTO': [
+                        'How do you align technology strategy with business goals?',
+                        'What\'s your approach to technical innovation?',
+                        'How do you build a strong engineering culture?',
+                        'What are the biggest challenges in tech leadership today?'
+                    ]
+                };
+
+                const questions = roleQuestions[title] || [
+                    'What do you enjoy most about your role?',
+                    'What challenges are you currently facing?',
+                    'How did you get into this field?',
+                    'What advice would you give to someone starting in this role?'
+                ];
+                starters.roleSpecific = questions;
+
+                // General Questions to Ask
+                starters.questions = [
+                    `What's the most interesting project you've worked on at ${company}?`,
+                    `How has your role evolved since you joined ${company}?`,
+                    `What skills do you think are most important for success in ${title}?`,
+                    `What's the company culture like at ${company}?`,
+                    `What trends in your industry are you watching closely?`,
+                    `How do you stay connected with the broader ${title} community?`,
+                    `What's been your biggest learning experience at ${company}?`,
+                    `What advice would you give to someone interested in ${title}?`
+                ];
+
+                return starters;
+            };
+
+            // Networking Goals and Tracking Functions
+            const getGoalProgress = () => {
+                const stats = getNetworkingStats();
+                const now = new Date();
+                const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+                const quarterStart = new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1);
+                
+                return {
+                    monthly: {
+                        connections: {
+                            current: stats.connectionsMade,
+                            goal: networkingGoals.monthly.connections,
+                            percentage: Math.min(Math.round((stats.connectionsMade / networkingGoals.monthly.connections) * 100), 100)
+                        },
+                        events: {
+                            current: stats.eventsAttended,
+                            goal: networkingGoals.monthly.events,
+                            percentage: Math.min(Math.round((stats.eventsAttended / networkingGoals.monthly.events) * 100), 100)
+                        },
+                        followUps: {
+                            current: stats.followUpsSent + stats.followUpsReplied,
+                            goal: networkingGoals.monthly.followUps,
+                            percentage: Math.min(Math.round(((stats.followUpsSent + stats.followUpsReplied) / networkingGoals.monthly.followUps) * 100), 100)
+                        }
+                    },
+                    quarterly: {
+                        connections: {
+                            current: stats.connectionsMade, // Would be calculated from quarter start in real app
+                            goal: networkingGoals.quarterly.connections,
+                            percentage: Math.min(Math.round((stats.connectionsMade / networkingGoals.quarterly.connections) * 100), 100)
+                        },
+                        events: {
+                            current: stats.eventsAttended,
+                            goal: networkingGoals.quarterly.events,
+                            percentage: Math.min(Math.round((stats.eventsAttended / networkingGoals.quarterly.events) * 100), 100)
+                        },
+                        followUps: {
+                            current: stats.followUpsSent + stats.followUpsReplied,
+                            goal: networkingGoals.quarterly.followUps,
+                            percentage: Math.min(Math.round(((stats.followUpsSent + stats.followUpsReplied) / networkingGoals.quarterly.followUps) * 100), 100)
+                        }
+                    }
+                };
+            };
+
+            // Calculate networking streak
+            const getNetworkingStreak = () => {
+                const today = new Date().toISOString().split('T')[0];
+                let streak = 0;
+                let currentDate = new Date();
+                
+                // Check if there was activity today
+                const hasActivityToday = Object.keys(followUps).length > 0 || 
+                                        Object.keys(conversationHistory).length > 0 ||
+                                        Object.keys(networkingNotes).length > 0;
+                
+                if (!hasActivityToday) {
+                    currentDate.setDate(currentDate.getDate() - 1);
+                }
+                
+                // Count consecutive days with activity
+                while (true) {
+                    const dateStr = currentDate.toISOString().split('T')[0];
+                    // In a real app, check actual activity dates
+                    // For demo, simulate based on existing data
+                    if (streak === 0 && hasActivityToday) {
+                        streak = 1;
+                    } else {
+                        // Simulate some past activity
+                        streak += Math.floor(Math.random() * 3);
+                        break;
+                    }
+                    currentDate.setDate(currentDate.getDate() - 1);
+                    if (streak > 30) break; // Limit check
+                }
+                
+                return Math.min(streak, 7); // Cap at 7 for demo
+            };
+
+            // Check for achievements
+            const getAchievements = () => {
+                const stats = getNetworkingStats();
+                const progress = getGoalProgress();
+                const streak = getNetworkingStreak();
+                const achievements = [];
+                
+                // Connection achievements
+                if (stats.connectionsMade >= 10) {
+                    achievements.push({ id: 'conn_10', name: 'Network Builder', description: 'Made 10 connections', icon: '🤝', earned: true });
+                }
+                if (stats.connectionsMade >= 25) {
+                    achievements.push({ id: 'conn_25', name: 'Social Butterfly', description: 'Made 25 connections', icon: '🦋', earned: true });
+                }
+                if (stats.connectionsMade >= 50) {
+                    achievements.push({ id: 'conn_50', name: 'Network Master', description: 'Made 50 connections', icon: '👑', earned: true });
+                }
+                
+                // Follow-up achievements
+                if (stats.followUpsReplied >= 5) {
+                    achievements.push({ id: 'followup_5', name: 'Follow-Up Pro', description: 'Got 5 replies to follow-ups', icon: '📧', earned: true });
+                }
+                if (stats.followUpsReplied >= 10) {
+                    achievements.push({ id: 'followup_10', name: 'Engagement Expert', description: 'Got 10 replies to follow-ups', icon: '💬', earned: true });
+                }
+                
+                // Goal achievements
+                if (progress.monthly.connections.percentage >= 100) {
+                    achievements.push({ id: 'goal_monthly_conn', name: 'Goal Crusher', description: 'Reached monthly connection goal', icon: '🎯', earned: true });
+                }
+                if (progress.monthly.followUps.percentage >= 100) {
+                    achievements.push({ id: 'goal_monthly_followup', name: 'Follow-Through Champion', description: 'Reached monthly follow-up goal', icon: '✅', earned: true });
+                }
+                
+                // Streak achievements
+                if (streak >= 3) {
+                    achievements.push({ id: 'streak_3', name: 'Consistent Connector', description: '3-day networking streak', icon: '🔥', earned: true });
+                }
+                if (streak >= 7) {
+                    achievements.push({ id: 'streak_7', name: 'Week Warrior', description: '7-day networking streak', icon: '⚡', earned: true });
+                }
+                if (streak >= 30) {
+                    achievements.push({ id: 'streak_30', name: 'Networking Legend', description: '30-day networking streak', icon: '🌟', earned: true });
+                }
+                
+                // Event achievements
+                if (stats.eventsAttended >= 5) {
+                    achievements.push({ id: 'events_5', name: 'Event Enthusiast', description: 'Attended 5 events', icon: '📅', earned: true });
+                }
+                
+                return achievements;
+            };
+
+            const handleSaveGoals = () => {
+                const savedGoals = JSON.parse(localStorage.getItem('networkingGoals') || '{}');
+                savedGoals.monthly = networkingGoals.monthly;
+                savedGoals.quarterly = networkingGoals.quarterly;
+                localStorage.setItem('networkingGoals', JSON.stringify(savedGoals));
+                setShowGoalsModal(false);
+            };
+
             // Load saved notes and tags from localStorage on mount
             React.useEffect(() => {
                 const savedNotes = JSON.parse(localStorage.getItem('roleModelNotes') || '{}');
@@ -33213,10 +33483,17 @@ Generate the repurposed content:`;
                 const savedNetworkingTags = JSON.parse(localStorage.getItem('networkingTags') || '{}');
                 const savedConversationHistory = JSON.parse(localStorage.getItem('conversationHistory') || '{}');
                 const savedFollowUps = JSON.parse(localStorage.getItem('followUps') || '{}');
+                const savedGoals = JSON.parse(localStorage.getItem('networkingGoals') || '{}');
                 setNetworkingNotes(savedNetworkingNotes);
                 setNetworkingTags(savedNetworkingTags);
                 setConversationHistory(savedConversationHistory);
                 setFollowUps(savedFollowUps);
+                if (savedGoals.monthly || savedGoals.quarterly) {
+                    setNetworkingGoals(prev => ({
+                        monthly: savedGoals.monthly || prev.monthly,
+                        quarterly: savedGoals.quarterly || prev.quarterly
+                    }));
+                }
             }, []);
 
             // Filter and sort role models
@@ -33477,12 +33754,126 @@ Generate the repurposed content:`;
                 return { level: 'Rising', color: 'text-yellow-400', bg: 'bg-yellow-500/20' };
             };
 
+            // Calculate networking statistics
+            const getNetworkingStats = () => {
+                const now = new Date();
+                const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+                const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+                const thisQuarter = new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1);
+                
+                const opportunitiesThisMonth = networkingOpportunities.filter(opp => {
+                    // Simulate dates - in real app, these would come from actual data
+                    return true; // For demo, count all
+                }).length;
+                
+                const connectionsMade = Object.values(followUps).filter(fu => 
+                    fu.status === 'sent' || fu.status === 'replied'
+                ).length;
+                
+                const eventsAttended = new Set(networkingOpportunities.map(opp => opp.eventContext)).size;
+                
+                return {
+                    opportunitiesFound: opportunitiesThisMonth,
+                    connectionsMade: connectionsMade,
+                    eventsAttended: eventsAttended,
+                    totalOpportunities: networkingOpportunities.length,
+                    followUpsPending: Object.values(followUps).filter(fu => fu.status === 'pending').length,
+                    followUpsSent: Object.values(followUps).filter(fu => fu.status === 'sent').length,
+                    followUpsReplied: Object.values(followUps).filter(fu => fu.status === 'replied').length
+                };
+            };
+
+            // Generate connections over time data (last 6 months)
+            const getConnectionsOverTime = () => {
+                const months = [];
+                const now = new Date();
+                for (let i = 5; i >= 0; i--) {
+                    const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                    months.push({
+                        month: date.toLocaleDateString('en-US', { month: 'short' }),
+                        connections: Math.floor(Math.random() * 5) + 1 // Simulated data
+                    });
+                }
+                // Add current month with actual data
+                months[months.length - 1].connections = getNetworkingStats().connectionsMade;
+                return months;
+            };
+
+            // Get connections by type
+            const getConnectionsByType = () => {
+                const typeCounts = {};
+                networkingOpportunities.forEach(opp => {
+                    typeCounts[opp.type] = (typeCounts[opp.type] || 0) + 1;
+                });
+                return Object.entries(typeCounts).map(([type, count]) => ({ type, count }));
+            };
+
+            // Get connections by relevance score
+            const getConnectionsByRelevance = () => {
+                const ranges = {
+                    '90-100%': 0,
+                    '80-89%': 0,
+                    '70-79%': 0,
+                    'Below 70%': 0
+                };
+                networkingOpportunities.forEach(opp => {
+                    if (opp.relevanceScore >= 90) ranges['90-100%']++;
+                    else if (opp.relevanceScore >= 80) ranges['80-89%']++;
+                    else if (opp.relevanceScore >= 70) ranges['70-79%']++;
+                    else ranges['Below 70%']++;
+                });
+                return Object.entries(ranges).map(([range, count]) => ({ range, count }));
+            };
+
+            // Get top companies by connections
+            const getTopCompanies = () => {
+                const companyCounts = {};
+                networkingOpportunities.forEach(opp => {
+                    companyCounts[opp.company] = (companyCounts[opp.company] || 0) + 1;
+                });
+                return Object.entries(companyCounts)
+                    .map(([company, count]) => ({ company, count }))
+                    .sort((a, b) => b.count - a.count)
+                    .slice(0, 5);
+            };
+
+            // Generate activity heatmap data (last 30 days)
+            const getActivityHeatmap = () => {
+                const days = [];
+                const now = new Date();
+                for (let i = 29; i >= 0; i--) {
+                    const date = new Date(now);
+                    date.setDate(date.getDate() - i);
+                    days.push({
+                        date: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+                        activity: Math.floor(Math.random() * 5) // Simulated activity level
+                    });
+                }
+                return days;
+            };
+
+            // Calculate connection success rate
+            const getConnectionSuccessRate = () => {
+                const stats = getNetworkingStats();
+                const totalFollowUps = stats.followUpsPending + stats.followUpsSent + stats.followUpsReplied;
+                if (totalFollowUps === 0) return 0;
+                return Math.round((stats.followUpsReplied / totalFollowUps) * 100);
+            };
+
             const tabs = [
                 { id: 'events', label: 'Career Events', icon: '📅' },
                 { id: 'role-models', label: 'Role Models', icon: '👥' },
                 { id: 'networking', label: 'Networking', icon: '🤝' },
                 { id: 'insights', label: 'AI Insights', icon: '💡' }
             ];
+
+            const networkingStats = getNetworkingStats();
+            const connectionsOverTime = getConnectionsOverTime();
+            const connectionsByType = getConnectionsByType();
+            const connectionsByRelevance = getConnectionsByRelevance();
+            const topCompanies = getTopCompanies();
+            const activityHeatmap = getActivityHeatmap();
+            const successRate = getConnectionSuccessRate();
 
             return (
                 <div className="space-y-8">
@@ -34796,6 +35187,116 @@ Generate the repurposed content:`;
                                                             <p className={`text-sm ${isLightMode ? 'text-gray-600' : 'text-gray-300'}`}>{opportunity.suggestedApproach}</p>
                                                         </div>
 
+                                                        {/* Conversation Starters */}
+                                                        <div className="mb-4">
+                                                            <button
+                                                                onClick={() => toggleNetworkingDetails(opportunity.id, 'starters')}
+                                                                className={`flex items-center gap-2 text-sm font-medium ${isLightMode ? 'text-gray-700 hover:text-gray-900' : 'text-gray-300 hover:text-white'} mb-2`}
+                                                            >
+                                                                <span>💬</span>
+                                                                Conversation Starters {expandedNetworkingDetails[opportunity.id]?.starters ? '▼' : '▶'}
+                                                            </button>
+                                                            {expandedNetworkingDetails[opportunity.id]?.starters && (() => {
+                                                                const starters = getConversationStarters(opportunity);
+                                                                const currentCategory = conversationStarterCategory[opportunity.id] || 'icebreakers';
+                                                                const categoryData = starters[currentCategory] || [];
+                                                                
+                                                                return (
+                                                                    <div className={`${isLightMode ? 'bg-white/30 backdrop-blur-xl border-white/20' : 'bg-gray-800 border-gray-700'} border rounded-lg p-4 space-y-4`}>
+                                                                        {/* Category Tabs */}
+                                                                        <div className="flex flex-wrap gap-2">
+                                                                            <button
+                                                                                onClick={() => setConversationStarterCategory(prev => ({ ...prev, [opportunity.id]: 'icebreakers' }))}
+                                                                                className={`px-3 py-1.5 text-xs rounded transition-colors ${
+                                                                                    currentCategory === 'icebreakers'
+                                                                                        ? (isLightMode ? 'bg-indigo-600 text-white' : 'bg-indigo-500 text-white')
+                                                                                        : (isLightMode ? 'bg-gray-200 text-gray-700 hover:bg-gray-300' : 'bg-gray-700 text-gray-300 hover:bg-gray-600')
+                                                                                }`}
+                                                                            >
+                                                                                🎯 Icebreakers
+                                                                            </button>
+                                                                            {starters.eventSpecific.length > 0 && (
+                                                                                <button
+                                                                                    onClick={() => setConversationStarterCategory(prev => ({ ...prev, [opportunity.id]: 'eventSpecific' }))}
+                                                                                    className={`px-3 py-1.5 text-xs rounded transition-colors ${
+                                                                                        currentCategory === 'eventSpecific'
+                                                                                            ? (isLightMode ? 'bg-indigo-600 text-white' : 'bg-indigo-500 text-white')
+                                                                                            : (isLightMode ? 'bg-gray-200 text-gray-700 hover:bg-gray-300' : 'bg-gray-700 text-gray-300 hover:bg-gray-600')
+                                                                                    }`}
+                                                                                >
+                                                                                    📅 Event-Specific
+                                                                                </button>
+                                                                            )}
+                                                                            <button
+                                                                                onClick={() => setConversationStarterCategory(prev => ({ ...prev, [opportunity.id]: 'industrySpecific' }))}
+                                                                                className={`px-3 py-1.5 text-xs rounded transition-colors ${
+                                                                                    currentCategory === 'industrySpecific'
+                                                                                        ? (isLightMode ? 'bg-indigo-600 text-white' : 'bg-indigo-500 text-white')
+                                                                                        : (isLightMode ? 'bg-gray-200 text-gray-700 hover:bg-gray-300' : 'bg-gray-700 text-gray-300 hover:bg-gray-600')
+                                                                                }`}
+                                                                            >
+                                                                                🏢 Industry Topics
+                                                                            </button>
+                                                                            <button
+                                                                                onClick={() => setConversationStarterCategory(prev => ({ ...prev, [opportunity.id]: 'roleSpecific' }))}
+                                                                                className={`px-3 py-1.5 text-xs rounded transition-colors ${
+                                                                                    currentCategory === 'roleSpecific'
+                                                                                        ? (isLightMode ? 'bg-indigo-600 text-white' : 'bg-indigo-500 text-white')
+                                                                                        : (isLightMode ? 'bg-gray-200 text-gray-700 hover:bg-gray-300' : 'bg-gray-700 text-gray-300 hover:bg-gray-600')
+                                                                                }`}
+                                                                            >
+                                                                                👔 Role-Specific
+                                                                            </button>
+                                                                            <button
+                                                                                onClick={() => setConversationStarterCategory(prev => ({ ...prev, [opportunity.id]: 'questions' }))}
+                                                                                className={`px-3 py-1.5 text-xs rounded transition-colors ${
+                                                                                    currentCategory === 'questions'
+                                                                                        ? (isLightMode ? 'bg-indigo-600 text-white' : 'bg-indigo-500 text-white')
+                                                                                        : (isLightMode ? 'bg-gray-200 text-gray-700 hover:bg-gray-300' : 'bg-gray-700 text-gray-300 hover:bg-gray-600')
+                                                                                }`}
+                                                                            >
+                                                                                ❓ Questions
+                                                                            </button>
+                                                                        </div>
+
+                                                                        {/* Starter List */}
+                                                                        <div className="space-y-2 max-h-64 overflow-y-auto">
+                                                                            {categoryData.length > 0 ? (
+                                                                                categoryData.map((starter, idx) => (
+                                                                                    <div
+                                                                                        key={idx}
+                                                                                        className={`p-3 rounded-lg border cursor-pointer transition-all ${
+                                                                                            selectedStarter[opportunity.id] === starter
+                                                                                                ? (isLightMode ? 'bg-indigo-50 border-indigo-300' : 'bg-indigo-500/20 border-indigo-500/50')
+                                                                                                : (isLightMode ? 'bg-white/50 border-gray-200 hover:border-indigo-300' : 'bg-gray-700/50 border-gray-600 hover:border-indigo-500/50')
+                                                                                        }`}
+                                                                                        onClick={() => {
+                                                                                            setSelectedStarter(prev => ({ ...prev, [opportunity.id]: starter }));
+                                                                                            // Copy to clipboard
+                                                                                            navigator.clipboard.writeText(starter).then(() => {
+                                                                                                // Optional: Show a toast notification
+                                                                                            });
+                                                                                        }}
+                                                                                    >
+                                                                                        <p className={`text-sm ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>{starter}</p>
+                                                                                        {selectedStarter[opportunity.id] === starter && (
+                                                                                            <div className={`text-xs mt-2 ${isLightMode ? 'text-indigo-600' : 'text-indigo-400'}`}>
+                                                                                                ✓ Copied to clipboard
+                                                                                            </div>
+                                                                                        )}
+                                                                                    </div>
+                                                                                ))
+                                                                            ) : (
+                                                                                <p className={`text-sm text-center py-4 ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                                                    No conversation starters available for this category.
+                                                                                </p>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })()}
+                                                        </div>
+
                                                         {/* Notes Section */}
                                                         <div className="mb-4">
                                                             <button
@@ -35074,24 +35575,288 @@ Generate the repurposed content:`;
 
                             {/* Sidebar */}
                             <div className="space-y-6">
-                                {/* Networking Stats */}
+                                {/* Networking Stats Overview */}
                                 <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
                                     <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-4`}>Networking Stats</h3>
-                                    <div className="space-y-3">
-                                        <div className="flex justify-between">
-                                            <span className={`text-sm ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>Opportunities Found</span>
-                                            <span className={`text-sm font-medium ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>12 this month</span>
+                                    <div className="space-y-4">
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div className={`${isLightMode ? 'bg-blue-50' : 'bg-blue-500/10'} rounded-lg p-3`}>
+                                                <div className={`text-2xl font-bold ${isLightMode ? 'text-blue-600' : 'text-blue-400'}`}>
+                                                    {networkingStats.opportunitiesFound}
+                                                </div>
+                                                <div className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'} mt-1`}>
+                                                    Opportunities
+                                                </div>
+                                            </div>
+                                            <div className={`${isLightMode ? 'bg-green-50' : 'bg-green-500/10'} rounded-lg p-3`}>
+                                                <div className={`text-2xl font-bold ${isLightMode ? 'text-green-600' : 'text-green-400'}`}>
+                                                    {networkingStats.connectionsMade}
+                                                </div>
+                                                <div className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'} mt-1`}>
+                                                    Connections
+                                                </div>
+                                            </div>
                                         </div>
-                                        <div className="flex justify-between">
-                                            <span className={`text-sm ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>Connections Made</span>
-                                            <span className={`text-sm font-medium ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>8 this month</span>
-                                        </div>
-                                        <div className="flex justify-between">
-                                            <span className={`text-sm ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>Events Attended</span>
-                                            <span className={`text-sm font-medium ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>3 this quarter</span>
+                                        <div className={`${isLightMode ? 'bg-purple-50' : 'bg-purple-500/10'} rounded-lg p-3`}>
+                                            <div className="flex items-center justify-between">
+                                                <div>
+                                                    <div className={`text-lg font-bold ${isLightMode ? 'text-purple-600' : 'text-purple-400'}`}>
+                                                        {successRate}%
+                                                    </div>
+                                                    <div className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'} mt-1`}>
+                                                        Success Rate
+                                                    </div>
+                                                </div>
+                                                <div className={`text-3xl ${isLightMode ? 'text-purple-300' : 'text-purple-500/30'}`}>
+                                                    📊
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
+
+                                {/* Connections Over Time Chart */}
+                                <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
+                                    <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-4`}>Connections Over Time</h3>
+                                    <div className="space-y-2">
+                                        <div className="flex items-end justify-between h-32 gap-1">
+                                            {connectionsOverTime.map((item, idx) => {
+                                                const maxConnections = Math.max(...connectionsOverTime.map(i => i.connections));
+                                                const height = (item.connections / maxConnections) * 100;
+                                                return (
+                                                    <div key={idx} className="flex-1 flex flex-col items-center">
+                                                        <div className="w-full flex items-end justify-center" style={{ height: '100px' }}>
+                                                            <div
+                                                                className={`w-full rounded-t ${isLightMode ? 'bg-indigo-500' : 'bg-indigo-400'} transition-all hover:opacity-80`}
+                                                                style={{ height: `${height}%`, minHeight: '4px' }}
+                                                                title={`${item.month}: ${item.connections} connections`}
+                                                            />
+                                                        </div>
+                                                        <div className={`text-xs mt-2 ${isLightMode ? 'text-gray-500' : 'text-gray-400'} transform -rotate-45 origin-top-left whitespace-nowrap`}>
+                                                            {item.month}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Connections by Type */}
+                                <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
+                                    <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-4`}>Connections by Type</h3>
+                                    <div className="space-y-3">
+                                        {connectionsByType.map((item, idx) => {
+                                            const maxCount = Math.max(...connectionsByType.map(i => i.count));
+                                            const width = (item.count / maxCount) * 100;
+                                            return (
+                                                <div key={idx}>
+                                                    <div className="flex justify-between items-center mb-1">
+                                                        <span className={`text-sm ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>{item.type}</span>
+                                                        <span className={`text-sm font-medium ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>{item.count}</span>
+                                                    </div>
+                                                    <div className={`h-2 ${isLightMode ? 'bg-gray-200' : 'bg-gray-700'} rounded-full overflow-hidden`}>
+                                                        <div
+                                                            className={`h-full ${isLightMode ? 'bg-indigo-500' : 'bg-indigo-400'} rounded-full transition-all`}
+                                                            style={{ width: `${width}%` }}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+
+                                {/* Connections by Relevance */}
+                                <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
+                                    <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-4`}>Connections by Relevance</h3>
+                                    <div className="space-y-3">
+                                        {connectionsByRelevance.map((item, idx) => {
+                                            const maxCount = Math.max(...connectionsByRelevance.map(i => i.count));
+                                            const width = maxCount > 0 ? (item.count / maxCount) * 100 : 0;
+                                            const colors = [
+                                                isLightMode ? 'bg-green-500' : 'bg-green-400',
+                                                isLightMode ? 'bg-blue-500' : 'bg-blue-400',
+                                                isLightMode ? 'bg-yellow-500' : 'bg-yellow-400',
+                                                isLightMode ? 'bg-orange-500' : 'bg-orange-400'
+                                            ];
+                                            return (
+                                                <div key={idx}>
+                                                    <div className="flex justify-between items-center mb-1">
+                                                        <span className={`text-sm ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>{item.range}</span>
+                                                        <span className={`text-sm font-medium ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>{item.count}</span>
+                                                    </div>
+                                                    <div className={`h-2 ${isLightMode ? 'bg-gray-200' : 'bg-gray-700'} rounded-full overflow-hidden`}>
+                                                        <div
+                                                            className={`h-full ${colors[idx]} rounded-full transition-all`}
+                                                            style={{ width: `${width}%` }}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+
+                                {/* Top Companies */}
+                                <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
+                                    <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-4`}>Top Companies</h3>
+                                    <div className="space-y-3">
+                                        {topCompanies.map((item, idx) => (
+                                            <div key={idx} className="flex items-center justify-between">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-lg">{idx + 1}.</span>
+                                                    <span className={`text-sm ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>{item.company}</span>
+                                                </div>
+                                                <span className={`text-sm font-medium ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>{item.count}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Follow-Up Status */}
+                                <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
+                                    <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-4`}>Follow-Up Status</h3>
+                                    <div className="space-y-3">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
+                                                <span className={`text-sm ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>Pending</span>
+                                            </div>
+                                            <span className={`text-sm font-medium ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>{networkingStats.followUpsPending}</span>
+                                        </div>
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+                                                <span className={`text-sm ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>Sent</span>
+                                            </div>
+                                            <span className={`text-sm font-medium ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>{networkingStats.followUpsSent}</span>
+                                        </div>
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+                                                <span className={`text-sm ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>Replied</span>
+                                            </div>
+                                            <span className={`text-sm font-medium ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>{networkingStats.followUpsReplied}</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Networking Goals & Progress */}
+                                {(() => {
+                                    const progress = getGoalProgress();
+                                    const streak = getNetworkingStreak();
+                                    return (
+                                        <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
+                                            <div className="flex items-center justify-between mb-4">
+                                                <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>Goals & Progress</h3>
+                                                <button
+                                                    onClick={() => setShowGoalsModal(true)}
+                                                    className={`text-xs px-2 py-1 ${isLightMode ? 'text-indigo-600 hover:text-indigo-700' : 'text-indigo-400 hover:text-indigo-300'}`}
+                                                >
+                                                    Edit
+                                                </button>
+                                            </div>
+                                            
+                                            {/* Streak */}
+                                            <div className={`${isLightMode ? 'bg-orange-50' : 'bg-orange-500/10'} rounded-lg p-3 mb-4`}>
+                                                <div className="flex items-center justify-between">
+                                                    <div>
+                                                        <div className={`text-2xl font-bold ${isLightMode ? 'text-orange-600' : 'text-orange-400'}`}>
+                                                            {streak} 🔥
+                                                        </div>
+                                                        <div className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'} mt-1`}>
+                                                            Day Streak
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Monthly Goals */}
+                                            <div className="space-y-3 mb-4">
+                                                <h4 className={`text-sm font-medium ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>Monthly Goals</h4>
+                                                
+                                                {/* Connections Progress */}
+                                                <div>
+                                                    <div className="flex justify-between items-center mb-1">
+                                                        <span className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>Connections</span>
+                                                        <span className={`text-xs font-medium ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                            {progress.monthly.connections.current} / {progress.monthly.connections.goal}
+                                                        </span>
+                                                    </div>
+                                                    <div className={`h-2 ${isLightMode ? 'bg-gray-200' : 'bg-gray-700'} rounded-full overflow-hidden`}>
+                                                        <div
+                                                            className={`h-full ${progress.monthly.connections.percentage >= 100 ? (isLightMode ? 'bg-green-500' : 'bg-green-400') : (isLightMode ? 'bg-blue-500' : 'bg-blue-400')} rounded-full transition-all`}
+                                                            style={{ width: `${Math.min(progress.monthly.connections.percentage, 100)}%` }}
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                {/* Events Progress */}
+                                                <div>
+                                                    <div className="flex justify-between items-center mb-1">
+                                                        <span className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>Events</span>
+                                                        <span className={`text-xs font-medium ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                            {progress.monthly.events.current} / {progress.monthly.events.goal}
+                                                        </span>
+                                                    </div>
+                                                    <div className={`h-2 ${isLightMode ? 'bg-gray-200' : 'bg-gray-700'} rounded-full overflow-hidden`}>
+                                                        <div
+                                                            className={`h-full ${progress.monthly.events.percentage >= 100 ? (isLightMode ? 'bg-green-500' : 'bg-green-400') : (isLightMode ? 'bg-purple-500' : 'bg-purple-400')} rounded-full transition-all`}
+                                                            style={{ width: `${Math.min(progress.monthly.events.percentage, 100)}%` }}
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                {/* Follow-ups Progress */}
+                                                <div>
+                                                    <div className="flex justify-between items-center mb-1">
+                                                        <span className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>Follow-ups</span>
+                                                        <span className={`text-xs font-medium ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                            {progress.monthly.followUps.current} / {progress.monthly.followUps.goal}
+                                                        </span>
+                                                    </div>
+                                                    <div className={`h-2 ${isLightMode ? 'bg-gray-200' : 'bg-gray-700'} rounded-full overflow-hidden`}>
+                                                        <div
+                                                            className={`h-full ${progress.monthly.followUps.percentage >= 100 ? (isLightMode ? 'bg-green-500' : 'bg-green-400') : (isLightMode ? 'bg-indigo-500' : 'bg-indigo-400')} rounded-full transition-all`}
+                                                            style={{ width: `${Math.min(progress.monthly.followUps.percentage, 100)}%` }}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
+
+                                {/* Achievements */}
+                                {(() => {
+                                    const achievements = getAchievements();
+                                    if (achievements.length === 0) return null;
+                                    
+                                    return (
+                                        <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
+                                            <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-4`}>Achievements</h3>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                {achievements.slice(0, 6).map((achievement) => (
+                                                    <div
+                                                        key={achievement.id}
+                                                        className={`${isLightMode ? 'bg-yellow-50 border-yellow-200' : 'bg-yellow-500/10 border-yellow-500/30'} border rounded-lg p-2 text-center`}
+                                                    >
+                                                        <div className="text-2xl mb-1">{achievement.icon}</div>
+                                                        <div className={`text-xs font-medium ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                            {achievement.name}
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                            {achievements.length > 6 && (
+                                                <div className={`text-xs text-center mt-3 ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                    +{achievements.length - 6} more achievements
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })()}
 
                                 {/* Networking Tips */}
                                 <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
@@ -35109,6 +35874,136 @@ Generate the repurposed content:`;
                                             <div className="w-2 h-2 bg-indigo-500 rounded-full mt-2 flex-shrink-0"></div>
                                             <p className={`text-sm ${isLightMode ? 'text-gray-600' : 'text-gray-300'}`}>Share valuable content to stay top-of-mind with your network</p>
                                         </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Goals Modal */}
+                    {showGoalsModal && (
+                        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowGoalsModal(false)}>
+                            <div className={`${isLightMode ? 'bg-white' : 'bg-gray-800'} rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto`} onClick={(e) => e.stopPropagation()}>
+                                <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-4`}>Set Networking Goals</h3>
+                                
+                                <div className="space-y-6">
+                                    {/* Monthly Goals */}
+                                    <div>
+                                        <h4 className={`text-md font-medium ${isLightMode ? 'text-gray-700' : 'text-gray-300'} mb-3`}>Monthly Goals</h4>
+                                        <div className="space-y-4">
+                                            <div>
+                                                <label className={`block text-sm font-medium ${isLightMode ? 'text-gray-700' : 'text-gray-300'} mb-2`}>
+                                                    Connections
+                                                </label>
+                                                <input
+                                                    type="number"
+                                                    value={networkingGoals.monthly.connections}
+                                                    onChange={(e) => setNetworkingGoals(prev => ({
+                                                        ...prev,
+                                                        monthly: { ...prev.monthly, connections: parseInt(e.target.value) || 0 }
+                                                    }))}
+                                                    className={`w-full px-3 py-2 rounded ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} border`}
+                                                    min="0"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className={`block text-sm font-medium ${isLightMode ? 'text-gray-700' : 'text-gray-300'} mb-2`}>
+                                                    Events
+                                                </label>
+                                                <input
+                                                    type="number"
+                                                    value={networkingGoals.monthly.events}
+                                                    onChange={(e) => setNetworkingGoals(prev => ({
+                                                        ...prev,
+                                                        monthly: { ...prev.monthly, events: parseInt(e.target.value) || 0 }
+                                                    }))}
+                                                    className={`w-full px-3 py-2 rounded ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} border`}
+                                                    min="0"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className={`block text-sm font-medium ${isLightMode ? 'text-gray-700' : 'text-gray-300'} mb-2`}>
+                                                    Follow-ups
+                                                </label>
+                                                <input
+                                                    type="number"
+                                                    value={networkingGoals.monthly.followUps}
+                                                    onChange={(e) => setNetworkingGoals(prev => ({
+                                                        ...prev,
+                                                        monthly: { ...prev.monthly, followUps: parseInt(e.target.value) || 0 }
+                                                    }))}
+                                                    className={`w-full px-3 py-2 rounded ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} border`}
+                                                    min="0"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Quarterly Goals */}
+                                    <div>
+                                        <h4 className={`text-md font-medium ${isLightMode ? 'text-gray-700' : 'text-gray-300'} mb-3`}>Quarterly Goals</h4>
+                                        <div className="space-y-4">
+                                            <div>
+                                                <label className={`block text-sm font-medium ${isLightMode ? 'text-gray-700' : 'text-gray-300'} mb-2`}>
+                                                    Connections
+                                                </label>
+                                                <input
+                                                    type="number"
+                                                    value={networkingGoals.quarterly.connections}
+                                                    onChange={(e) => setNetworkingGoals(prev => ({
+                                                        ...prev,
+                                                        quarterly: { ...prev.quarterly, connections: parseInt(e.target.value) || 0 }
+                                                    }))}
+                                                    className={`w-full px-3 py-2 rounded ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} border`}
+                                                    min="0"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className={`block text-sm font-medium ${isLightMode ? 'text-gray-700' : 'text-gray-300'} mb-2`}>
+                                                    Events
+                                                </label>
+                                                <input
+                                                    type="number"
+                                                    value={networkingGoals.quarterly.events}
+                                                    onChange={(e) => setNetworkingGoals(prev => ({
+                                                        ...prev,
+                                                        quarterly: { ...prev.quarterly, events: parseInt(e.target.value) || 0 }
+                                                    }))}
+                                                    className={`w-full px-3 py-2 rounded ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} border`}
+                                                    min="0"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className={`block text-sm font-medium ${isLightMode ? 'text-gray-700' : 'text-gray-300'} mb-2`}>
+                                                    Follow-ups
+                                                </label>
+                                                <input
+                                                    type="number"
+                                                    value={networkingGoals.quarterly.followUps}
+                                                    onChange={(e) => setNetworkingGoals(prev => ({
+                                                        ...prev,
+                                                        quarterly: { ...prev.quarterly, followUps: parseInt(e.target.value) || 0 }
+                                                    }))}
+                                                    className={`w-full px-3 py-2 rounded ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} border`}
+                                                    min="0"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex gap-3 justify-end">
+                                        <button
+                                            onClick={() => setShowGoalsModal(false)}
+                                            className={`px-4 py-2 ${isLightMode ? 'bg-gray-200 text-gray-700 hover:bg-gray-300' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'} rounded transition-colors`}
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            onClick={handleSaveGoals}
+                                            className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 transition-colors"
+                                        >
+                                            Save Goals
+                                        </button>
                                     </div>
                                 </div>
                             </div>
