@@ -32488,6 +32488,19 @@ Generate the repurposed content:`;
             const [showComparison, setShowComparison] = useState(false);
             const [expandedNotes, setExpandedNotes] = useState({}); // { roleModelId: true/false }
             
+            // Networking contact management state
+            const [networkingNotes, setNetworkingNotes] = useState({}); // { opportunityId: 'note text' }
+            const [networkingTags, setNetworkingTags] = useState({}); // { opportunityId: ['tag1', 'tag2'] }
+            const [conversationHistory, setConversationHistory] = useState({}); // { opportunityId: [{date, type, content}] }
+            const [expandedNetworkingDetails, setExpandedNetworkingDetails] = useState({}); // { opportunityId: {notes: bool, history: bool} }
+            const [showTagInput, setShowTagInput] = useState({}); // { opportunityId: bool }
+            const [newTagInput, setNewTagInput] = useState({}); // { opportunityId: 'tag text' }
+            
+            // Follow-up system state
+            const [followUps, setFollowUps] = useState({}); // { opportunityId: {date, status, message, template} }
+            const [showFollowUpModal, setShowFollowUpModal] = useState({}); // { opportunityId: bool }
+            const [followUpForm, setFollowUpForm] = useState({}); // { opportunityId: {date, message, template} }
+            
             // Check for light mode
             const isLightMode = !document.documentElement.classList.contains('dark');
 
@@ -32728,7 +32741,12 @@ Generate the repurposed content:`;
                     relevanceScore: 85,
                     contactInfo: 'alex.rodriguez@microsoft.com',
                     suggestedApproach: 'Mention your shared interest in React and ask about their experience at Microsoft',
-                    eventContext: 'React Conf 2024'
+                    eventContext: 'React Conf 2024',
+                    linkedin: 'https://linkedin.com/in/alexrodriguez',
+                    twitter: 'https://twitter.com/alexrodriguez',
+                    github: null,
+                    lastContactDate: null,
+                    nextFollowUp: null
                 },
                 {
                     id: 2,
@@ -32740,7 +32758,12 @@ Generate the repurposed content:`;
                     relevanceScore: 92,
                     contactInfo: 'lisa.wang@openai.com',
                     suggestedApproach: 'Reference their recent research paper and ask about future AI trends',
-                    eventContext: 'AI in Healthcare Workshop'
+                    eventContext: 'AI in Healthcare Workshop',
+                    linkedin: 'https://linkedin.com/in/lisawang',
+                    twitter: 'https://twitter.com/lisawang',
+                    github: 'https://github.com/lisawang',
+                    lastContactDate: '2024-01-15',
+                    nextFollowUp: '2024-02-15'
                 },
                 {
                     id: 3,
@@ -32752,7 +32775,12 @@ Generate the repurposed content:`;
                     relevanceScore: 88,
                     contactInfo: 'sarah.chen@google.com',
                     suggestedApproach: 'Discuss the event organization and ask about upcoming tech conferences',
-                    eventContext: 'Tech Leadership Summit 2024'
+                    eventContext: 'Tech Leadership Summit 2024',
+                    linkedin: 'https://linkedin.com/in/sarahchen',
+                    twitter: null,
+                    github: null,
+                    lastContactDate: '2024-01-10',
+                    nextFollowUp: null
                 },
                 {
                     id: 4,
@@ -32764,7 +32792,12 @@ Generate the repurposed content:`;
                     relevanceScore: 75,
                     contactInfo: 'michael.j@amazon.com',
                     suggestedApproach: 'Connect over shared experience at the conference and discuss cloud architecture',
-                    eventContext: 'AWS re:Invent 2024'
+                    eventContext: 'AWS re:Invent 2024',
+                    linkedin: 'https://linkedin.com/in/michaeljohnson',
+                    twitter: 'https://twitter.com/michaelj',
+                    github: 'https://github.com/michaelj',
+                    lastContactDate: null,
+                    nextFollowUp: null
                 },
                 {
                     id: 5,
@@ -32776,7 +32809,12 @@ Generate the repurposed content:`;
                     relevanceScore: 95,
                     contactInfo: 'emily.davis@netflix.com',
                     suggestedApproach: 'Reference their talk on scalable systems and ask for career advice',
-                    eventContext: 'ScaleConf 2024'
+                    eventContext: 'ScaleConf 2024',
+                    linkedin: 'https://linkedin.com/in/emilydavis',
+                    twitter: 'https://twitter.com/emilydavis',
+                    github: null,
+                    lastContactDate: '2024-01-20',
+                    nextFollowUp: '2024-02-20'
                 },
                 {
                     id: 6,
@@ -32788,7 +32826,12 @@ Generate the repurposed content:`;
                     relevanceScore: 82,
                     contactInfo: 'james.wilson@stripe.com',
                     suggestedApproach: 'Discuss their company\'s sponsorship and explore potential collaboration',
-                    eventContext: 'Startup Tech Expo 2024'
+                    eventContext: 'Startup Tech Expo 2024',
+                    linkedin: 'https://linkedin.com/in/jameswilson',
+                    twitter: null,
+                    github: 'https://github.com/jameswilson',
+                    lastContactDate: null,
+                    nextFollowUp: null
                 }
             ];
 
@@ -32948,12 +32991,232 @@ Generate the repurposed content:`;
                 });
             };
 
+            // Networking contact management handlers
+            const handleNetworkingNoteChange = (opportunityId, note) => {
+                setNetworkingNotes(prev => ({ ...prev, [opportunityId]: note }));
+            };
+
+            const handleNetworkingNoteSave = (opportunityId) => {
+                const savedNotes = JSON.parse(localStorage.getItem('networkingNotes') || '{}');
+                savedNotes[opportunityId] = networkingNotes[opportunityId] || '';
+                localStorage.setItem('networkingNotes', JSON.stringify(savedNotes));
+            };
+
+            const handleAddNetworkingTag = (opportunityId, tag) => {
+                if (!tag.trim()) return;
+                setNetworkingTags(prev => ({
+                    ...prev,
+                    [opportunityId]: [...(prev[opportunityId] || []), tag.trim()]
+                }));
+                const savedTags = JSON.parse(localStorage.getItem('networkingTags') || '{}');
+                savedTags[opportunityId] = [...(savedTags[opportunityId] || []), tag.trim()];
+                localStorage.setItem('networkingTags', JSON.stringify(savedTags));
+            };
+
+            const handleRemoveNetworkingTag = (opportunityId, tagToRemove) => {
+                setNetworkingTags(prev => ({
+                    ...prev,
+                    [opportunityId]: (prev[opportunityId] || []).filter(tag => tag !== tagToRemove)
+                }));
+                const savedTags = JSON.parse(localStorage.getItem('networkingTags') || '{}');
+                savedTags[opportunityId] = (savedTags[opportunityId] || []).filter(tag => tag !== tagToRemove);
+                localStorage.setItem('networkingTags', JSON.stringify(savedTags));
+            };
+
+            const handleAddConversationEntry = (opportunityId, type, content) => {
+                const newEntry = {
+                    date: new Date().toISOString().split('T')[0],
+                    type: type, // 'email', 'linkedin', 'meeting', 'call', 'note'
+                    content: content
+                };
+                setConversationHistory(prev => ({
+                    ...prev,
+                    [opportunityId]: [...(prev[opportunityId] || []), newEntry]
+                }));
+                const savedHistory = JSON.parse(localStorage.getItem('conversationHistory') || '{}');
+                savedHistory[opportunityId] = [...(savedHistory[opportunityId] || []), newEntry];
+                localStorage.setItem('conversationHistory', JSON.stringify(savedHistory));
+            };
+
+            const toggleNetworkingDetails = (opportunityId, section) => {
+                setExpandedNetworkingDetails(prev => ({
+                    ...prev,
+                    [opportunityId]: {
+                        ...(prev[opportunityId] || {}),
+                        [section]: !(prev[opportunityId]?.[section] || false)
+                    }
+                }));
+            };
+
+            // Follow-up templates
+            const followUpTemplates = {
+                'initial-contact': {
+                    name: 'Initial Contact',
+                    message: 'Hi {name}, it was great meeting you at {event}. I\'d love to connect and continue our conversation about {topic}. Would you be open to a quick chat?'
+                },
+                'follow-up-1-week': {
+                    name: '1 Week Follow-up',
+                    message: 'Hi {name}, I wanted to follow up on our conversation from {event}. I found your insights on {topic} particularly interesting. Would you be available for a brief call this week?'
+                },
+                'follow-up-2-weeks': {
+                    name: '2 Week Follow-up',
+                    message: 'Hi {name}, I hope you\'re doing well! I wanted to reconnect and see if you\'d be interested in {topic}. I think there might be some mutual opportunities here.'
+                },
+                'monthly-check-in': {
+                    name: 'Monthly Check-in',
+                    message: 'Hi {name}, I wanted to check in and see how things are going. I\'ve been thinking about our discussion on {topic} and would love to hear your thoughts on recent developments.'
+                },
+                'thank-you': {
+                    name: 'Thank You',
+                    message: 'Hi {name}, thank you so much for {action}. I really appreciate your time and insights. I\'d love to stay in touch and continue our conversation.'
+                },
+                'custom': {
+                    name: 'Custom',
+                    message: ''
+                }
+            };
+
+            // Generate suggested follow-up message based on time since last contact
+            const getSuggestedFollowUpMessage = (opportunity) => {
+                const lastContact = opportunity.lastContactDate ? new Date(opportunity.lastContactDate) : null;
+                const now = new Date();
+                const daysSinceContact = lastContact ? Math.floor((now - lastContact) / (1000 * 60 * 60 * 24)) : null;
+                
+                let template = followUpTemplates['initial-contact'];
+                
+                if (daysSinceContact === null) {
+                    template = followUpTemplates['initial-contact'];
+                } else if (daysSinceContact <= 7) {
+                    template = followUpTemplates['follow-up-1-week'];
+                } else if (daysSinceContact <= 14) {
+                    template = followUpTemplates['follow-up-2-weeks'];
+                } else if (daysSinceContact <= 30) {
+                    template = followUpTemplates['monthly-check-in'];
+                } else {
+                    template = followUpTemplates['monthly-check-in'];
+                }
+                
+                return template.message
+                    .replace('{name}', opportunity.name.split(' ')[0])
+                    .replace('{event}', opportunity.eventContext)
+                    .replace('{topic}', opportunity.title || 'your work')
+                    .replace('{action}', 'your help');
+            };
+
+            // Follow-up management handlers
+            const handleCreateFollowUp = (opportunityId, opportunity) => {
+                const suggestedDate = new Date();
+                suggestedDate.setDate(suggestedDate.getDate() + 7); // Default to 1 week from now
+                
+                const suggestedMessage = getSuggestedFollowUpMessage(opportunity);
+                
+                setFollowUpForm(prev => ({
+                    ...prev,
+                    [opportunityId]: {
+                        date: suggestedDate.toISOString().split('T')[0],
+                        message: suggestedMessage,
+                        template: 'custom',
+                        status: 'pending'
+                    }
+                }));
+                setShowFollowUpModal(prev => ({ ...prev, [opportunityId]: true }));
+            };
+
+            const handleSaveFollowUp = (opportunityId) => {
+                const followUp = {
+                    ...followUpForm[opportunityId],
+                    createdAt: new Date().toISOString()
+                };
+                
+                setFollowUps(prev => ({
+                    ...prev,
+                    [opportunityId]: followUp
+                }));
+                
+                // Save to localStorage
+                const savedFollowUps = JSON.parse(localStorage.getItem('followUps') || '{}');
+                savedFollowUps[opportunityId] = followUp;
+                localStorage.setItem('followUps', JSON.stringify(savedFollowUps));
+                
+                // Update opportunity's nextFollowUp date
+                const opportunities = [...networkingOpportunities];
+                const oppIndex = opportunities.findIndex(o => o.id === opportunityId);
+                if (oppIndex !== -1) {
+                    opportunities[oppIndex].nextFollowUp = followUp.date;
+                }
+                
+                setShowFollowUpModal(prev => ({ ...prev, [opportunityId]: false }));
+            };
+
+            const handleUpdateFollowUpStatus = (opportunityId, status) => {
+                setFollowUps(prev => {
+                    const updated = {
+                        ...prev,
+                        [opportunityId]: {
+                            ...prev[opportunityId],
+                            status: status,
+                            statusUpdatedAt: new Date().toISOString()
+                        }
+                    };
+                    
+                    // Save to localStorage
+                    const savedFollowUps = JSON.parse(localStorage.getItem('followUps') || '{}');
+                    savedFollowUps[opportunityId] = updated[opportunityId];
+                    localStorage.setItem('followUps', JSON.stringify(savedFollowUps));
+                    
+                    return updated;
+                });
+            };
+
+            const handleApplyTemplate = (opportunityId, templateKey, opportunity) => {
+                const template = followUpTemplates[templateKey];
+                if (template) {
+                    const message = template.message
+                        .replace('{name}', opportunity.name.split(' ')[0])
+                        .replace('{event}', opportunity.eventContext)
+                        .replace('{topic}', opportunity.title || 'your work')
+                        .replace('{action}', 'your help');
+                    
+                    setFollowUpForm(prev => ({
+                        ...prev,
+                        [opportunityId]: {
+                            ...(prev[opportunityId] || {}),
+                            message: message,
+                            template: templateKey
+                        }
+                    }));
+                }
+            };
+
+            const generateCalendarLink = (followUp) => {
+                const date = new Date(followUp.date);
+                const title = encodeURIComponent('Follow-up Reminder');
+                const details = encodeURIComponent(followUp.message);
+                const startDate = date.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+                const endDate = new Date(date.getTime() + 30 * 60000).toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+                
+                // Google Calendar link
+                return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${startDate}/${endDate}&details=${details}`;
+            };
+
             // Load saved notes and tags from localStorage on mount
             React.useEffect(() => {
                 const savedNotes = JSON.parse(localStorage.getItem('roleModelNotes') || '{}');
                 const savedTags = JSON.parse(localStorage.getItem('roleModelTags') || '{}');
                 setNotes(savedNotes);
                 setTags(savedTags);
+            }, []);
+
+            // Load saved networking data from localStorage on mount
+            React.useEffect(() => {
+                const savedNetworkingNotes = JSON.parse(localStorage.getItem('networkingNotes') || '{}');
+                const savedNetworkingTags = JSON.parse(localStorage.getItem('networkingTags') || '{}');
+                const savedConversationHistory = JSON.parse(localStorage.getItem('conversationHistory') || '{}');
+                const savedFollowUps = JSON.parse(localStorage.getItem('followUps') || '{}');
+                setNetworkingNotes(savedNetworkingNotes);
+                setNetworkingTags(savedNetworkingTags);
+                setConversationHistory(savedConversationHistory);
+                setFollowUps(savedFollowUps);
             }, []);
 
             // Filter and sort role models
@@ -34447,15 +34710,335 @@ Generate the repurposed content:`;
                                                             </span>
                                                         </div>
                                                         <p className={`${isLightMode ? 'text-gray-600' : 'text-gray-400'} mb-3`}>{opportunity.title} at {opportunity.company}</p>
-                                                        <div className={`flex items-center gap-4 text-sm ${isLightMode ? 'text-gray-500' : 'text-gray-400'} mb-4`}>
+                                                        <div className={`flex items-center gap-4 text-sm ${isLightMode ? 'text-gray-500' : 'text-gray-400'} mb-3`}>
                                                             <span>{opportunity.mutualConnections} mutual connections</span>
                                                             <span>•</span>
                                                             <span>Context: {opportunity.eventContext}</span>
                                                         </div>
+                                                        
+                                                        {/* Social Media Links */}
+                                                        <div className="flex items-center gap-3 mb-4">
+                                                            {opportunity.linkedin && (
+                                                                <a href={opportunity.linkedin} target="_blank" rel="noopener noreferrer" className={`flex items-center gap-1 px-3 py-1.5 ${isLightMode ? 'bg-blue-50 text-blue-600 hover:bg-blue-100' : 'bg-blue-500/20 text-blue-400 hover:bg-blue-500/30'} rounded-lg text-sm transition-colors`}>
+                                                                    <span>💼</span>
+                                                                    LinkedIn
+                                                                </a>
+                                                            )}
+                                                            {opportunity.twitter && (
+                                                                <a href={opportunity.twitter} target="_blank" rel="noopener noreferrer" className={`flex items-center gap-1 px-3 py-1.5 ${isLightMode ? 'bg-sky-50 text-sky-600 hover:bg-sky-100' : 'bg-sky-500/20 text-sky-400 hover:bg-sky-500/30'} rounded-lg text-sm transition-colors`}>
+                                                                    <span>🐦</span>
+                                                                    Twitter
+                                                                </a>
+                                                            )}
+                                                            {opportunity.github && (
+                                                                <a href={opportunity.github} target="_blank" rel="noopener noreferrer" className={`flex items-center gap-1 px-3 py-1.5 ${isLightMode ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'} rounded-lg text-sm transition-colors`}>
+                                                                    <span>💻</span>
+                                                                    GitHub
+                                                                </a>
+                                                            )}
+                                                        </div>
+
+                                                        {/* Contact Dates */}
+                                                        {(opportunity.lastContactDate || opportunity.nextFollowUp) && (
+                                                            <div className={`flex items-center gap-4 text-sm mb-4 ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                                {opportunity.lastContactDate && (
+                                                                    <span>Last contact: {new Date(opportunity.lastContactDate).toLocaleDateString()}</span>
+                                                                )}
+                                                                {opportunity.nextFollowUp && (
+                                                                    <span className={`px-2 py-1 rounded ${isLightMode ? 'bg-yellow-100 text-yellow-700' : 'bg-yellow-500/20 text-yellow-400'}`}>
+                                                                        Follow-up: {new Date(opportunity.nextFollowUp).toLocaleDateString()}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        )}
+
+                                                        {/* Tags */}
+                                                        <div className="flex flex-wrap items-center gap-2 mb-4">
+                                                            {networkingTags[opportunity.id]?.map((tag, idx) => (
+                                                                <span key={idx} className={`flex items-center gap-1 px-2 py-1 ${isLightMode ? 'bg-indigo-100 text-indigo-700' : 'bg-indigo-500/20 text-indigo-400'} rounded-full text-xs`}>
+                                                                    {tag}
+                                                                    <button onClick={() => handleRemoveNetworkingTag(opportunity.id, tag)} className="hover:opacity-70">×</button>
+                                                                </span>
+                                                            ))}
+                                                            {showTagInput[opportunity.id] && (
+                                                                <input
+                                                                    type="text"
+                                                                    value={newTagInput[opportunity.id] || ''}
+                                                                    onChange={(e) => setNewTagInput(prev => ({ ...prev, [opportunity.id]: e.target.value }))}
+                                                                    onKeyPress={(e) => {
+                                                                        if (e.key === 'Enter') {
+                                                                            handleAddNetworkingTag(opportunity.id, newTagInput[opportunity.id]);
+                                                                            setNewTagInput(prev => ({ ...prev, [opportunity.id]: '' }));
+                                                                            setShowTagInput(prev => ({ ...prev, [opportunity.id]: false }));
+                                                                        }
+                                                                    }}
+                                                                    onBlur={() => {
+                                                                        if (newTagInput[opportunity.id]) {
+                                                                            handleAddNetworkingTag(opportunity.id, newTagInput[opportunity.id]);
+                                                                            setNewTagInput(prev => ({ ...prev, [opportunity.id]: '' }));
+                                                                        }
+                                                                        setShowTagInput(prev => ({ ...prev, [opportunity.id]: false }));
+                                                                    }}
+                                                                    autoFocus
+                                                                    className={`px-2 py-1 text-xs rounded ${isLightMode ? 'bg-white border-gray-300' : 'bg-gray-800 border-gray-700'} border`}
+                                                                    placeholder="Add tag..."
+                                                                />
+                                                            )}
+                                                            {!showTagInput[opportunity.id] && (
+                                                                <button onClick={() => setShowTagInput(prev => ({ ...prev, [opportunity.id]: true }))} className={`text-xs ${isLightMode ? 'text-indigo-600 hover:text-indigo-700' : 'text-indigo-400 hover:text-indigo-300'}`}>
+                                                                    + Add Tag
+                                                                </button>
+                                                            )}
+                                                        </div>
+
                                                         <div className={`${isLightMode ? 'bg-white/30 backdrop-blur-xl border-white/20' : 'bg-gray-800 border-gray-700'} border rounded-lg p-4 mb-4`}>
                                                             <h4 className={`font-medium ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-2`}>AI Suggested Approach</h4>
                                                             <p className={`text-sm ${isLightMode ? 'text-gray-600' : 'text-gray-300'}`}>{opportunity.suggestedApproach}</p>
                                                         </div>
+
+                                                        {/* Notes Section */}
+                                                        <div className="mb-4">
+                                                            <button
+                                                                onClick={() => toggleNetworkingDetails(opportunity.id, 'notes')}
+                                                                className={`flex items-center gap-2 text-sm font-medium ${isLightMode ? 'text-gray-700 hover:text-gray-900' : 'text-gray-300 hover:text-white'} mb-2`}
+                                                            >
+                                                                <span>📝</span>
+                                                                Notes {expandedNetworkingDetails[opportunity.id]?.notes ? '▼' : '▶'}
+                                                            </button>
+                                                            {expandedNetworkingDetails[opportunity.id]?.notes && (
+                                                                <div className={`${isLightMode ? 'bg-white/30 backdrop-blur-xl border-white/20' : 'bg-gray-800 border-gray-700'} border rounded-lg p-3`}>
+                                                                    <textarea
+                                                                        value={networkingNotes[opportunity.id] || ''}
+                                                                        onChange={(e) => handleNetworkingNoteChange(opportunity.id, e.target.value)}
+                                                                        placeholder="Add notes about this contact..."
+                                                                        className={`w-full p-2 text-sm rounded ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-900 border-gray-600 text-gray-50'} border mb-2`}
+                                                                        rows="3"
+                                                                    />
+                                                                    <button
+                                                                        onClick={() => handleNetworkingNoteSave(opportunity.id)}
+                                                                        className="text-xs px-3 py-1 bg-indigo-600 text-white rounded hover:bg-indigo-700"
+                                                                    >
+                                                                        Save Note
+                                                                    </button>
+                                                                </div>
+                                                            )}
+                                                        </div>
+
+                                                        {/* Conversation History */}
+                                                        <div className="mb-4">
+                                                            <button
+                                                                onClick={() => toggleNetworkingDetails(opportunity.id, 'history')}
+                                                                className={`flex items-center gap-2 text-sm font-medium ${isLightMode ? 'text-gray-700 hover:text-gray-900' : 'text-gray-300 hover:text-white'} mb-2`}
+                                                            >
+                                                                <span>💬</span>
+                                                                Conversation History {expandedNetworkingDetails[opportunity.id]?.history ? '▼' : '▶'} ({conversationHistory[opportunity.id]?.length || 0})
+                                                            </button>
+                                                            {expandedNetworkingDetails[opportunity.id]?.history && (
+                                                                <div className={`${isLightMode ? 'bg-white/30 backdrop-blur-xl border-white/20' : 'bg-gray-800 border-gray-700'} border rounded-lg p-3 space-y-2`}>
+                                                                    {conversationHistory[opportunity.id]?.length > 0 ? (
+                                                                        conversationHistory[opportunity.id].map((entry, idx) => (
+                                                                            <div key={idx} className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'} border-b ${isLightMode ? 'border-gray-200' : 'border-gray-700'} pb-2`}>
+                                                                                <div className="flex items-center gap-2 mb-1">
+                                                                                    <span className={`px-2 py-0.5 rounded ${isLightMode ? 'bg-blue-100 text-blue-700' : 'bg-blue-500/20 text-blue-400'}`}>
+                                                                                        {entry.type}
+                                                                                    </span>
+                                                                                    <span>{entry.date}</span>
+                                                                                </div>
+                                                                                <p>{entry.content}</p>
+                                                                            </div>
+                                                                        ))
+                                                                    ) : (
+                                                                        <p className={`text-xs ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>No conversation history yet</p>
+                                                                    )}
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            const content = prompt('Add conversation entry:');
+                                                                            if (content) {
+                                                                                const type = prompt('Type (email/linkedin/meeting/call/note):') || 'note';
+                                                                                handleAddConversationEntry(opportunity.id, type, content);
+                                                                            }
+                                                                        }}
+                                                                        className="text-xs px-3 py-1 bg-indigo-600 text-white rounded hover:bg-indigo-700 mt-2"
+                                                                    >
+                                                                        + Add Entry
+                                                                    </button>
+                                                                </div>
+                                                            )}
+                                                        </div>
+
+                                                        {/* Follow-Up Section */}
+                                                        <div className="mb-4">
+                                                            <div className="flex items-center justify-between mb-2">
+                                                                <button
+                                                                    onClick={() => toggleNetworkingDetails(opportunity.id, 'followup')}
+                                                                    className={`flex items-center gap-2 text-sm font-medium ${isLightMode ? 'text-gray-700 hover:text-gray-900' : 'text-gray-300 hover:text-white'}`}
+                                                                >
+                                                                    <span>📅</span>
+                                                                    Follow-Up {expandedNetworkingDetails[opportunity.id]?.followup ? '▼' : '▶'}
+                                                                </button>
+                                                                {!followUps[opportunity.id] && (
+                                                                    <button
+                                                                        onClick={() => handleCreateFollowUp(opportunity.id, opportunity)}
+                                                                        className={`text-xs px-3 py-1 ${isLightMode ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'bg-indigo-500 text-white hover:bg-indigo-600'} rounded transition-colors`}
+                                                                    >
+                                                                        + Create Follow-Up
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                            
+                                                            {expandedNetworkingDetails[opportunity.id]?.followup && (
+                                                                <div className={`${isLightMode ? 'bg-white/30 backdrop-blur-xl border-white/20' : 'bg-gray-800 border-gray-700'} border rounded-lg p-4 space-y-3`}>
+                                                                    {followUps[opportunity.id] ? (
+                                                                        <div className="space-y-3">
+                                                                            <div className="flex items-center justify-between">
+                                                                                <div>
+                                                                                    <div className={`text-sm font-medium ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                                                        Follow-up Date: {new Date(followUps[opportunity.id].date).toLocaleDateString()}
+                                                                                    </div>
+                                                                                    <div className={`text-xs mt-1 ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>
+                                                                                        Status: <span className={`px-2 py-0.5 rounded ${
+                                                                                            followUps[opportunity.id].status === 'pending' ? (isLightMode ? 'bg-yellow-100 text-yellow-700' : 'bg-yellow-500/20 text-yellow-400') :
+                                                                                            followUps[opportunity.id].status === 'sent' ? (isLightMode ? 'bg-blue-100 text-blue-700' : 'bg-blue-500/20 text-blue-400') :
+                                                                                            (isLightMode ? 'bg-green-100 text-green-700' : 'bg-green-500/20 text-green-400')
+                                                                                        }`}>
+                                                                                            {followUps[opportunity.id].status.charAt(0).toUpperCase() + followUps[opportunity.id].status.slice(1)}
+                                                                                        </span>
+                                                                                    </div>
+                                                                                </div>
+                                                                                <div className="flex gap-2">
+                                                                                    <a
+                                                                                        href={generateCalendarLink(followUps[opportunity.id])}
+                                                                                        target="_blank"
+                                                                                        rel="noopener noreferrer"
+                                                                                        className={`text-xs px-3 py-1.5 ${isLightMode ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-blue-500 text-white hover:bg-blue-600'} rounded transition-colors`}
+                                                                                    >
+                                                                                        📅 Add to Calendar
+                                                                                    </a>
+                                                                                </div>
+                                                                            </div>
+                                                                            
+                                                                            <div className={`text-sm ${isLightMode ? 'text-gray-600' : 'text-gray-300'} p-2 ${isLightMode ? 'bg-white/50' : 'bg-gray-900/50'} rounded`}>
+                                                                                {followUps[opportunity.id].message}
+                                                                            </div>
+                                                                            
+                                                                            <div className="flex gap-2 flex-wrap">
+                                                                                <button
+                                                                                    onClick={() => handleUpdateFollowUpStatus(opportunity.id, 'sent')}
+                                                                                    disabled={followUps[opportunity.id].status === 'sent' || followUps[opportunity.id].status === 'replied'}
+                                                                                    className={`text-xs px-3 py-1.5 rounded transition-colors ${
+                                                                                        followUps[opportunity.id].status === 'sent' || followUps[opportunity.id].status === 'replied' 
+                                                                                            ? (isLightMode ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-gray-700 text-gray-500 cursor-not-allowed')
+                                                                                            : (isLightMode ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-blue-500 text-white hover:bg-blue-600')
+                                                                                    }`}
+                                                                                >
+                                                                                    Mark as Sent
+                                                                                </button>
+                                                                                <button
+                                                                                    onClick={() => handleUpdateFollowUpStatus(opportunity.id, 'replied')}
+                                                                                    disabled={followUps[opportunity.id].status === 'replied'}
+                                                                                    className={`text-xs px-3 py-1.5 rounded transition-colors ${
+                                                                                        followUps[opportunity.id].status === 'replied'
+                                                                                            ? (isLightMode ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-gray-700 text-gray-500 cursor-not-allowed')
+                                                                                            : (isLightMode ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-green-500 text-white hover:bg-green-600')
+                                                                                    }`}
+                                                                                >
+                                                                                    Mark as Replied
+                                                                                </button>
+                                                                                <button
+                                                                                    onClick={() => {
+                                                                                        setFollowUpForm(prev => ({
+                                                                                            ...prev,
+                                                                                            [opportunity.id]: { ...followUps[opportunity.id] }
+                                                                                        }));
+                                                                                        setShowFollowUpModal(prev => ({ ...prev, [opportunity.id]: true }));
+                                                                                    }}
+                                                                                    className={`text-xs px-3 py-1.5 ${isLightMode ? 'bg-gray-600 text-white hover:bg-gray-700' : 'bg-gray-600 text-white hover:bg-gray-500'} rounded transition-colors`}
+                                                                                >
+                                                                                    Edit
+                                                                                </button>
+                                                                            </div>
+                                                                        </div>
+                                                                    ) : (
+                                                                        <p className={`text-sm ${isLightMode ? 'text-gray-500' : 'text-gray-400'} text-center py-2`}>
+                                                                            No follow-up scheduled. Click "Create Follow-Up" to set one up.
+                                                                        </p>
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                            
+                                                            {/* Follow-Up Modal */}
+                                                            {showFollowUpModal[opportunity.id] && (
+                                                                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowFollowUpModal(prev => ({ ...prev, [opportunity.id]: false }))}>
+                                                                    <div className={`${isLightMode ? 'bg-white' : 'bg-gray-800'} rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto`} onClick={(e) => e.stopPropagation()}>
+                                                                        <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-4`}>Create Follow-Up</h3>
+                                                                        
+                                                                        <div className="space-y-4">
+                                                                            <div>
+                                                                                <label className={`block text-sm font-medium ${isLightMode ? 'text-gray-700' : 'text-gray-300'} mb-2`}>
+                                                                                    Follow-Up Date
+                                                                                </label>
+                                                                                <input
+                                                                                    type="date"
+                                                                                    value={followUpForm[opportunity.id]?.date || ''}
+                                                                                    onChange={(e) => setFollowUpForm(prev => ({
+                                                                                        ...prev,
+                                                                                        [opportunity.id]: { ...(prev[opportunity.id] || {}), date: e.target.value }
+                                                                                    }))}
+                                                                                    className={`w-full px-3 py-2 rounded ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} border`}
+                                                                                />
+                                                                            </div>
+                                                                            
+                                                                            <div>
+                                                                                <label className={`block text-sm font-medium ${isLightMode ? 'text-gray-700' : 'text-gray-300'} mb-2`}>
+                                                                                    Template
+                                                                                </label>
+                                                                                <select
+                                                                                    value={followUpForm[opportunity.id]?.template || 'custom'}
+                                                                                    onChange={(e) => handleApplyTemplate(opportunity.id, e.target.value, opportunity)}
+                                                                                    className={`w-full px-3 py-2 rounded ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} border`}
+                                                                                >
+                                                                                    {Object.entries(followUpTemplates).map(([key, template]) => (
+                                                                                        <option key={key} value={key}>{template.name}</option>
+                                                                                    ))}
+                                                                                </select>
+                                                                            </div>
+                                                                            
+                                                                            <div>
+                                                                                <label className={`block text-sm font-medium ${isLightMode ? 'text-gray-700' : 'text-gray-300'} mb-2`}>
+                                                                                    Message
+                                                                                </label>
+                                                                                <textarea
+                                                                                    value={followUpForm[opportunity.id]?.message || ''}
+                                                                                    onChange={(e) => setFollowUpForm(prev => ({
+                                                                                        ...prev,
+                                                                                        [opportunity.id]: { ...(prev[opportunity.id] || {}), message: e.target.value }
+                                                                                    }))}
+                                                                                    className={`w-full px-3 py-2 rounded ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} border`}
+                                                                                    rows="6"
+                                                                                    placeholder="Enter your follow-up message..."
+                                                                                />
+                                                                            </div>
+                                                                            
+                                                                            <div className="flex gap-3 justify-end">
+                                                                                <button
+                                                                                    onClick={() => setShowFollowUpModal(prev => ({ ...prev, [opportunity.id]: false }))}
+                                                                                    className={`px-4 py-2 ${isLightMode ? 'bg-gray-200 text-gray-700 hover:bg-gray-300' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'} rounded transition-colors`}
+                                                                                >
+                                                                                    Cancel
+                                                                                </button>
+                                                                                <button
+                                                                                    onClick={() => handleSaveFollowUp(opportunity.id)}
+                                                                                    className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 transition-colors"
+                                                                                >
+                                                                                    Save Follow-Up
+                                                                                </button>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                        </div>
+
                                                         <div className="flex gap-3">
                                                             <button className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200">
                                                                 <div className="w-4 h-4">💼</div>
