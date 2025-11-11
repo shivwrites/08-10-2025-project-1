@@ -32513,6 +32513,11 @@ Generate the repurposed content:`;
             const [showGoalsModal, setShowGoalsModal] = useState(false);
             const [networkingActivity, setNetworkingActivity] = useState({}); // Track daily activity for streaks
             
+            // Network map state
+            const [networkMapView, setNetworkMapView] = useState(false); // Toggle between list and map view
+            const [selectedNode, setSelectedNode] = useState(null); // Selected node in network map
+            const [hoveredNode, setHoveredNode] = useState(null); // Hovered node in network map
+            
             // Check for light mode
             const isLightMode = !document.documentElement.classList.contains('dark');
 
@@ -33666,6 +33671,72 @@ Generate the repurposed content:`;
                 const subject = `Following up from ${opportunity.eventContext}`;
                 const body = `Hi ${opportunity.name.split(' ')[0]},\n\nI hope this email finds you well. I wanted to follow up on our conversation from ${opportunity.eventContext}.\n\n${opportunity.suggestedApproach}\n\nI'd love to continue our conversation. Would you be available for a brief call?\n\nBest regards`;
                 return `mailto:${opportunity.contactInfo}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+            };
+
+            // Visual Network Map Functions
+            const getNetworkMapData = () => {
+                // Group contacts by company for clustering
+                const companyClusters = {};
+                networkingOpportunities.forEach(opp => {
+                    if (!companyClusters[opp.company]) {
+                        companyClusters[opp.company] = [];
+                    }
+                    companyClusters[opp.company].push(opp);
+                });
+
+                // Calculate connection strengths based on mutual connections and relevance
+                const connections = networkingOpportunities.map(opp => ({
+                    id: opp.id,
+                    name: opp.name,
+                    company: opp.company,
+                    title: opp.title,
+                    relevanceScore: opp.relevanceScore,
+                    mutualConnections: opp.mutualConnections,
+                    connectionStrength: Math.min(opp.mutualConnections * 20 + opp.relevanceScore, 100),
+                    x: Math.random() * 100, // In a real app, use force-directed layout
+                    y: Math.random() * 100,
+                    cluster: opp.company
+                }));
+
+                return {
+                    nodes: connections,
+                    clusters: Object.keys(companyClusters),
+                    connections: generateConnections(connections)
+                };
+            };
+
+            const generateConnections = (nodes) => {
+                // Generate connections between nodes based on shared company or high relevance
+                const connections = [];
+                for (let i = 0; i < nodes.length; i++) {
+                    for (let j = i + 1; j < nodes.length; j++) {
+                        const node1 = nodes[i];
+                        const node2 = nodes[j];
+                        
+                        // Connect if same company or high mutual relevance
+                        if (node1.company === node2.company || 
+                            (node1.mutualConnections > 0 && node2.mutualConnections > 0)) {
+                            connections.push({
+                                from: node1.id,
+                                to: node2.id,
+                                strength: node1.company === node2.company ? 0.8 : 0.4
+                            });
+                        }
+                    }
+                }
+                return connections;
+            };
+
+            const getClusterColor = (company) => {
+                const colors = {
+                    'Microsoft': isLightMode ? '#0078d4' : '#60a5fa',
+                    'OpenAI': isLightMode ? '#10a37f' : '#34d399',
+                    'Google': isLightMode ? '#4285f4' : '#60a5fa',
+                    'Amazon': isLightMode ? '#ff9900' : '#fbbf24',
+                    'Netflix': isLightMode ? '#e50914' : '#f87171',
+                    'Stripe': isLightMode ? '#635bff' : '#a78bfa'
+                };
+                return colors[company] || (isLightMode ? '#6b7280' : '#9ca3af');
             };
 
             // Load saved notes and tags from localStorage on mount
@@ -35207,6 +35278,33 @@ Generate the repurposed content:`;
                                 {/* Search and Filters */}
                                 <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
                                     <div className="flex flex-col gap-4">
+                                        {/* View Toggle */}
+                                        <div className="flex items-center justify-between">
+                                            <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>Networking Opportunities</h3>
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    onClick={() => setNetworkMapView(false)}
+                                                    className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                                                        !networkMapView
+                                                            ? (isLightMode ? 'bg-indigo-600 text-white' : 'bg-indigo-500 text-white')
+                                                            : (isLightMode ? 'bg-gray-200 text-gray-700 hover:bg-gray-300' : 'bg-gray-700 text-gray-300 hover:bg-gray-600')
+                                                    }`}
+                                                >
+                                                    📋 List
+                                                </button>
+                                                <button
+                                                    onClick={() => setNetworkMapView(true)}
+                                                    className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                                                        networkMapView
+                                                            ? (isLightMode ? 'bg-indigo-600 text-white' : 'bg-indigo-500 text-white')
+                                                            : (isLightMode ? 'bg-gray-200 text-gray-700 hover:bg-gray-300' : 'bg-gray-700 text-gray-300 hover:bg-gray-600')
+                                                    }`}
+                                                >
+                                                    🗺️ Map
+                                                </button>
+                                            </div>
+                                        </div>
+                                        
                                         {/* Search Bar */}
                                         <div className="relative">
                                             <div className={`absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none`}>
@@ -35279,9 +35377,199 @@ Generate the repurposed content:`;
                                     </div>
                                 </div>
                                 
-                                {/* Networking Opportunities List */}
-                                <div className="space-y-4">
-                                    {getFilteredNetworkingOpportunities().length > 0 ? (
+                                {/* Network Map Visualization */}
+                                {networkMapView ? (
+                                    (() => {
+                                        const networkData = getNetworkMapData();
+                                        const filteredNodes = networkData.nodes.filter(node => {
+                                            const opp = networkingOpportunities.find(o => o.id === node.id);
+                                            if (!opp) return false;
+                                            
+                                            // Apply filters
+                                            if (networkingSearchQuery) {
+                                                const query = networkingSearchQuery.toLowerCase();
+                                                if (!opp.name.toLowerCase().includes(query) &&
+                                                    !opp.company.toLowerCase().includes(query) &&
+                                                    !opp.title.toLowerCase().includes(query) &&
+                                                    !opp.eventContext.toLowerCase().includes(query)) {
+                                                    return false;
+                                                }
+                                            }
+                                            
+                                            if (networkingFilterType !== 'all' && opp.type !== networkingFilterType) return false;
+                                            if (networkingFilterRelevance !== 'all') {
+                                                if (networkingFilterRelevance === '90+' && opp.relevanceScore < 90) return false;
+                                                if (networkingFilterRelevance === '80+' && opp.relevanceScore < 80) return false;
+                                                if (networkingFilterRelevance === '70+' && opp.relevanceScore < 70) return false;
+                                            }
+                                            
+                                            return true;
+                                        });
+                                        
+                                        return (
+                                            <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
+                                                <div className="mb-4">
+                                                    <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-2`}>Network Map</h3>
+                                                    <p className={`text-sm ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>
+                                                        Visualize your network connections. Nodes are grouped by company.
+                                                    </p>
+                                                </div>
+                                                
+                                                {/* Cluster Legend */}
+                                                <div className="mb-4 flex flex-wrap gap-3">
+                                                    {networkData.clusters.map((cluster) => (
+                                                        <div key={cluster} className="flex items-center gap-2">
+                                                            <div 
+                                                                className="w-4 h-4 rounded-full"
+                                                                style={{ backgroundColor: getClusterColor(cluster) }}
+                                                            />
+                                                            <span className={`text-xs ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>{cluster}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                                
+                                                {/* Network Visualization */}
+                                                <div className="relative" style={{ height: '600px', overflow: 'auto' }}>
+                                                    <svg width="100%" height="100%" className="absolute inset-0">
+                                                        {/* Draw connections */}
+                                                        {networkData.connections
+                                                            .filter(conn => {
+                                                                const fromNode = filteredNodes.find(n => n.id === conn.from);
+                                                                const toNode = filteredNodes.find(n => n.id === conn.to);
+                                                                return fromNode && toNode;
+                                                            })
+                                                            .map((conn, idx) => {
+                                                                const fromNode = filteredNodes.find(n => n.id === conn.from);
+                                                                const toNode = filteredNodes.find(n => n.id === conn.to);
+                                                                if (!fromNode || !toNode) return null;
+                                                                
+                                                                const x1 = (fromNode.x / 100) * 800;
+                                                                const y1 = (fromNode.y / 100) * 600;
+                                                                const x2 = (toNode.x / 100) * 800;
+                                                                const y2 = (toNode.y / 100) * 600;
+                                                                
+                                                                return (
+                                                                    <line
+                                                                        key={idx}
+                                                                        x1={x1}
+                                                                        y1={y1}
+                                                                        x2={x2}
+                                                                        y2={y2}
+                                                                        stroke={isLightMode ? '#d1d5db' : '#4b5563'}
+                                                                        strokeWidth={conn.strength * 3}
+                                                                        opacity={0.3}
+                                                                    />
+                                                                );
+                                                            })}
+                                                    </svg>
+                                                    
+                                                    {/* Draw nodes */}
+                                                    <div className="relative" style={{ width: '800px', height: '600px' }}>
+                                                        {filteredNodes.map((node) => {
+                                                            const opp = networkingOpportunities.find(o => o.id === node.id);
+                                                            if (!opp) return null;
+                                                            
+                                                            const left = (node.x / 100) * 800;
+                                                            const top = (node.y / 100) * 600;
+                                                            const isSelected = selectedNode === node.id;
+                                                            const isHovered = hoveredNode === node.id;
+                                                            
+                                                            return (
+                                                                <div
+                                                                    key={node.id}
+                                                                    className="absolute cursor-pointer transition-all"
+                                                                    style={{
+                                                                        left: `${left}px`,
+                                                                        top: `${top}px`,
+                                                                        transform: 'translate(-50%, -50%)',
+                                                                        zIndex: isSelected || isHovered ? 10 : 1
+                                                                    }}
+                                                                    onMouseEnter={() => setHoveredNode(node.id)}
+                                                                    onMouseLeave={() => setHoveredNode(null)}
+                                                                    onClick={() => setSelectedNode(selectedNode === node.id ? null : node.id)}
+                                                                >
+                                                                    <div
+                                                                        className={`rounded-full border-2 flex items-center justify-center transition-all ${
+                                                                            isSelected 
+                                                                                ? 'ring-4 ring-indigo-500 scale-125' 
+                                                                                : isHovered 
+                                                                                    ? 'scale-110' 
+                                                                                    : ''
+                                                                        }`}
+                                                                        style={{
+                                                                            width: `${20 + (node.connectionStrength / 5)}px`,
+                                                                            height: `${20 + (node.connectionStrength / 5)}px`,
+                                                                            backgroundColor: getClusterColor(node.company),
+                                                                            borderColor: isSelected ? '#6366f1' : (isLightMode ? '#ffffff' : '#1f2937')
+                                                                        }}
+                                                                        title={`${node.name} - ${node.company}`}
+                                                                    />
+                                                                    {(isSelected || isHovered) && (
+                                                                        <div 
+                                                                            className={`absolute top-full left-1/2 transform -translate-x-1/2 mt-2 p-2 rounded-lg shadow-lg whitespace-nowrap z-20 ${
+                                                                                isLightMode ? 'bg-white border border-gray-200' : 'bg-gray-800 border border-gray-700'
+                                                                            }`}
+                                                                        >
+                                                                            <div className={`text-sm font-medium ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                                                {node.name}
+                                                                            </div>
+                                                                            <div className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>
+                                                                                {node.title} at {node.company}
+                                                                            </div>
+                                                                            <div className={`text-xs ${isLightMode ? 'text-gray-500' : 'text-gray-500'}`}>
+                                                                                {node.mutualConnections} mutual • {node.relevanceScore}% match
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                                
+                                                {/* Selected Node Details */}
+                                                {selectedNode && (() => {
+                                                    const node = filteredNodes.find(n => n.id === selectedNode);
+                                                    const opp = networkingOpportunities.find(o => o.id === selectedNode);
+                                                    if (!node || !opp) return null;
+                                                    
+                                                    return (
+                                                        <div className={`mt-4 p-4 rounded-lg ${isLightMode ? 'bg-indigo-50 border border-indigo-200' : 'bg-indigo-500/10 border border-indigo-500/30'}`}>
+                                                            <div className="flex items-center justify-between mb-2">
+                                                                <h4 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                                    {node.name}
+                                                                </h4>
+                                                                <button
+                                                                    onClick={() => setSelectedNode(null)}
+                                                                    className={`text-sm ${isLightMode ? 'text-gray-500 hover:text-gray-700' : 'text-gray-400 hover:text-gray-200'}`}
+                                                                >
+                                                                    ✕
+                                                                </button>
+                                                            </div>
+                                                            <p className={`text-sm ${isLightMode ? 'text-gray-600' : 'text-gray-300'} mb-2`}>
+                                                                {node.title} at {node.company}
+                                                            </p>
+                                                            <div className="flex gap-4 text-xs">
+                                                                <span className={isLightMode ? 'text-gray-500' : 'text-gray-400'}>
+                                                                    {node.mutualConnections} mutual connections
+                                                                </span>
+                                                                <span className={isLightMode ? 'text-gray-500' : 'text-gray-400'}>
+                                                                    {node.relevanceScore}% relevance
+                                                                </span>
+                                                                <span className={isLightMode ? 'text-gray-500' : 'text-gray-400'}>
+                                                                    {node.connectionStrength}% connection strength
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })()}
+                                            </div>
+                                        );
+                                    })()
+                                ) : (
+                                    /* Networking Opportunities List */
+                                    <div className="space-y-4">
+                                        {getFilteredNetworkingOpportunities().length > 0 ? (
                                         getFilteredNetworkingOpportunities().map((opportunity) => (
                                         <div key={opportunity.id} className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
                                             <div className="flex items-start justify-between mb-4">
@@ -35876,8 +36164,8 @@ Generate the repurposed content:`;
                                                                     href={generateEmailDraft(opportunity)}
                                                                     className="flex items-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors duration-200"
                                                                 >
-                                                                    <div className="w-4 h-4">📧</div>
-                                                                    Email
+                                                                <div className="w-4 h-4">📧</div>
+                                                                Email
                                                                 </a>
                                                             )}
                                                             <button 
@@ -35915,6 +36203,7 @@ Generate the repurposed content:`;
                                         </div>
                                     )}
                                 </div>
+                                )}
                             </div>
 
                             {/* Sidebar */}
@@ -35998,13 +36287,13 @@ Generate the repurposed content:`;
                                                     <div className="flex justify-between items-center mb-1">
                                                         <span className={`text-sm ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>{item.type}</span>
                                                         <span className={`text-sm font-medium ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>{item.count}</span>
-                                                    </div>
+                                        </div>
                                                     <div className={`h-2 ${isLightMode ? 'bg-gray-200' : 'bg-gray-700'} rounded-full overflow-hidden`}>
                                                         <div
                                                             className={`h-full ${isLightMode ? 'bg-indigo-500' : 'bg-indigo-400'} rounded-full transition-all`}
                                                             style={{ width: `${width}%` }}
                                                         />
-                                                    </div>
+                                        </div>
                                                 </div>
                                             );
                                         })}
