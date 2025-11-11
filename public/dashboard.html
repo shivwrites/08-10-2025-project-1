@@ -33589,6 +33589,85 @@ Generate the repurposed content:`;
                     }));
             };
 
+            // Export and Integration Functions
+            const exportContactsToCSV = () => {
+                const headers = ['Name', 'Title', 'Company', 'Email', 'LinkedIn', 'Twitter', 'GitHub', 'Type', 'Relevance Score', 'Mutual Connections', 'Event Context', 'Last Contact', 'Next Follow-Up', 'Tags', 'Notes'];
+                
+                const rows = networkingOpportunities.map(opp => {
+                    const tags = (networkingTags[opp.id] || []).join('; ');
+                    const notes = (networkingNotes[opp.id] || '').replace(/\n/g, ' ').substring(0, 100);
+                    
+                    return [
+                        opp.name,
+                        opp.title,
+                        opp.company,
+                        opp.contactInfo || '',
+                        opp.linkedin || '',
+                        opp.twitter || '',
+                        opp.github || '',
+                        opp.type,
+                        opp.relevanceScore,
+                        opp.mutualConnections,
+                        opp.eventContext,
+                        opp.lastContactDate || '',
+                        opp.nextFollowUp || '',
+                        tags,
+                        notes
+                    ];
+                });
+                
+                const csvContent = [
+                    headers.join(','),
+                    ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+                ].join('\n');
+                
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement('a');
+                const url = URL.createObjectURL(blob);
+                link.setAttribute('href', url);
+                link.setAttribute('download', `networking_contacts_${new Date().toISOString().split('T')[0]}.csv`);
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            };
+
+            const exportFollowUpsToCalendar = () => {
+                const followUpEvents = Object.entries(followUps).map(([id, followUp]) => {
+                    const opportunity = networkingOpportunities.find(opp => opp.id === parseInt(id));
+                    if (!opportunity || !followUp.date) return null;
+                    
+                    const date = new Date(followUp.date);
+                    const title = `Follow-up: ${opportunity.name}`;
+                    const details = `Follow-up with ${opportunity.name} (${opportunity.title} at ${opportunity.company})\n\n${followUp.message}`;
+                    const startDate = date.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+                    const endDate = new Date(date.getTime() + 30 * 60000).toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+                    
+                    return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(title)}&dates=${startDate}/${endDate}&details=${encodeURIComponent(details)}`;
+                }).filter(Boolean);
+                
+                // Open first event (in a real app, you might batch these)
+                if (followUpEvents.length > 0) {
+                    window.open(followUpEvents[0], '_blank');
+                    if (followUpEvents.length > 1) {
+                        alert(`Opening first follow-up. ${followUpEvents.length - 1} more follow-ups available.`);
+                    }
+                } else {
+                    alert('No follow-ups scheduled to export.');
+                }
+            };
+
+            const generateLinkedInConnectionRequest = (opportunity) => {
+                const message = `Hi ${opportunity.name.split(' ')[0]}, I noticed we both attended ${opportunity.eventContext}. I'd love to connect and continue our conversation about ${opportunity.title || 'your work'}.`;
+                return `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(opportunity.name)}&origin=GLOBAL_SEARCH_HEADER`;
+            };
+
+            const generateEmailDraft = (opportunity) => {
+                const subject = `Following up from ${opportunity.eventContext}`;
+                const body = `Hi ${opportunity.name.split(' ')[0]},\n\nI hope this email finds you well. I wanted to follow up on our conversation from ${opportunity.eventContext}.\n\n${opportunity.suggestedApproach}\n\nI'd love to continue our conversation. Would you be available for a brief call?\n\nBest regards`;
+                return `mailto:${opportunity.contactInfo}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+            };
+
             // Load saved notes and tags from localStorage on mount
             React.useEffect(() => {
                 const savedNotes = JSON.parse(localStorage.getItem('roleModelNotes') || '{}');
@@ -35780,16 +35859,41 @@ Generate the repurposed content:`;
                                                             )}
                                                         </div>
 
-                                                        <div className="flex gap-3">
-                                                            <button className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200">
-                                                                <div className="w-4 h-4">💼</div>
-                                                                Connect
-                                                            </button>
-                                                            <button className="flex items-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors duration-200">
-                                                                <div className="w-4 h-4">📧</div>
-                                                                Email
-                                                            </button>
-                                                            <button className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors duration-200">
+                                                        <div className="flex gap-3 flex-wrap">
+                                                            {opportunity.linkedin && (
+                                                                <a
+                                                                    href={generateLinkedInConnectionRequest(opportunity)}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200"
+                                                                >
+                                                                    <div className="w-4 h-4">💼</div>
+                                                                    Connect on LinkedIn
+                                                                </a>
+                                                            )}
+                                                            {opportunity.contactInfo && (
+                                                                <a
+                                                                    href={generateEmailDraft(opportunity)}
+                                                                    className="flex items-center gap-2 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors duration-200"
+                                                                >
+                                                                    <div className="w-4 h-4">📧</div>
+                                                                    Email
+                                                                </a>
+                                                            )}
+                                                            <button 
+                                                                onClick={() => {
+                                                                    // Save contact to localStorage or trigger save action
+                                                                    const savedContacts = JSON.parse(localStorage.getItem('savedContacts') || '[]');
+                                                                    if (!savedContacts.includes(opportunity.id)) {
+                                                                        savedContacts.push(opportunity.id);
+                                                                        localStorage.setItem('savedContacts', JSON.stringify(savedContacts));
+                                                                        alert('Contact saved!');
+                                                                    } else {
+                                                                        alert('Contact already saved!');
+                                                                    }
+                                                                }}
+                                                                className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors duration-200"
+                                                            >
                                                                 <div className="w-4 h-4">💾</div>
                                                                 Save Contact
                                                             </button>
@@ -36097,6 +36201,30 @@ Generate the repurposed content:`;
                                         </div>
                                     );
                                 })()}
+
+                                {/* Export & Integration */}
+                                <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
+                                    <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-4`}>Export & Integration</h3>
+                                    <div className="space-y-3">
+                                        <button
+                                            onClick={exportContactsToCSV}
+                                            className={`w-full flex items-center justify-center gap-2 px-4 py-2 ${isLightMode ? 'bg-indigo-600 hover:bg-indigo-700' : 'bg-indigo-500 hover:bg-indigo-600'} text-white rounded-lg transition-colors text-sm`}
+                                        >
+                                            <span>📥</span>
+                                            Export Contacts (CSV)
+                                        </button>
+                                        <button
+                                            onClick={exportFollowUpsToCalendar}
+                                            className={`w-full flex items-center justify-center gap-2 px-4 py-2 ${isLightMode ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-500 hover:bg-blue-600'} text-white rounded-lg transition-colors text-sm`}
+                                        >
+                                            <span>📅</span>
+                                            Export Follow-ups to Calendar
+                                        </button>
+                                        <div className={`text-xs ${isLightMode ? 'text-gray-500' : 'text-gray-400'} mt-2 text-center`}>
+                                            Export your networking data for external use
+                                        </div>
+                                    </div>
+                                </div>
 
                                 {/* Networking Tips */}
                                 <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
