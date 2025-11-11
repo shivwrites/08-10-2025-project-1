@@ -32522,6 +32522,14 @@ Generate the repurposed content:`;
             // Priority and urgency state
             const [contactPriorities, setContactPriorities] = useState({}); // { opportunityId: 'high' | 'medium' | 'low' }
             
+            // AI Suggestions state
+            const [aiSuggestions, setAiSuggestions] = useState({}); // { opportunityId: { personalizedMessage, bestAction, timing, topics } }
+            const [showAiSuggestions, setShowAiSuggestions] = useState({}); // { opportunityId: bool }
+            
+            // Activity Feed state
+            const [activityFeed, setActivityFeed] = useState([]); // Array of activity objects
+            const [activityFilter, setActivityFilter] = useState('all'); // Filter by activity type
+            
             // Check for light mode
             const isLightMode = !document.documentElement.classList.contains('dark');
 
@@ -33020,6 +33028,174 @@ Generate the repurposed content:`;
                 });
             };
 
+            // Activity Feed Functions (defined before handlers that use them)
+            const addActivity = (type, contactId, contactName, details = {}) => {
+                const activity = {
+                    id: Date.now() + Math.random(),
+                    type: type, // 'contact_added', 'note_added', 'followup_created', 'followup_sent', 'followup_replied', 'tag_added', 'conversation_logged'
+                    contactId: contactId,
+                    contactName: contactName,
+                    timestamp: new Date().toISOString(),
+                    details: details
+                };
+                
+                setActivityFeed(prev => {
+                    const updated = [activity, ...prev].slice(0, 100); // Keep last 100 activities
+                    localStorage.setItem('networkingActivityFeed', JSON.stringify(updated));
+                    return updated;
+                });
+            };
+
+            const getActivityIcon = (type) => {
+                const icons = {
+                    'contact_added': '👤',
+                    'note_added': '📝',
+                    'followup_created': '📅',
+                    'followup_sent': '✉️',
+                    'followup_replied': '💬',
+                    'tag_added': '🏷️',
+                    'conversation_logged': '💭',
+                    'priority_set': '⭐',
+                    'linkedin_connected': '💼',
+                    'email_sent': '📧'
+                };
+                return icons[type] || '📌';
+            };
+
+            const getActivityColor = (type) => {
+                const colors = {
+                    'contact_added': isLightMode ? 'bg-blue-100 text-blue-700 border-blue-300' : 'bg-blue-500/20 text-blue-400 border-blue-500/50',
+                    'note_added': isLightMode ? 'bg-yellow-100 text-yellow-700 border-yellow-300' : 'bg-yellow-500/20 text-yellow-400 border-yellow-500/50',
+                    'followup_created': isLightMode ? 'bg-purple-100 text-purple-700 border-purple-300' : 'bg-purple-500/20 text-purple-400 border-purple-500/50',
+                    'followup_sent': isLightMode ? 'bg-green-100 text-green-700 border-green-300' : 'bg-green-500/20 text-green-400 border-green-500/50',
+                    'followup_replied': isLightMode ? 'bg-emerald-100 text-emerald-700 border-emerald-300' : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50',
+                    'tag_added': isLightMode ? 'bg-indigo-100 text-indigo-700 border-indigo-300' : 'bg-indigo-500/20 text-indigo-400 border-indigo-500/50',
+                    'conversation_logged': isLightMode ? 'bg-pink-100 text-pink-700 border-pink-300' : 'bg-pink-500/20 text-pink-400 border-pink-500/50',
+                    'priority_set': isLightMode ? 'bg-orange-100 text-orange-700 border-orange-300' : 'bg-orange-500/20 text-orange-400 border-orange-500/50',
+                    'linkedin_connected': isLightMode ? 'bg-blue-100 text-blue-700 border-blue-300' : 'bg-blue-500/20 text-blue-400 border-blue-500/50',
+                    'email_sent': isLightMode ? 'bg-gray-100 text-gray-700 border-gray-300' : 'bg-gray-500/20 text-gray-400 border-gray-500/50'
+                };
+                return colors[type] || (isLightMode ? 'bg-gray-100 text-gray-700 border-gray-300' : 'bg-gray-500/20 text-gray-400 border-gray-500/50');
+            };
+
+            const getActivityDescription = (activity) => {
+                const { type, contactName, details } = activity;
+                
+                switch (type) {
+                    case 'contact_added':
+                        return `Added ${contactName} to network`;
+                    case 'note_added':
+                        return `Added note about ${contactName}`;
+                    case 'followup_created':
+                        return `Scheduled follow-up with ${contactName}`;
+                    case 'followup_sent':
+                        return `Sent follow-up to ${contactName}`;
+                    case 'followup_replied':
+                        return `${contactName} replied to your message`;
+                    case 'tag_added':
+                        return `Tagged ${contactName} with "${details.tag || 'tag'}"`;
+                    case 'conversation_logged':
+                        return `Logged conversation with ${contactName}`;
+                    case 'priority_set':
+                        return `Set ${details.priority || 'priority'} priority for ${contactName}`;
+                    case 'linkedin_connected':
+                        return `Connected with ${contactName} on LinkedIn`;
+                    case 'email_sent':
+                        return `Sent email to ${contactName}`;
+                    default:
+                        return `Activity with ${contactName}`;
+                }
+            };
+
+            const formatActivityTime = (timestamp) => {
+                const now = new Date();
+                const activityTime = new Date(timestamp);
+                const diffMs = now - activityTime;
+                const diffMins = Math.floor(diffMs / 60000);
+                const diffHours = Math.floor(diffMs / 3600000);
+                const diffDays = Math.floor(diffMs / 86400000);
+
+                if (diffMins < 1) return 'Just now';
+                if (diffMins < 60) return `${diffMins}m ago`;
+                if (diffHours < 24) return `${diffHours}h ago`;
+                if (diffDays < 7) return `${diffDays}d ago`;
+                return activityTime.toLocaleDateString();
+            };
+
+            const getFilteredActivities = () => {
+                let filtered = [...activityFeed];
+                
+                if (activityFilter !== 'all') {
+                    filtered = filtered.filter(activity => activity.type === activityFilter);
+                }
+                
+                return filtered.slice(0, 20); // Show last 20 activities
+            };
+
+            const generateActivityFeedFromData = (notes = {}, tags = {}, followUpsData = {}) => {
+                const activities = [];
+                
+                // Generate activities from existing data
+                networkingOpportunities.forEach(opp => {
+                    // Contact added (simulated - would be when contact was first added)
+                    if (opp.lastContactDate) {
+                        activities.push({
+                            id: `contact-${opp.id}`,
+                            type: 'contact_added',
+                            contactId: opp.id,
+                            contactName: opp.name,
+                            timestamp: opp.lastContactDate,
+                            details: {}
+                        });
+                    }
+                    
+                    // Notes added
+                    if (notes[opp.id]) {
+                        activities.push({
+                            id: `note-${opp.id}`,
+                            type: 'note_added',
+                            contactId: opp.id,
+                            contactName: opp.name,
+                            timestamp: new Date().toISOString(), // Would use actual note timestamp
+                            details: { noteLength: notes[opp.id].length }
+                        });
+                    }
+                    
+                    // Follow-ups
+                    if (followUpsData[opp.id]) {
+                        const followUp = followUpsData[opp.id];
+                        activities.push({
+                            id: `followup-${opp.id}`,
+                            type: followUp.status === 'replied' ? 'followup_replied' : 
+                                  followUp.status === 'sent' ? 'followup_sent' : 'followup_created',
+                            contactId: opp.id,
+                            contactName: opp.name,
+                            timestamp: followUp.date || new Date().toISOString(),
+                            details: { status: followUp.status }
+                        });
+                    }
+                    
+                    // Tags
+                    if (tags[opp.id] && tags[opp.id].length > 0) {
+                        tags[opp.id].forEach(tag => {
+                            activities.push({
+                                id: `tag-${opp.id}-${tag}`,
+                                type: 'tag_added',
+                                contactId: opp.id,
+                                contactName: opp.name,
+                                timestamp: new Date().toISOString(),
+                                details: { tag: tag }
+                            });
+                        });
+                    }
+                });
+                
+                // Sort by timestamp (newest first)
+                activities.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+                
+                return activities.slice(0, 50); // Return last 50 activities
+            };
+
             // Networking contact management handlers
             const handleNetworkingNoteChange = (opportunityId, note) => {
                 setNetworkingNotes(prev => ({ ...prev, [opportunityId]: note }));
@@ -33029,6 +33205,12 @@ Generate the repurposed content:`;
                 const savedNotes = JSON.parse(localStorage.getItem('networkingNotes') || '{}');
                 savedNotes[opportunityId] = networkingNotes[opportunityId] || '';
                 localStorage.setItem('networkingNotes', JSON.stringify(savedNotes));
+                
+                // Add activity
+                const opportunity = networkingOpportunities.find(opp => opp.id === opportunityId);
+                if (opportunity) {
+                    addActivity('note_added', opportunityId, opportunity.name, { noteLength: networkingNotes[opportunityId]?.length || 0 });
+                }
             };
 
             const handleAddNetworkingTag = (opportunityId, tag) => {
@@ -33040,6 +33222,12 @@ Generate the repurposed content:`;
                 const savedTags = JSON.parse(localStorage.getItem('networkingTags') || '{}');
                 savedTags[opportunityId] = [...(savedTags[opportunityId] || []), tag.trim()];
                 localStorage.setItem('networkingTags', JSON.stringify(savedTags));
+                
+                // Add activity
+                const opportunity = networkingOpportunities.find(opp => opp.id === opportunityId);
+                if (opportunity) {
+                    addActivity('tag_added', opportunityId, opportunity.name, { tag: tag.trim() });
+                }
             };
 
             const handleRemoveNetworkingTag = (opportunityId, tagToRemove) => {
@@ -33065,6 +33253,12 @@ Generate the repurposed content:`;
                 const savedHistory = JSON.parse(localStorage.getItem('conversationHistory') || '{}');
                 savedHistory[opportunityId] = [...(savedHistory[opportunityId] || []), newEntry];
                 localStorage.setItem('conversationHistory', JSON.stringify(savedHistory));
+                
+                // Add activity
+                const opportunity = networkingOpportunities.find(opp => opp.id === opportunityId);
+                if (opportunity) {
+                    addActivity('conversation_logged', opportunityId, opportunity.name, { type: type });
+                }
             };
 
             const toggleNetworkingDetails = (opportunityId, section) => {
@@ -33174,6 +33368,12 @@ Generate the repurposed content:`;
                     opportunities[oppIndex].nextFollowUp = followUp.date;
                 }
                 
+                // Add activity
+                const opportunity = networkingOpportunities.find(opp => opp.id === opportunityId);
+                if (opportunity) {
+                    addActivity('followup_created', opportunityId, opportunity.name, { date: followUp.date });
+                }
+                
                 setShowFollowUpModal(prev => ({ ...prev, [opportunityId]: false }));
             };
 
@@ -33192,6 +33392,16 @@ Generate the repurposed content:`;
                     const savedFollowUps = JSON.parse(localStorage.getItem('followUps') || '{}');
                     savedFollowUps[opportunityId] = updated[opportunityId];
                     localStorage.setItem('followUps', JSON.stringify(savedFollowUps));
+                    
+                    // Add activity
+                    const opportunity = networkingOpportunities.find(opp => opp.id === opportunityId);
+                    if (opportunity) {
+                        if (status === 'sent') {
+                            addActivity('followup_sent', opportunityId, opportunity.name, {});
+                        } else if (status === 'replied') {
+                            addActivity('followup_replied', opportunityId, opportunity.name, {});
+                        }
+                    }
                     
                     return updated;
                 });
@@ -33866,8 +34076,371 @@ Generate the repurposed content:`;
                     const updated = { ...prev, [opportunityId]: priority };
                     // Save to localStorage
                     localStorage.setItem('contactPriorities', JSON.stringify(updated));
+                    
+                    // Add activity
+                    const opportunity = networkingOpportunities.find(opp => opp.id === opportunityId);
+                    if (opportunity) {
+                        addActivity('priority_set', opportunityId, opportunity.name, { priority: priority });
+                    }
+                    
                     return updated;
                 });
+            };
+
+            // AI-Powered Suggestions Functions
+            const generateAiSuggestions = (opportunity) => {
+                // Check if suggestions already exist
+                if (aiSuggestions[opportunity.id]) {
+                    return aiSuggestions[opportunity.id];
+                }
+
+                const suggestions = {
+                    personalizedMessage: generatePersonalizedMessage(opportunity),
+                    bestAction: determineBestAction(opportunity),
+                    optimalTiming: getOptimalTiming(opportunity),
+                    conversationTopics: getConversationTopics(opportunity),
+                    relationshipStage: getRelationshipStage(opportunity),
+                    nextSteps: getNextSteps(opportunity),
+                    iceBreakers: getIceBreakers(opportunity),
+                    valueProposition: getValueProposition(opportunity)
+                };
+
+                // Cache suggestions
+                setAiSuggestions(prev => ({
+                    ...prev,
+                    [opportunity.id]: suggestions
+                }));
+
+                return suggestions;
+            };
+
+            const generatePersonalizedMessage = (opportunity) => {
+                const hasContacted = opportunity.lastContactDate !== null;
+                const daysSinceContact = hasContacted 
+                    ? Math.floor((new Date() - new Date(opportunity.lastContactDate)) / (1000 * 60 * 60 * 24))
+                    : null;
+
+                if (hasContacted && daysSinceContact < 7) {
+                    return `Follow up on your recent conversation. Reference something specific from ${opportunity.eventContext} to show you were engaged.`;
+                } else if (hasContacted && daysSinceContact < 30) {
+                    return `Reconnect after meeting at ${opportunity.eventContext}. Share a relevant article or insight related to ${opportunity.title} at ${opportunity.company}.`;
+                } else if (opportunity.type === 'Speaker') {
+                    return `Reference their talk at ${opportunity.eventContext}. Mention a specific insight that resonated with you and ask about their perspective on current industry trends.`;
+                } else if (opportunity.mutualConnections >= 5) {
+                    return `Leverage your ${opportunity.mutualConnections} mutual connections. Mention shared connections and express interest in learning about their experience at ${opportunity.company}.`;
+                } else if (opportunity.relevanceScore >= 90) {
+                    return `High alignment with your goals. Express genuine interest in ${opportunity.title} role and ask about their career journey and insights into ${opportunity.company}.`;
+                } else {
+                    return `Connect based on shared experience at ${opportunity.eventContext}. Mention something specific from the event and express interest in staying connected.`;
+                }
+            };
+
+            const determineBestAction = (opportunity) => {
+                const urgency = calculateUrgency(opportunity);
+                const priority = calculatePriority(opportunity);
+                const hasContacted = opportunity.lastContactDate !== null;
+
+                if (urgency.urgency === 'overdue' || urgency.urgency === 'critical') {
+                    return {
+                        action: 'Send immediate follow-up',
+                        reason: 'Follow-up deadline is approaching or overdue',
+                        icon: '⚡',
+                        priority: 'high'
+                    };
+                } else if (!hasContacted && opportunity.type === 'Speaker') {
+                    return {
+                        action: 'Send LinkedIn connection request',
+                        reason: 'Speakers are often open to connecting with engaged attendees',
+                        icon: '💼',
+                        priority: 'high'
+                    };
+                } else if (opportunity.mutualConnections >= 5) {
+                    return {
+                        action: 'Request introduction via mutual connection',
+                        reason: 'Strong mutual connection network increases acceptance rate',
+                        icon: '🤝',
+                        priority: 'high'
+                    };
+                } else if (hasContacted && opportunity.nextFollowUp) {
+                    return {
+                        action: 'Schedule follow-up conversation',
+                        reason: 'Maintain momentum from previous interaction',
+                        icon: '📅',
+                        priority: 'medium'
+                    };
+                } else if (priority === 'high') {
+                    return {
+                        action: 'Send personalized email',
+                        reason: 'High-priority contact deserves personalized outreach',
+                        icon: '✉️',
+                        priority: 'high'
+                    };
+                } else {
+                    return {
+                        action: 'Engage on LinkedIn',
+                        reason: 'Start with low-pressure social engagement',
+                        icon: '💬',
+                        priority: 'medium'
+                    };
+                }
+            };
+
+            const getOptimalTiming = (opportunity) => {
+                const now = new Date();
+                const dayOfWeek = now.getDay();
+                const hour = now.getHours();
+
+                // Role-based timing recommendations
+                if (opportunity.title.toLowerCase().includes('manager') || 
+                    opportunity.title.toLowerCase().includes('director') ||
+                    opportunity.title.toLowerCase().includes('vp') ||
+                    opportunity.title.toLowerCase().includes('executive')) {
+                    return {
+                        bestDays: 'Tuesday-Thursday',
+                        bestTime: '9-11 AM or 2-4 PM',
+                        reason: 'Executives typically check messages during focused work hours',
+                        timezone: 'Their local timezone'
+                    };
+                } else if (opportunity.title.toLowerCase().includes('engineer') ||
+                          opportunity.title.toLowerCase().includes('developer')) {
+                    return {
+                        bestDays: 'Tuesday-Thursday',
+                        bestTime: '10 AM-12 PM or 3-5 PM',
+                        reason: 'Engineers prefer mid-morning or late afternoon for non-coding tasks',
+                        timezone: 'Their local timezone'
+                    };
+                } else {
+                    return {
+                        bestDays: 'Tuesday-Thursday',
+                        bestTime: '10 AM-2 PM',
+                        reason: 'Avoid Monday mornings and Friday afternoons for better response rates',
+                        timezone: 'Their local timezone'
+                    };
+                }
+            };
+
+            const getConversationTopics = (opportunity) => {
+                const topics = [];
+                
+                // Event-specific topics
+                if (opportunity.eventContext) {
+                    topics.push({
+                        topic: `Discuss insights from ${opportunity.eventContext}`,
+                        reason: 'Shared experience creates immediate connection',
+                        icon: '🎯'
+                    });
+                }
+
+                // Role-specific topics
+                if (opportunity.title.toLowerCase().includes('ai') || 
+                    opportunity.company === 'OpenAI') {
+                    topics.push({
+                        topic: 'Latest developments in AI and machine learning',
+                        reason: 'Aligns with their expertise and interests',
+                        icon: '🤖'
+                    });
+                }
+
+                if (opportunity.title.toLowerCase().includes('product')) {
+                    topics.push({
+                        topic: 'Product strategy and user experience',
+                        reason: 'Core focus of their role',
+                        icon: '📱'
+                    });
+                }
+
+                if (opportunity.title.toLowerCase().includes('engineering') ||
+                    opportunity.title.toLowerCase().includes('engineer')) {
+                    topics.push({
+                        topic: 'Technical architecture and scaling challenges',
+                        reason: 'Relevant to their daily work',
+                        icon: '⚙️'
+                    });
+                }
+
+                // Company-specific topics
+                if (opportunity.company === 'Microsoft') {
+                    topics.push({
+                        topic: 'Cloud services and enterprise solutions',
+                        reason: 'Microsoft\'s core business focus',
+                        icon: '☁️'
+                    });
+                } else if (opportunity.company === 'Google') {
+                    topics.push({
+                        topic: 'Innovation in search and AI technologies',
+                        reason: 'Google\'s key areas of innovation',
+                        icon: '🔍'
+                    });
+                }
+
+                // Mutual connections
+                if (opportunity.mutualConnections > 0) {
+                    topics.push({
+                        topic: `Shared connections (${opportunity.mutualConnections} mutual)`,
+                        reason: 'Common ground for conversation',
+                        icon: '🤝'
+                    });
+                }
+
+                return topics.slice(0, 4); // Limit to top 4 topics
+            };
+
+            const getRelationshipStage = (opportunity) => {
+                const hasContacted = opportunity.lastContactDate !== null;
+                const hasFollowUp = followUps[opportunity.id] !== undefined;
+                const hasNotes = networkingNotes[opportunity.id] && networkingNotes[opportunity.id].length > 0;
+
+                if (hasFollowUp && followUps[opportunity.id].status === 'replied') {
+                    return {
+                        stage: 'Active Conversation',
+                        description: 'They\'ve responded - maintain momentum',
+                        nextStep: 'Schedule a deeper conversation or meeting',
+                        icon: '💬'
+                    };
+                } else if (hasFollowUp && followUps[opportunity.id].status === 'sent') {
+                    return {
+                        stage: 'Awaiting Response',
+                        description: 'Follow-up sent, waiting for reply',
+                        nextStep: 'Give it 3-5 days, then send a gentle reminder if needed',
+                        icon: '⏳'
+                    };
+                } else if (hasContacted) {
+                    return {
+                        stage: 'Initial Contact Made',
+                        description: 'First interaction completed',
+                        nextStep: 'Schedule follow-up to deepen relationship',
+                        icon: '👋'
+                    };
+                } else {
+                    return {
+                        stage: 'New Connection',
+                        description: 'Not yet contacted',
+                        nextStep: 'Make first contact using personalized approach',
+                        icon: '🆕'
+                    };
+                }
+            };
+
+            const getNextSteps = (opportunity) => {
+                const steps = [];
+                const relationshipStage = getRelationshipStage(opportunity);
+                const urgency = calculateUrgency(opportunity);
+
+                if (urgency.urgency === 'overdue' || urgency.urgency === 'critical') {
+                    steps.push({
+                        step: 'Send immediate follow-up',
+                        timeframe: 'Today',
+                        priority: 'critical',
+                        icon: '⚡'
+                    });
+                }
+
+                if (relationshipStage.stage === 'New Connection') {
+                    steps.push({
+                        step: 'Send LinkedIn connection request with personalized note',
+                        timeframe: 'This week',
+                        priority: 'high',
+                        icon: '💼'
+                    });
+                    steps.push({
+                        step: 'Engage with their recent LinkedIn posts',
+                        timeframe: 'This week',
+                        priority: 'medium',
+                        icon: '👍'
+                    });
+                } else if (relationshipStage.stage === 'Initial Contact Made') {
+                    steps.push({
+                        step: 'Schedule follow-up conversation',
+                        timeframe: 'Within 2 weeks',
+                        priority: 'high',
+                        icon: '📅'
+                    });
+                } else if (relationshipStage.stage === 'Active Conversation') {
+                    steps.push({
+                        step: 'Propose next interaction (coffee chat, call, or collaboration)',
+                        timeframe: 'This week',
+                        priority: 'high',
+                        icon: '☕'
+                    });
+                }
+
+                if (opportunity.mutualConnections >= 3 && relationshipStage.stage === 'New Connection') {
+                    steps.push({
+                        step: 'Ask mutual connection for introduction',
+                        timeframe: 'This week',
+                        priority: 'medium',
+                        icon: '🤝'
+                    });
+                }
+
+                return steps.slice(0, 3); // Limit to top 3 steps
+            };
+
+            const getIceBreakers = (opportunity) => {
+                const iceBreakers = [];
+
+                if (opportunity.eventContext) {
+                    iceBreakers.push(`"I really enjoyed your insights at ${opportunity.eventContext}. Your point about [specific topic] really resonated with me."`);
+                }
+
+                if (opportunity.mutualConnections > 0) {
+                    iceBreakers.push(`"I noticed we have ${opportunity.mutualConnections} mutual connections. I'd love to connect and learn more about your work at ${opportunity.company}."`);
+                }
+
+                if (opportunity.type === 'Speaker') {
+                    iceBreakers.push(`"Your talk at ${opportunity.eventContext} was inspiring. I'd love to hear more about your experience as ${opportunity.title}."`);
+                }
+
+                if (opportunity.company) {
+                    iceBreakers.push(`"I've been following ${opportunity.company}'s work in [relevant area]. Would love to connect and learn from your experience there."`);
+                }
+
+                return iceBreakers.slice(0, 3);
+            };
+
+            const getValueProposition = (opportunity) => {
+                // Determine what value you can offer
+                const valueProps = [];
+
+                if (opportunity.title.toLowerCase().includes('engineer') ||
+                    opportunity.title.toLowerCase().includes('developer')) {
+                    valueProps.push({
+                        value: 'Share technical insights and learnings',
+                        description: 'Exchange knowledge about best practices and technologies'
+                    });
+                }
+
+                if (opportunity.type === 'Speaker' || opportunity.type === 'Organizer') {
+                    valueProps.push({
+                        value: 'Promote their content and events',
+                        description: 'Help amplify their message to your network'
+                    });
+                }
+
+                valueProps.push({
+                    value: 'Mutual knowledge exchange',
+                    description: 'Learn from each other\'s experiences and perspectives'
+                });
+
+                if (opportunity.mutualConnections >= 3) {
+                    valueProps.push({
+                        value: 'Expand both networks',
+                        description: 'Introduce each other to valuable connections'
+                    });
+                }
+
+                return valueProps.slice(0, 2);
+            };
+
+            const handleGenerateAiSuggestions = (opportunityId) => {
+                const opportunity = networkingOpportunities.find(opp => opp.id === opportunityId);
+                if (opportunity) {
+                    generateAiSuggestions(opportunity);
+                    setShowAiSuggestions(prev => ({
+                        ...prev,
+                        [opportunityId]: !prev[opportunityId]
+                    }));
+                }
             };
 
             // Load saved notes and tags from localStorage on mount
@@ -33886,11 +34459,26 @@ Generate the repurposed content:`;
                 const savedFollowUps = JSON.parse(localStorage.getItem('followUps') || '{}');
                 const savedGoals = JSON.parse(localStorage.getItem('networkingGoals') || '{}');
                 const savedPriorities = JSON.parse(localStorage.getItem('contactPriorities') || '{}');
+                const savedActivityFeed = JSON.parse(localStorage.getItem('networkingActivityFeed') || '[]');
+                
                 setNetworkingNotes(savedNetworkingNotes);
                 setNetworkingTags(savedNetworkingTags);
                 setConversationHistory(savedConversationHistory);
                 setFollowUps(savedFollowUps);
                 setContactPriorities(savedPriorities);
+                
+                // Load activity feed or generate from existing data
+                if (savedActivityFeed.length > 0) {
+                    setActivityFeed(savedActivityFeed);
+                } else {
+                    // Generate initial activity feed from existing data
+                    const initialActivities = generateActivityFeedFromData(savedNetworkingNotes, savedNetworkingTags, savedFollowUps);
+                    setActivityFeed(initialActivities);
+                    if (initialActivities.length > 0) {
+                        localStorage.setItem('networkingActivityFeed', JSON.stringify(initialActivities));
+                    }
+                }
+                
                 if (savedGoals.monthly || savedGoals.quarterly) {
                     setNetworkingGoals(prev => ({
                         monthly: savedGoals.monthly || prev.monthly,
@@ -35975,6 +36563,189 @@ Generate the repurposed content:`;
                                                             })()}
                                                         </div>
 
+                                                        {/* AI-Powered Suggestions */}
+                                                        <div className="mb-4">
+                                                            <button
+                                                                onClick={() => handleGenerateAiSuggestions(opportunity.id)}
+                                                                className={`flex items-center gap-2 text-sm font-medium ${isLightMode ? 'text-gray-700 hover:text-gray-900' : 'text-gray-300 hover:text-white'} mb-2`}
+                                                            >
+                                                                <span>🤖</span>
+                                                                AI-Powered Suggestions {showAiSuggestions[opportunity.id] ? '▼' : '▶'}
+                                                            </button>
+                                                            {showAiSuggestions[opportunity.id] && (() => {
+                                                                const suggestions = generateAiSuggestions(opportunity);
+                                                                return (
+                                                                    <div className={`${isLightMode ? 'bg-gradient-to-br from-purple-50 to-indigo-50 border-purple-200' : 'bg-gradient-to-br from-purple-900/30 to-indigo-900/30 border-purple-700/50'} border rounded-lg p-4 space-y-4`}>
+                                                                        {/* Relationship Stage */}
+                                                                        <div>
+                                                                            <h5 className={`text-sm font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-2 flex items-center gap-2`}>
+                                                                                <span>{suggestions.relationshipStage.icon}</span>
+                                                                                Relationship Stage: {suggestions.relationshipStage.stage}
+                                                                            </h5>
+                                                                            <p className={`text-sm ${isLightMode ? 'text-gray-600' : 'text-gray-300'} mb-1`}>
+                                                                                {suggestions.relationshipStage.description}
+                                                                            </p>
+                                                                            <p className={`text-xs ${isLightMode ? 'text-indigo-700' : 'text-indigo-400'} font-medium`}>
+                                                                                Next: {suggestions.relationshipStage.nextStep}
+                                                                            </p>
+                                                                        </div>
+
+                                                                        {/* Best Action */}
+                                                                        <div className={`${isLightMode ? 'bg-white/80' : 'bg-gray-800/50'} rounded-lg p-3 border ${isLightMode ? 'border-purple-200' : 'border-purple-700/30'}`}>
+                                                                            <h5 className={`text-sm font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-2 flex items-center gap-2`}>
+                                                                                <span>{suggestions.bestAction.icon}</span>
+                                                                                Recommended Action
+                                                                            </h5>
+                                                                            <p className={`text-sm font-medium ${isLightMode ? 'text-gray-800' : 'text-gray-200'} mb-1`}>
+                                                                                {suggestions.bestAction.action}
+                                                                            </p>
+                                                                            <p className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>
+                                                                                {suggestions.bestAction.reason}
+                                                                            </p>
+                                                                        </div>
+
+                                                                        {/* Personalized Message */}
+                                                                        <div>
+                                                                            <h5 className={`text-sm font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-2 flex items-center gap-2`}>
+                                                                                <span>💬</span>
+                                                                                Personalized Message Suggestion
+                                                                            </h5>
+                                                                            <div className={`${isLightMode ? 'bg-white/80' : 'bg-gray-800/50'} rounded-lg p-3 border ${isLightMode ? 'border-purple-200' : 'border-purple-700/30'}`}>
+                                                                                <p className={`text-sm ${isLightMode ? 'text-gray-700' : 'text-gray-300'} italic`}>
+                                                                                    "{suggestions.personalizedMessage}"
+                                                                                </p>
+                                                                            </div>
+                                                                        </div>
+
+                                                                        {/* Optimal Timing */}
+                                                                        <div>
+                                                                            <h5 className={`text-sm font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-2 flex items-center gap-2`}>
+                                                                                <span>⏰</span>
+                                                                                Optimal Timing
+                                                                            </h5>
+                                                                            <div className={`${isLightMode ? 'bg-white/80' : 'bg-gray-800/50'} rounded-lg p-3 border ${isLightMode ? 'border-purple-200' : 'border-purple-700/30'}`}>
+                                                                                <p className={`text-sm ${isLightMode ? 'text-gray-800' : 'text-gray-200'} mb-1`}>
+                                                                                    <span className="font-medium">Best Days:</span> {suggestions.optimalTiming.bestDays}
+                                                                                </p>
+                                                                                <p className={`text-sm ${isLightMode ? 'text-gray-800' : 'text-gray-200'} mb-1`}>
+                                                                                    <span className="font-medium">Best Time:</span> {suggestions.optimalTiming.bestTime}
+                                                                                </p>
+                                                                                <p className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'} mt-2`}>
+                                                                                    {suggestions.optimalTiming.reason}
+                                                                                </p>
+                                                                            </div>
+                                                                        </div>
+
+                                                                        {/* Conversation Topics */}
+                                                                        {suggestions.conversationTopics.length > 0 && (
+                                                                            <div>
+                                                                                <h5 className={`text-sm font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-2 flex items-center gap-2`}>
+                                                                                    <span>💡</span>
+                                                                                    Conversation Topics
+                                                                                </h5>
+                                                                                <div className="space-y-2">
+                                                                                    {suggestions.conversationTopics.map((topic, idx) => (
+                                                                                        <div key={idx} className={`${isLightMode ? 'bg-white/80' : 'bg-gray-800/50'} rounded-lg p-2 border ${isLightMode ? 'border-purple-200' : 'border-purple-700/30'}`}>
+                                                                                            <div className="flex items-start gap-2">
+                                                                                                <span className="text-lg">{topic.icon}</span>
+                                                                                                <div className="flex-1">
+                                                                                                    <p className={`text-sm font-medium ${isLightMode ? 'text-gray-800' : 'text-gray-200'}`}>
+                                                                                                        {topic.topic}
+                                                                                                    </p>
+                                                                                                    <p className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'} mt-0.5`}>
+                                                                                                        {topic.reason}
+                                                                                                    </p>
+                                                                                                </div>
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    ))}
+                                                                                </div>
+                                                                            </div>
+                                                                        )}
+
+                                                                        {/* Next Steps */}
+                                                                        {suggestions.nextSteps.length > 0 && (
+                                                                            <div>
+                                                                                <h5 className={`text-sm font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-2 flex items-center gap-2`}>
+                                                                                    <span>📋</span>
+                                                                                    Next Steps
+                                                                                </h5>
+                                                                                <div className="space-y-2">
+                                                                                    {suggestions.nextSteps.map((step, idx) => (
+                                                                                        <div key={idx} className={`${isLightMode ? 'bg-white/80' : 'bg-gray-800/50'} rounded-lg p-2 border ${isLightMode ? 'border-purple-200' : 'border-purple-700/30'}`}>
+                                                                                            <div className="flex items-start justify-between gap-2">
+                                                                                                <div className="flex items-start gap-2 flex-1">
+                                                                                                    <span className="text-lg">{step.icon}</span>
+                                                                                                    <div className="flex-1">
+                                                                                                        <p className={`text-sm font-medium ${isLightMode ? 'text-gray-800' : 'text-gray-200'}`}>
+                                                                                                            {step.step}
+                                                                                                        </p>
+                                                                                                        <p className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'} mt-0.5`}>
+                                                                                                            {step.timeframe}
+                                                                                                        </p>
+                                                                                                    </div>
+                                                                                                </div>
+                                                                                                <span className={`text-xs px-2 py-0.5 rounded ${
+                                                                                                    step.priority === 'critical' 
+                                                                                                        ? (isLightMode ? 'bg-red-100 text-red-700' : 'bg-red-500/30 text-red-300')
+                                                                                                        : step.priority === 'high'
+                                                                                                        ? (isLightMode ? 'bg-orange-100 text-orange-700' : 'bg-orange-500/30 text-orange-300')
+                                                                                                        : (isLightMode ? 'bg-blue-100 text-blue-700' : 'bg-blue-500/30 text-blue-300')
+                                                                                                }`}>
+                                                                                                    {step.priority}
+                                                                                                </span>
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    ))}
+                                                                                </div>
+                                                                            </div>
+                                                                        )}
+
+                                                                        {/* Ice Breakers */}
+                                                                        {suggestions.iceBreakers.length > 0 && (
+                                                                            <div>
+                                                                                <h5 className={`text-sm font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-2 flex items-center gap-2`}>
+                                                                                    <span>🧊</span>
+                                                                                    Ice Breakers
+                                                                                </h5>
+                                                                                <div className="space-y-2">
+                                                                                    {suggestions.iceBreakers.map((iceBreaker, idx) => (
+                                                                                        <div key={idx} className={`${isLightMode ? 'bg-white/80' : 'bg-gray-800/50'} rounded-lg p-2 border ${isLightMode ? 'border-purple-200' : 'border-purple-700/30'}`}>
+                                                                                            <p className={`text-sm ${isLightMode ? 'text-gray-700' : 'text-gray-300'} italic`}>
+                                                                                                {iceBreaker}
+                                                                                            </p>
+                                                                                        </div>
+                                                                                    ))}
+                                                                                </div>
+                                                                            </div>
+                                                                        )}
+
+                                                                        {/* Value Proposition */}
+                                                                        {suggestions.valueProposition.length > 0 && (
+                                                                            <div>
+                                                                                <h5 className={`text-sm font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-2 flex items-center gap-2`}>
+                                                                                    <span>💎</span>
+                                                                                    Value You Can Offer
+                                                                                </h5>
+                                                                                <div className="space-y-2">
+                                                                                    {suggestions.valueProposition.map((value, idx) => (
+                                                                                        <div key={idx} className={`${isLightMode ? 'bg-white/80' : 'bg-gray-800/50'} rounded-lg p-2 border ${isLightMode ? 'border-purple-200' : 'border-purple-700/30'}`}>
+                                                                                            <p className={`text-sm font-medium ${isLightMode ? 'text-gray-800' : 'text-gray-200'}`}>
+                                                                                                {value.value}
+                                                                                            </p>
+                                                                                            <p className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'} mt-0.5`}>
+                                                                                                {value.description}
+                                                                                            </p>
+                                                                                        </div>
+                                                                                    ))}
+                                                                                </div>
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                );
+                                                            })()}
+                                                        </div>
+
                                                         {/* Smart Recommendations */}
                                                         <div className="mb-4">
                                                             <button
@@ -36468,6 +37239,66 @@ Generate the repurposed content:`;
                                         </div>
                                     );
                                 })()}
+                                
+                                {/* Activity Feed */}
+                                <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
+                                    <div className="flex items-center justify-between mb-4">
+                                        <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>Activity Feed</h3>
+                                        <select
+                                            value={activityFilter}
+                                            onChange={(e) => setActivityFilter(e.target.value)}
+                                            className={`text-xs px-2 py-1 rounded ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-800 border-gray-700 text-gray-50'} border`}
+                                        >
+                                            <option value="all">All</option>
+                                            <option value="contact_added">Contacts</option>
+                                            <option value="note_added">Notes</option>
+                                            <option value="followup_created">Follow-ups</option>
+                                            <option value="followup_sent">Sent</option>
+                                            <option value="followup_replied">Replies</option>
+                                            <option value="tag_added">Tags</option>
+                                            <option value="conversation_logged">Conversations</option>
+                                        </select>
+                                    </div>
+                                    <div className="space-y-3 max-h-96 overflow-y-auto">
+                                        {getFilteredActivities().length > 0 ? (
+                                            getFilteredActivities().map((activity) => (
+                                                <div
+                                                    key={activity.id}
+                                                    onClick={() => {
+                                                        const element = document.getElementById(`networking-${activity.contactId}`);
+                                                        if (element) {
+                                                            element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                                            element.classList.add('ring-2', 'ring-indigo-500', 'ring-offset-2');
+                                                            setTimeout(() => {
+                                                                element.classList.remove('ring-2', 'ring-indigo-500', 'ring-offset-2');
+                                                            }, 2000);
+                                                        }
+                                                    }}
+                                                    className={`p-3 ${isLightMode ? 'bg-white/50 hover:bg-white' : 'bg-gray-800/50 hover:bg-gray-800'} rounded-lg cursor-pointer transition-colors border ${isLightMode ? 'border-gray-200' : 'border-gray-700'}`}
+                                                >
+                                                    <div className="flex items-start gap-3">
+                                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-lg flex-shrink-0 ${getActivityColor(activity.type)}`}>
+                                                            {getActivityIcon(activity.type)}
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <p className={`text-sm font-medium ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-1`}>
+                                                                {getActivityDescription(activity)}
+                                                            </p>
+                                                            <p className={`text-xs ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                                {formatActivityTime(activity.timestamp)}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))
+                                        ) : (
+                                            <div className={`text-center py-8 ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                <p className="text-sm">No activities yet</p>
+                                                <p className="text-xs mt-1">Your networking activities will appear here</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
                                 
                                 {/* Networking Stats Overview */}
                                 <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
