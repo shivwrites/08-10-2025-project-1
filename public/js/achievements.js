@@ -7,7 +7,11 @@ export const AchievementCategories = {
     BRAND_SCORE: 'brand_score',
     ENGAGEMENT: 'engagement',
     PROFILE_COMPLETION: 'profile_completion',
-    CONSISTENCY: 'consistency'
+    CONSISTENCY: 'consistency',
+    CONTENT_CREATION: 'content_creation',
+    NETWORKING: 'networking',
+    LEARNING: 'learning',
+    THOUGHT_LEADERSHIP: 'thought_leadership'
 };
 
 export const AchievementRarity = {
@@ -187,6 +191,170 @@ export function getAchievementDefinitions() {
             criteriaType: 'metric_threshold',
             criteriaValue: { threshold: 95, metric: 'professional_presence' },
             rarity: AchievementRarity.RARE
+        },
+        // Content Creation Achievements
+        {
+            code: 'CONTENT_5',
+            name: 'Content Creator',
+            description: 'Create 5 pieces of content',
+            category: AchievementCategories.CONTENT_CREATION,
+            icon: '✍️',
+            criteriaType: 'content_count',
+            criteriaValue: { count: 5 },
+            rarity: AchievementRarity.COMMON
+        },
+        {
+            code: 'CONTENT_25',
+            name: 'Prolific Writer',
+            description: 'Create 25 pieces of content',
+            category: AchievementCategories.CONTENT_CREATION,
+            icon: '📝',
+            criteriaType: 'content_count',
+            criteriaValue: { count: 25 },
+            rarity: AchievementRarity.RARE
+        },
+        {
+            code: 'CONTENT_100',
+            name: 'Content Master',
+            description: 'Create 100 pieces of content',
+            category: AchievementCategories.CONTENT_CREATION,
+            icon: '📚',
+            criteriaType: 'content_count',
+            criteriaValue: { count: 100 },
+            rarity: AchievementRarity.EPIC
+        },
+        {
+            code: 'CONTENT_VIRAL',
+            name: 'Viral Creator',
+            description: 'Create content that reaches 1000+ views',
+            category: AchievementCategories.CONTENT_CREATION,
+            icon: '🔥',
+            criteriaType: 'content_views',
+            criteriaValue: { views: 1000 },
+            rarity: AchievementRarity.RARE
+        },
+        // Networking Achievements
+        {
+            code: 'NETWORK_50',
+            name: 'Network Builder',
+            description: 'Connect with 50 professionals',
+            category: AchievementCategories.NETWORKING,
+            icon: '🤝',
+            criteriaType: 'connection_count',
+            criteriaValue: { count: 50 },
+            rarity: AchievementRarity.COMMON
+        },
+        {
+            code: 'NETWORK_200',
+            name: 'Social Butterfly',
+            description: 'Connect with 200 professionals',
+            category: AchievementCategories.NETWORKING,
+            icon: '🦋',
+            criteriaType: 'connection_count',
+            criteriaValue: { count: 200 },
+            rarity: AchievementRarity.RARE
+        },
+        {
+            code: 'NETWORK_500',
+            name: 'Network Master',
+            description: 'Connect with 500 professionals',
+            category: AchievementCategories.NETWORKING,
+            icon: '👑',
+            criteriaType: 'connection_count',
+            criteriaValue: { count: 500 },
+            rarity: AchievementRarity.EPIC
+        },
+        {
+            code: 'NETWORK_ENGAGEMENT',
+            name: 'Engagement Pro',
+            description: 'Get 50+ comments on your posts',
+            category: AchievementCategories.NETWORKING,
+            icon: '💬',
+            criteriaType: 'engagement_count',
+            criteriaValue: { comments: 50 },
+            rarity: AchievementRarity.RARE
+        },
+        // Learning Achievements
+        {
+            code: 'LEARNING_COURSE',
+            name: 'Lifelong Learner',
+            description: 'Complete a professional course or certification',
+            category: AchievementCategories.LEARNING,
+            icon: '📖',
+            criteriaType: 'learning_completion',
+            criteriaValue: { courses: 1 },
+            rarity: AchievementRarity.COMMON
+        },
+        {
+            code: 'LEARNING_5',
+            name: 'Knowledge Seeker',
+            description: 'Complete 5 courses or certifications',
+            category: AchievementCategories.LEARNING,
+            icon: '🎓',
+            criteriaType: 'learning_completion',
+            criteriaValue: { courses: 5 },
+            rarity: AchievementRarity.RARE
+        },
+        {
+            code: 'LEARNING_SKILL',
+            name: 'Skill Builder',
+            description: 'Add 10+ skills to your profile',
+            category: AchievementCategories.LEARNING,
+            icon: '🛠️',
+            criteriaType: 'skill_count',
+            criteriaValue: { skills: 10 },
+            rarity: AchievementRarity.COMMON
+        },
+        {
+            code: 'LEARNING_EXPERT',
+            name: 'Subject Matter Expert',
+            description: 'Get 10+ endorsements on a skill',
+            category: AchievementCategories.LEARNING,
+            icon: '⭐',
+            criteriaType: 'skill_endorsements',
+            criteriaValue: { endorsements: 10 },
+            rarity: AchievementRarity.RARE
+        },
+        // Thought Leadership Achievements
+        {
+            code: 'THOUGHT_ARTICLE',
+            name: 'Thought Leader',
+            description: 'Publish an article on LinkedIn',
+            category: AchievementCategories.THOUGHT_LEADERSHIP,
+            icon: '📰',
+            criteriaType: 'article_count',
+            criteriaValue: { articles: 1 },
+            rarity: AchievementRarity.COMMON
+        },
+        {
+            code: 'THOUGHT_10',
+            name: 'Published Author',
+            description: 'Publish 10 articles on LinkedIn',
+            category: AchievementCategories.THOUGHT_LEADERSHIP,
+            icon: '📑',
+            criteriaType: 'article_count',
+            criteriaValue: { articles: 10 },
+            rarity: AchievementRarity.RARE
+        },
+        {
+            code: 'THOUGHT_MENTION',
+            name: 'Industry Voice',
+            description: 'Get mentioned in 5+ posts',
+            category: AchievementCategories.THOUGHT_LEADERSHIP,
+            icon: '🗣️',
+            criteriaType: 'mention_count',
+            criteriaValue: { mentions: 5 },
+            rarity: AchievementRarity.RARE
+        },
+        {
+            code: 'THOUGHT_INFLUENCE',
+            name: 'Influencer',
+            description: 'Reach 10,000+ total post views',
+            category: AchievementCategories.THOUGHT_LEADERSHIP,
+            icon: '🌟',
+            criteriaType: 'total_views',
+            criteriaValue: { views: 10000 },
+            rarity: AchievementRarity.EPIC
         }
     ];
 }
@@ -219,6 +387,46 @@ export function checkAchievementEligibility(achievement, metrics) {
             // Simplified: if user has been active today, consider them consistent
             // In production, this should track consecutive days
             return daysSinceActive <= 1; // Placeholder logic
+        
+        case 'content_count':
+            const contentCount = metrics.contentCount || metrics.postsCreated || 0;
+            return contentCount >= criteriaValue.count;
+        
+        case 'content_views':
+            const contentViews = metrics.contentViews || metrics.totalViews || 0;
+            return contentViews >= criteriaValue.views;
+        
+        case 'connection_count':
+            const connectionCount = metrics.connectionCount || metrics.connections || 0;
+            return connectionCount >= criteriaValue.count;
+        
+        case 'engagement_count':
+            const engagementCount = metrics.engagementCount || metrics.totalComments || 0;
+            return engagementCount >= criteriaValue.comments;
+        
+        case 'learning_completion':
+            const coursesCompleted = metrics.coursesCompleted || metrics.certifications || 0;
+            return coursesCompleted >= criteriaValue.courses;
+        
+        case 'skill_count':
+            const skillCount = metrics.skillCount || metrics.skills || 0;
+            return skillCount >= criteriaValue.skills;
+        
+        case 'skill_endorsements':
+            const endorsements = metrics.skillEndorsements || metrics.endorsements || 0;
+            return endorsements >= criteriaValue.endorsements;
+        
+        case 'article_count':
+            const articleCount = metrics.articleCount || metrics.articlesPublished || 0;
+            return articleCount >= criteriaValue.articles;
+        
+        case 'mention_count':
+            const mentionCount = metrics.mentionCount || metrics.mentions || 0;
+            return mentionCount >= criteriaValue.mentions;
+        
+        case 'total_views':
+            const totalViews = metrics.totalViews || metrics.allTimeViews || 0;
+            return totalViews >= criteriaValue.views;
             
         default:
             return false;
@@ -247,6 +455,46 @@ export function calculateAchievementProgress(achievement, metrics) {
         case 'consistency':
             // Placeholder for consistency progress
             return 0;
+        
+        case 'content_count':
+            const contentCount = metrics.contentCount || metrics.postsCreated || 0;
+            return Math.min(100, Math.round((contentCount / criteriaValue.count) * 100));
+        
+        case 'content_views':
+            const contentViews = metrics.contentViews || metrics.totalViews || 0;
+            return Math.min(100, Math.round((contentViews / criteriaValue.views) * 100));
+        
+        case 'connection_count':
+            const connectionCount = metrics.connectionCount || metrics.connections || 0;
+            return Math.min(100, Math.round((connectionCount / criteriaValue.count) * 100));
+        
+        case 'engagement_count':
+            const engagementCount = metrics.engagementCount || metrics.totalComments || 0;
+            return Math.min(100, Math.round((engagementCount / criteriaValue.comments) * 100));
+        
+        case 'learning_completion':
+            const coursesCompleted = metrics.coursesCompleted || metrics.certifications || 0;
+            return Math.min(100, Math.round((coursesCompleted / criteriaValue.courses) * 100));
+        
+        case 'skill_count':
+            const skillCount = metrics.skillCount || metrics.skills || 0;
+            return Math.min(100, Math.round((skillCount / criteriaValue.skills) * 100));
+        
+        case 'skill_endorsements':
+            const endorsements = metrics.skillEndorsements || metrics.endorsements || 0;
+            return Math.min(100, Math.round((endorsements / criteriaValue.endorsements) * 100));
+        
+        case 'article_count':
+            const articleCount = metrics.articleCount || metrics.articlesPublished || 0;
+            return Math.min(100, Math.round((articleCount / criteriaValue.articles) * 100));
+        
+        case 'mention_count':
+            const mentionCount = metrics.mentionCount || metrics.mentions || 0;
+            return Math.min(100, Math.round((mentionCount / criteriaValue.mentions) * 100));
+        
+        case 'total_views':
+            const totalViews = metrics.totalViews || metrics.allTimeViews || 0;
+            return Math.min(100, Math.round((totalViews / criteriaValue.views) * 100));
             
         default:
             return 0;
