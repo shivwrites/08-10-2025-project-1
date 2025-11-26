@@ -48233,11 +48233,27 @@ Generate the repurposed content:`;
                 { id: 2, skillId: 4, skillName: 'Cybersecurity', targetDate: '2024-08-15', status: 'planned', progress: 0 }
             ]);
             const [showBulkActions, setShowBulkActions] = useState(false);
+            const [isLoadingWatchlist, setIsLoadingWatchlist] = useState(false);
+            
+            // Watchlist-specific filtering and sorting
+            const [watchlistFilter, setWatchlistFilter] = useState({
+                category: 'all',
+                trend: 'all',
+                emergingStatus: 'all',
+                priority: 'all',
+                searchQuery: ''
+            });
+            const [watchlistSortBy, setWatchlistSortBy] = useState('dateAdded'); // dateAdded, demand, growth, salary, jobs, priority
+            const [watchlistSortOrder, setWatchlistSortOrder] = useState('desc'); // asc, desc
+            const [watchlistData, setWatchlistData] = useState({}); // Store watchlist metadata (added_at, priority, etc.)
+            const [watchlistHistory, setWatchlistHistory] = useState({}); // Store historical data for each skill {skillId: [{date, demand, growth, etc.}]}
+            const [skillChanges, setSkillChanges] = useState({}); // Store detected changes {skillId: {demandChange, growthChange, etc.}}
 
             // Check for light mode
             const isLightMode = !document.documentElement.classList.contains('dark');
 
-            const skills = [
+            // Initialize skills as state so we can update watchlist status
+            const initialSkills = [
                 {
                     id: 1,
                     name: 'AI/ML',
@@ -48491,6 +48507,287 @@ Generate the repurposed content:`;
                     }
                 }
             ];
+
+            const [skills, setSkills] = useState(initialSkills);
+
+            // Helper function to get Supabase client
+            const getSupabaseClient = () => {
+                if (typeof supabase === 'undefined') {
+                    console.warn('Supabase not available');
+                    return null;
+                }
+                const supabaseUrl = 'https://bialelscmftlquykreij.supabase.co';
+                const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJpYWxlbHNjbWZ0bHF1eWtyZWlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk4NzgxMTgsImV4cCI6MjA3NTQ1NDExOH0.wUywvxuTxDlgwVi6y8KaT9E64D4iVRKFFoqUx8wAalI';
+                return supabase.createClient(supabaseUrl, supabaseKey);
+            };
+
+            // Load watchlist from database on component mount
+            useEffect(() => {
+                const loadWatchlist = async () => {
+                    setIsLoadingWatchlist(true);
+                    try {
+                        const supabaseClient = getSupabaseClient();
+                        if (!supabaseClient) {
+                            console.warn('Supabase not available, using localStorage fallback');
+                            // Fallback to localStorage
+                            const savedWatchlist = localStorage.getItem('skill_watchlist');
+                            if (savedWatchlist) {
+                                const watchedSkillIds = JSON.parse(savedWatchlist);
+                                setSkills(prevSkills => 
+                                    prevSkills.map(skill => ({
+                                        ...skill,
+                                        isWatched: watchedSkillIds.includes(skill.id)
+                                    }))
+                                );
+                            }
+                            setIsLoadingWatchlist(false);
+                            return;
+                        }
+
+                        // Get current user
+                        const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
+                        if (userError || !user) {
+                            console.log('User not logged in, using localStorage fallback');
+                            const savedWatchlist = localStorage.getItem('skill_watchlist');
+                            if (savedWatchlist) {
+                                const watchedSkillIds = JSON.parse(savedWatchlist);
+                                setSkills(prevSkills => 
+                                    prevSkills.map(skill => ({
+                                        ...skill,
+                                        isWatched: watchedSkillIds.includes(skill.id)
+                                    }))
+                                );
+                            }
+                            setIsLoadingWatchlist(false);
+                            return;
+                        }
+
+                        // Load watchlist from database with metadata
+                        const { data: watchlistItems, error } = await supabaseClient
+                            .from('skill_watchlist')
+                            .select('skill_id, added_at, priority, notes, tags')
+                            .eq('user_id', user.id)
+                            .order('added_at', { ascending: false });
+
+                        if (error) {
+                            console.error('Error loading watchlist:', error);
+                            // Fallback to localStorage
+                            const savedWatchlist = localStorage.getItem('skill_watchlist');
+                            if (savedWatchlist) {
+                                const watchedSkillIds = JSON.parse(savedWatchlist);
+                                setSkills(prevSkills => 
+                                    prevSkills.map(skill => ({
+                                        ...skill,
+                                        isWatched: watchedSkillIds.includes(skill.id)
+                                    }))
+                                );
+                            }
+                        } else {
+                            // Update skills with watchlist status
+                            const watchedSkillIds = watchlistItems.map(item => item.skill_id);
+                            setSkills(prevSkills => 
+                                prevSkills.map(skill => ({
+                                    ...skill,
+                                    isWatched: watchedSkillIds.includes(skill.id)
+                                }))
+                            );
+                            
+                            // Store watchlist metadata
+                            const metadata = {};
+                            watchlistItems.forEach(item => {
+                                metadata[item.skill_id] = {
+                                    added_at: item.added_at,
+                                    priority: item.priority || 'medium',
+                                    notes: item.notes || '',
+                                    tags: item.tags || []
+                                };
+                            });
+                            setWatchlistData(metadata);
+                            
+                            // Load historical data for watched skills
+                            await loadWatchlistHistory(watchedSkillIds, user.id, supabaseClient);
+                            
+                            // Also save to localStorage as backup
+                            localStorage.setItem('skill_watchlist', JSON.stringify(watchedSkillIds));
+                        }
+                    } catch (error) {
+                        console.error('Error loading watchlist:', error);
+                    } finally {
+                        setIsLoadingWatchlist(false);
+                    }
+                };
+
+                loadWatchlist();
+                
+                // Set up periodic history updates (once per day)
+                const updateHistoryInterval = setInterval(async () => {
+                    const supabaseClient = getSupabaseClient();
+                    if (!supabaseClient) return;
+                    
+                    const { data: { user } } = await supabaseClient.auth.getUser();
+                    if (!user) return;
+                    
+                    // Record history for all watched skills
+                    const watchedSkills = skills.filter(s => s.isWatched);
+                    for (const skill of watchedSkills) {
+                        await recordWatchlistHistory(skill.id, skill);
+                    }
+                }, 24 * 60 * 60 * 1000); // Once per day
+                
+                return () => clearInterval(updateHistoryInterval);
+            }, []);
+
+            // Load historical data for watched skills
+            const loadWatchlistHistory = async (skillIds, userId, supabaseClient) => {
+                if (!skillIds || skillIds.length === 0) return;
+                
+                try {
+                    const { data: historyData, error } = await supabaseClient
+                        .from('skill_watchlist_history')
+                        .select('*')
+                        .eq('user_id', userId)
+                        .in('skill_id', skillIds)
+                        .order('recorded_at', { ascending: true });
+
+                    if (error) {
+                        console.error('Error loading watchlist history:', error);
+                        return;
+                    }
+
+                    // Group history by skill_id
+                    const historyBySkill = {};
+                    skillIds.forEach(skillId => {
+                        historyBySkill[skillId] = historyData
+                            .filter(h => h.skill_id === skillId)
+                            .map(h => ({
+                                date: new Date(h.recorded_at),
+                                demandScore: h.demand_score,
+                                growthRate: h.growth_rate,
+                                salaryImpact: h.salary_impact,
+                                jobCount: h.job_count,
+                                trend: h.trend,
+                                emergingStatus: h.emerging_status
+                            }));
+                    });
+
+                    setWatchlistHistory(historyBySkill);
+                    
+                    // Detect changes
+                    detectChanges(historyBySkill);
+                } catch (error) {
+                    console.error('Error loading watchlist history:', error);
+                }
+            };
+
+            // Record current metrics as history
+            const recordWatchlistHistory = async (skillId, skill) => {
+                const supabaseClient = getSupabaseClient();
+                if (!supabaseClient) return;
+
+                try {
+                    const { data: { user } } = await supabaseClient.auth.getUser();
+                    if (!user) return;
+
+                    // Check if we already have a record for today (to avoid duplicates)
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    const tomorrow = new Date(today);
+                    tomorrow.setDate(tomorrow.getDate() + 1);
+
+                    const { data: existing } = await supabaseClient
+                        .from('skill_watchlist_history')
+                        .select('id')
+                        .eq('user_id', user.id)
+                        .eq('skill_id', skillId)
+                        .gte('recorded_at', today.toISOString())
+                        .lt('recorded_at', tomorrow.toISOString())
+                        .limit(1);
+
+                    // Only record if we don't have a record for today
+                    if (!existing || existing.length === 0) {
+                        const { error } = await supabaseClient
+                            .from('skill_watchlist_history')
+                            .insert({
+                                user_id: user.id,
+                                skill_id: skillId,
+                                demand_score: skill.demandScore,
+                                growth_rate: skill.growthRate,
+                                salary_impact: skill.salaryImpact,
+                                job_count: skill.jobCount,
+                                trend: skill.trend,
+                                emerging_status: skill.emergingStatus
+                            });
+
+                        if (error) {
+                            console.error('Error recording history:', error);
+                        } else {
+                            // Update local history state
+                            setWatchlistHistory(prev => {
+                                const skillHistory = prev[skillId] || [];
+                                return {
+                                    ...prev,
+                                    [skillId]: [...skillHistory, {
+                                        date: new Date(),
+                                        demandScore: skill.demandScore,
+                                        growthRate: skill.growthRate,
+                                        salaryImpact: skill.salaryImpact,
+                                        jobCount: skill.jobCount,
+                                        trend: skill.trend,
+                                        emergingStatus: skill.emergingStatus
+                                    }]
+                                };
+                            });
+                            
+                            // Re-detect changes
+                            detectChanges({
+                                ...watchlistHistory,
+                                [skillId]: [...(watchlistHistory[skillId] || []), {
+                                    date: new Date(),
+                                    demandScore: skill.demandScore,
+                                    growthRate: skill.growthRate,
+                                    salaryImpact: skill.salaryImpact,
+                                    jobCount: skill.jobCount
+                                }]
+                            });
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error recording watchlist history:', error);
+                }
+            };
+
+            // Detect significant changes in metrics
+            const detectChanges = (history) => {
+                const changes = {};
+                
+                Object.keys(history).forEach(skillId => {
+                    const skillHistory = history[skillId];
+                    if (!skillHistory || skillHistory.length < 2) return;
+
+                    const latest = skillHistory[skillHistory.length - 1];
+                    const previous = skillHistory[skillHistory.length - 2];
+                    
+                    const demandChange = latest.demandScore - previous.demandScore;
+                    const growthChange = latest.growthRate - previous.growthRate;
+                    const jobChange = latest.jobCount - previous.jobCount;
+                    const jobChangePercent = previous.jobCount > 0 
+                        ? ((jobChange / previous.jobCount) * 100).toFixed(1) 
+                        : 0;
+
+                    // Only flag significant changes (threshold: 5 points for demand, 3% for growth, 10% for jobs)
+                    if (Math.abs(demandChange) >= 5 || Math.abs(growthChange) >= 3 || Math.abs(jobChangePercent) >= 10) {
+                        changes[skillId] = {
+                            demandChange,
+                            growthChange,
+                            jobChange,
+                            jobChangePercent: parseFloat(jobChangePercent),
+                            daysSinceLastChange: Math.floor((latest.date - previous.date) / (1000 * 60 * 60 * 24))
+                        };
+                    }
+                });
+
+                setSkillChanges(changes);
+            };
 
             const quadrants = [
                 { id: 'technical', name: 'Technical Skills', color: 'blue', skills: skills.filter(s => s.category === 'technical') },
@@ -49445,6 +49742,272 @@ Generate the repurposed content:`;
                 };
             };
 
+            // Data Visualization - Helper Functions
+            const renderTrendChart = (skill, width = 300, height = 150) => {
+                if (!skill.trendHistory || skill.trendHistory.length === 0) return null;
+                
+                const data = skill.trendHistory.slice(-30);
+                const min = Math.min(...data);
+                const max = Math.max(...data);
+                const range = max - min || 1;
+                const padding = 20;
+                const chartWidth = width - padding * 2;
+                const chartHeight = height - padding * 2;
+                
+                const points = data.map((value, index) => {
+                    const x = padding + (index / (data.length - 1)) * chartWidth;
+                    const y = padding + chartHeight - ((value - min) / range) * chartHeight;
+                    return { x, y, value };
+                });
+                
+                const pathData = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+                const areaPath = `${pathData} L ${points[points.length - 1].x} ${height - padding} L ${padding} ${height - padding} Z`;
+                
+                return (
+                    <svg width={width} height={height} className="trend-chart">
+                        <defs>
+                            <linearGradient id={`gradient-${skill.id}`} x1="0%" y1="0%" x2="0%" y2="100%">
+                                <stop offset="0%" stopColor={skill.trend === 'rising' ? '#10b981' : skill.trend === 'falling' ? '#ef4444' : '#6b7280'} stopOpacity="0.3" />
+                                <stop offset="100%" stopColor={skill.trend === 'rising' ? '#10b981' : skill.trend === 'falling' ? '#ef4444' : '#6b7280'} stopOpacity="0" />
+                            </linearGradient>
+                        </defs>
+                        <path
+                            d={areaPath}
+                            fill={`url(#gradient-${skill.id})`}
+                        />
+                        <path
+                            d={pathData}
+                            fill="none"
+                            stroke={skill.trend === 'rising' ? '#10b981' : skill.trend === 'falling' ? '#ef4444' : '#6b7280'}
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                        />
+                        {points.map((p, i) => (
+                            i % 5 === 0 && (
+                                <circle
+                                    key={i}
+                                    cx={p.x}
+                                    cy={p.y}
+                                    r="3"
+                                    fill={skill.trend === 'rising' ? '#10b981' : skill.trend === 'falling' ? '#ef4444' : '#6b7280'}
+                                />
+                            )
+                        ))}
+                        <text
+                            x={width / 2}
+                            y={height - 5}
+                            textAnchor="middle"
+                            className={`text-xs ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}
+                        >
+                            Last 30 days
+                        </text>
+                    </svg>
+                );
+            };
+
+            const renderCategoryPieChart = (skillsList) => {
+                const categoryCounts = {};
+                skillsList.forEach(skill => {
+                    categoryCounts[skill.category] = (categoryCounts[skill.category] || 0) + 1;
+                });
+                
+                const categories = Object.entries(categoryCounts);
+                const total = categories.reduce((sum, [, count]) => sum + count, 0);
+                const colors = {
+                    technical: '#3b82f6',
+                    soft: '#10b981',
+                    tools: '#f59e0b',
+                    industry: '#8b5cf6'
+                };
+                
+                let currentAngle = -90;
+                const segments = categories.map(([category, count]) => {
+                    const percentage = (count / total) * 100;
+                    const angle = (count / total) * 360;
+                    const startAngle = currentAngle;
+                    currentAngle += angle;
+                    
+                    const x1 = 100 + 80 * Math.cos((startAngle * Math.PI) / 180);
+                    const y1 = 100 + 80 * Math.sin((startAngle * Math.PI) / 180);
+                    const x2 = 100 + 80 * Math.cos((currentAngle * Math.PI) / 180);
+                    const y2 = 100 + 80 * Math.sin((currentAngle * Math.PI) / 180);
+                    const largeArc = angle > 180 ? 1 : 0;
+                    
+                    return {
+                        category,
+                        count,
+                        percentage,
+                        path: `M 100 100 L ${x1} ${y1} A 80 80 0 ${largeArc} 1 ${x2} ${y2} Z`,
+                        color: colors[category] || '#6b7280',
+                        labelAngle: startAngle + angle / 2
+                    };
+                });
+                
+                return (
+                    <div className="relative">
+                        <svg width="200" height="200" className="category-pie-chart">
+                            {segments.map((segment, idx) => (
+                                <g key={idx}>
+                                    <path
+                                        d={segment.path}
+                                        fill={segment.color}
+                                        opacity="0.8"
+                                        className="hover:opacity-100 transition-opacity cursor-pointer"
+                                    />
+                                    <text
+                                        x={100 + 100 * Math.cos((segment.labelAngle * Math.PI) / 180)}
+                                        y={100 + 100 * Math.sin((segment.labelAngle * Math.PI) / 180)}
+                                        textAnchor="middle"
+                                        className="text-xs fill-white font-medium"
+                                    >
+                                        {segment.percentage.toFixed(0)}%
+                                    </text>
+                                </g>
+                            ))}
+                        </svg>
+                        <div className="absolute bottom-0 left-0 right-0 flex flex-wrap gap-2 justify-center mt-2">
+                            {segments.map((segment, idx) => (
+                                <div key={idx} className="flex items-center gap-1">
+                                    <div className={`w-3 h-3 rounded-full`} style={{ backgroundColor: segment.color }}></div>
+                                    <span className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>
+                                        {segment.category} ({segment.count})
+                                    </span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                );
+            };
+
+            const renderScatterPlot = (skillsList, width = 400, height = 300) => {
+                const padding = 40;
+                const plotWidth = width - padding * 2;
+                const plotHeight = height - padding * 2;
+                
+                const maxDemand = Math.max(...skillsList.map(s => s.demandScore), 100);
+                const maxGrowth = Math.max(...skillsList.map(s => Math.abs(s.growthRate)), 100);
+                const minGrowth = Math.min(...skillsList.map(s => s.growthRate), -100);
+                const growthRange = maxGrowth - minGrowth || 200;
+                
+                const points = skillsList.map(skill => ({
+                    x: padding + (skill.demandScore / maxDemand) * plotWidth,
+                    y: padding + plotHeight - ((skill.growthRate - minGrowth) / growthRange) * plotHeight,
+                    skill,
+                    color: skill.emergingStatus === 'hot' ? '#ef4444' :
+                           skill.emergingStatus === 'emerging' ? '#f59e0b' :
+                           skill.emergingStatus === 'established' ? '#3b82f6' : '#6b7280'
+                }));
+                
+                return (
+                    <svg width={width} height={height} className="scatter-plot">
+                        {/* Grid lines */}
+                        {[0, 25, 50, 75, 100].map(demand => {
+                            const x = padding + (demand / maxDemand) * plotWidth;
+                            return (
+                                <line
+                                    key={`v-${demand}`}
+                                    x1={x}
+                                    y1={padding}
+                                    x2={x}
+                                    y2={height - padding}
+                                    stroke={isLightMode ? '#e5e7eb' : '#374151'}
+                                    strokeWidth="1"
+                                    strokeDasharray="2,2"
+                                    opacity="0.5"
+                                />
+                            );
+                        })}
+                        {[-50, -25, 0, 25, 50].map(growth => {
+                            const y = padding + plotHeight - ((growth - minGrowth) / growthRange) * plotHeight;
+                            return (
+                                <line
+                                    key={`h-${growth}`}
+                                    x1={padding}
+                                    y1={y}
+                                    x2={width - padding}
+                                    y2={y}
+                                    stroke={isLightMode ? '#e5e7eb' : '#374151'}
+                                    strokeWidth="1"
+                                    strokeDasharray="2,2"
+                                    opacity="0.5"
+                                />
+                            );
+                        })}
+                        
+                        {/* Axes */}
+                        <line
+                            x1={padding}
+                            y1={height - padding}
+                            x2={width - padding}
+                            y2={height - padding}
+                            stroke={isLightMode ? '#374151' : '#6b7280'}
+                            strokeWidth="2"
+                        />
+                        <line
+                            x1={padding}
+                            y1={padding}
+                            x2={padding}
+                            y2={height - padding}
+                            stroke={isLightMode ? '#374151' : '#6b7280'}
+                            strokeWidth="2"
+                        />
+                        
+                        {/* Zero line for growth */}
+                        <line
+                            x1={padding}
+                            y1={padding + plotHeight - ((0 - minGrowth) / growthRange) * plotHeight}
+                            x2={width - padding}
+                            y2={padding + plotHeight - ((0 - minGrowth) / growthRange) * plotHeight}
+                            stroke={isLightMode ? '#9ca3af' : '#6b7280'}
+                            strokeWidth="1"
+                            strokeDasharray="4,4"
+                        />
+                        
+                        {/* Points */}
+                        {points.map((point, idx) => (
+                            <g key={idx}>
+                                <circle
+                                    cx={point.x}
+                                    cy={point.y}
+                                    r="6"
+                                    fill={point.color}
+                                    className="cursor-pointer hover:r-8 transition-all"
+                                    onClick={() => {
+                                        const element = document.querySelector(`[data-skill-id="${point.skill.id}"]`);
+                                        if (element) {
+                                            element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                            element.classList.add('ring-2', 'ring-indigo-500');
+                                            setTimeout(() => element.classList.remove('ring-2', 'ring-indigo-500'), 2000);
+                                        }
+                                    }}
+                                />
+                                <title>{point.skill.name}: Demand {point.skill.demandScore}, Growth {point.skill.growthRate}%</title>
+                            </g>
+                        ))}
+                        
+                        {/* Labels */}
+                        <text
+                            x={width / 2}
+                            y={height - 10}
+                            textAnchor="middle"
+                            className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}
+                        >
+                            Demand Score
+                        </text>
+                        <text
+                            x={15}
+                            y={height / 2}
+                            textAnchor="middle"
+                            className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}
+                            transform={`rotate(-90, 15, ${height / 2})`}
+                        >
+                            Growth Rate (%)
+                        </text>
+                    </svg>
+                );
+            };
+
             const handleMarketScan = () => {
                 setIsScanning(true);
                 setTimeout(() => {
@@ -49458,9 +50021,293 @@ Generate the repurposed content:`;
                 setShowSkillDetail(true);
             };
 
-            const handleWatchlistToggle = (skillId) => {
-                // Toggle watchlist functionality
-                console.log('Toggle watchlist for skill:', skillId);
+            // Get filtered and sorted watchlist
+            const getFilteredAndSortedWatchlist = () => {
+                let filtered = skills.filter(skill => skill.isWatched);
+
+                // Apply search filter
+                if (watchlistFilter.searchQuery.trim()) {
+                    filtered = filtered.filter(skill =>
+                        skill.name.toLowerCase().includes(watchlistFilter.searchQuery.toLowerCase()) ||
+                        skill.relatedSkills.some(rs => rs.toLowerCase().includes(watchlistFilter.searchQuery.toLowerCase()))
+                    );
+                }
+
+                // Apply category filter
+                if (watchlistFilter.category !== 'all') {
+                    filtered = filtered.filter(skill => skill.category === watchlistFilter.category);
+                }
+
+                // Apply trend filter
+                if (watchlistFilter.trend !== 'all') {
+                    filtered = filtered.filter(skill => skill.trend === watchlistFilter.trend);
+                }
+
+                // Apply emerging status filter
+                if (watchlistFilter.emergingStatus !== 'all') {
+                    filtered = filtered.filter(skill => skill.emergingStatus === watchlistFilter.emergingStatus);
+                }
+
+                // Apply priority filter
+                if (watchlistFilter.priority !== 'all') {
+                    filtered = filtered.filter(skill => {
+                        const metadata = watchlistData[skill.id];
+                        return metadata && metadata.priority === watchlistFilter.priority;
+                    });
+                }
+
+                // Apply sorting
+                filtered.sort((a, b) => {
+                    let aValue, bValue;
+                    
+                    switch (watchlistSortBy) {
+                        case 'dateAdded':
+                            const aDate = watchlistData[a.id]?.added_at ? new Date(watchlistData[a.id].added_at) : new Date(0);
+                            const bDate = watchlistData[b.id]?.added_at ? new Date(watchlistData[b.id].added_at) : new Date(0);
+                            aValue = aDate.getTime();
+                            bValue = bDate.getTime();
+                            break;
+                        case 'demand':
+                            aValue = a.demandScore;
+                            bValue = b.demandScore;
+                            break;
+                        case 'growth':
+                            aValue = a.growthRate;
+                            bValue = b.growthRate;
+                            break;
+                        case 'salary':
+                            aValue = a.salaryImpact;
+                            bValue = b.salaryImpact;
+                            break;
+                        case 'jobs':
+                            aValue = a.jobCount;
+                            bValue = b.jobCount;
+                            break;
+                        case 'priority':
+                            const priorityOrder = { high: 3, medium: 2, low: 1 };
+                            const aPriority = watchlistData[a.id]?.priority || 'medium';
+                            const bPriority = watchlistData[b.id]?.priority || 'medium';
+                            aValue = priorityOrder[aPriority] || 2;
+                            bValue = priorityOrder[bPriority] || 2;
+                            break;
+                        default:
+                            aValue = a.demandScore;
+                            bValue = b.demandScore;
+                    }
+
+                    if (watchlistSortOrder === 'asc') {
+                        return aValue - bValue;
+                    } else {
+                        return bValue - aValue;
+                    }
+                });
+
+                return filtered;
+            };
+
+            const handleWatchlistToggle = async (skillId) => {
+                try {
+                    const skill = skills.find(s => s.id === skillId);
+                    if (!skill) {
+                        console.error('Skill not found:', skillId);
+                        return;
+                    }
+
+                    const isCurrentlyWatched = skill.isWatched;
+                    const supabaseClient = getSupabaseClient();
+
+                    // Optimistically update UI
+                    setSkills(prevSkills => 
+                        prevSkills.map(s => 
+                            s.id === skillId ? { ...s, isWatched: !s.isWatched } : s
+                        )
+                    );
+
+                    // If Supabase is not available, use localStorage
+                    if (!supabaseClient) {
+                        const savedWatchlist = JSON.parse(localStorage.getItem('skill_watchlist') || '[]');
+                        if (isCurrentlyWatched) {
+                            const updated = savedWatchlist.filter(id => id !== skillId);
+                            localStorage.setItem('skill_watchlist', JSON.stringify(updated));
+                        } else {
+                            savedWatchlist.push(skillId);
+                            localStorage.setItem('skill_watchlist', JSON.stringify(savedWatchlist));
+                        }
+                        return;
+                    }
+
+                    // Get current user
+                    const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
+                    if (userError || !user) {
+                        // User not logged in, use localStorage
+                        const savedWatchlist = JSON.parse(localStorage.getItem('skill_watchlist') || '[]');
+                        if (isCurrentlyWatched) {
+                            const updated = savedWatchlist.filter(id => id !== skillId);
+                            localStorage.setItem('skill_watchlist', JSON.stringify(updated));
+                        } else {
+                            savedWatchlist.push(skillId);
+                            localStorage.setItem('skill_watchlist', JSON.stringify(savedWatchlist));
+                        }
+                        return;
+                    }
+
+                    if (isCurrentlyWatched) {
+                        // Remove from watchlist
+                        const { error } = await supabaseClient
+                            .from('skill_watchlist')
+                            .delete()
+                            .eq('user_id', user.id)
+                            .eq('skill_id', skillId);
+
+                        if (error) {
+                            console.error('Error removing from watchlist:', error);
+                            // Revert UI change
+                            setSkills(prevSkills => 
+                                prevSkills.map(s => 
+                                    s.id === skillId ? { ...s, isWatched: true } : s
+                                )
+                            );
+                        } else {
+                            // Update watchlistData
+                            setWatchlistData(prev => {
+                                const updated = { ...prev };
+                                delete updated[skillId];
+                                return updated;
+                            });
+                            // Update localStorage as backup
+                            const savedWatchlist = JSON.parse(localStorage.getItem('skill_watchlist') || '[]');
+                            const updated = savedWatchlist.filter(id => id !== skillId);
+                            localStorage.setItem('skill_watchlist', JSON.stringify(updated));
+                        }
+                    } else {
+                        // Add to watchlist
+                        const { data: insertedData, error } = await supabaseClient
+                            .from('skill_watchlist')
+                            .insert({
+                                user_id: user.id,
+                                skill_id: skillId,
+                                skill_name: skill.name,
+                                priority: 'medium'
+                            })
+                            .select()
+                            .single();
+
+                        if (error) {
+                            console.error('Error adding to watchlist:', error);
+                            // Revert UI change
+                            setSkills(prevSkills => 
+                                prevSkills.map(s => 
+                                    s.id === skillId ? { ...s, isWatched: false } : s
+                                )
+                            );
+                        } else {
+                            // Update watchlistData with new entry
+                            if (insertedData) {
+                                setWatchlistData(prev => ({
+                                    ...prev,
+                                    [skillId]: {
+                                        added_at: insertedData.added_at,
+                                        priority: insertedData.priority || 'medium',
+                                        notes: insertedData.notes || '',
+                                        tags: insertedData.tags || []
+                                    }
+                                }));
+                            }
+                            
+                            // Record initial history entry
+                            await recordWatchlistHistory(skillId, skill);
+                            
+                            // Update localStorage as backup
+                            const savedWatchlist = JSON.parse(localStorage.getItem('skill_watchlist') || '[]');
+                            if (!savedWatchlist.includes(skillId)) {
+                                savedWatchlist.push(skillId);
+                                localStorage.setItem('skill_watchlist', JSON.stringify(savedWatchlist));
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error toggling watchlist:', error);
+                    // Revert UI change on error
+                    const skill = skills.find(s => s.id === skillId);
+                    if (skill) {
+                        setSkills(prevSkills => 
+                            prevSkills.map(s => 
+                                s.id === skillId ? { ...s, isWatched: skill.isWatched } : s
+                            )
+                        );
+                    }
+                }
+            };
+
+            // Render mini trend chart for a skill
+            const renderMiniTrendChart = (skillId, metric = 'demandScore', width = 120, height = 40) => {
+                const history = watchlistHistory[skillId] || [];
+                if (history.length < 2) {
+                    return (
+                        <div className={`text-xs ${isLightMode ? 'text-gray-400' : 'text-gray-500'} text-center py-2`}>
+                            No history yet
+                        </div>
+                    );
+                }
+
+                const data = history.map(h => h[metric]);
+                const min = Math.min(...data);
+                const max = Math.max(...data);
+                const range = max - min || 1;
+                const points = data.map((value, index) => {
+                    const x = (index / (data.length - 1)) * width;
+                    const y = height - ((value - min) / range) * height;
+                    return { x, y, value };
+                });
+
+                const pathData = points.map((point, index) => 
+                    `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`
+                ).join(' ');
+
+                const latestChange = points.length >= 2 
+                    ? points[points.length - 1].value - points[points.length - 2].value 
+                    : 0;
+                const isPositive = latestChange > 0;
+                const color = isPositive ? '#10b981' : latestChange < 0 ? '#ef4444' : '#6b7280';
+
+                return (
+                    <div className="relative">
+                        <svg width={width} height={height} className="overflow-visible">
+                            <defs>
+                                <linearGradient id={`gradient-${skillId}-${metric}`} x1="0%" y1="0%" x2="0%" y2="100%">
+                                    <stop offset="0%" stopColor={color} stopOpacity="0.3" />
+                                    <stop offset="100%" stopColor={color} stopOpacity="0" />
+                                </linearGradient>
+                            </defs>
+                            <path
+                                d={`${pathData} L ${width} ${height} L 0 ${height} Z`}
+                                fill={`url(#gradient-${skillId}-${metric})`}
+                            />
+                            <path
+                                d={pathData}
+                                fill="none"
+                                stroke={color}
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                            />
+                            {points.map((point, index) => (
+                                index === points.length - 1 && (
+                                    <circle
+                                        key={index}
+                                        cx={point.x}
+                                        cy={point.y}
+                                        r="3"
+                                        fill={color}
+                                    />
+                                )
+                            ))}
+                        </svg>
+                        <div className={`text-xs mt-1 text-center ${isPositive ? 'text-green-400' : latestChange < 0 ? 'text-red-400' : 'text-gray-400'}`}>
+                            {latestChange > 0 ? '+' : ''}{latestChange.toFixed(1)}
+                        </div>
+                    </div>
+                );
             };
 
             // Advanced filtering and sorting logic
@@ -50047,6 +50894,52 @@ Generate the repurposed content:`;
                                         </div>
                                     )}
 
+                                    {/* Data Visualization Section */}
+                                    <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6 mb-6`}>
+                                        <h3 className={`text-xl font-bold mb-6 ${isLightMode ? 'text-gray-900' : 'text-gray-50'} flex items-center gap-2`}>
+                                            <span>📊</span>
+                                            Data Visualizations
+                                        </h3>
+                                        
+                                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                            {/* Category Distribution Pie Chart */}
+                                            <div className={`${isLightMode ? 'bg-gray-50' : 'bg-gray-800/50'} rounded-lg p-4`}>
+                                                <h4 className={`font-semibold mb-4 ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                    Category Distribution
+                                                </h4>
+                                                {renderCategoryPieChart(getFilteredAndSortedSkills())}
+                                            </div>
+
+                                            {/* Growth vs Demand Scatter Plot */}
+                                            <div className={`${isLightMode ? 'bg-gray-50' : 'bg-gray-800/50'} rounded-lg p-4`}>
+                                                <h4 className={`font-semibold mb-4 ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                    Growth vs Demand Analysis
+                                                </h4>
+                                                <div className="flex justify-center">
+                                                    {renderScatterPlot(getFilteredAndSortedSkills(), 400, 300)}
+                                                </div>
+                                                <div className="flex flex-wrap gap-3 justify-center mt-4 text-xs">
+                                                    <div className="flex items-center gap-1">
+                                                        <div className="w-3 h-3 rounded-full bg-red-500"></div>
+                                                        <span className={isLightMode ? 'text-gray-600' : 'text-gray-400'}>Hot</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-1">
+                                                        <div className="w-3 h-3 rounded-full bg-orange-500"></div>
+                                                        <span className={isLightMode ? 'text-gray-600' : 'text-gray-400'}>Emerging</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-1">
+                                                        <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+                                                        <span className={isLightMode ? 'text-gray-600' : 'text-gray-400'}>Established</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-1">
+                                                        <div className="w-3 h-3 rounded-full bg-gray-500"></div>
+                                                        <span className={isLightMode ? 'text-gray-600' : 'text-gray-400'}>Declining</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
                                     {/* Results Count & Actions */}
                                     <div className="flex items-center justify-between mb-4">
                                         <div className={`text-sm ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>
@@ -50323,6 +51216,16 @@ Generate the repurposed content:`;
                                                                             <span className="text-sm">{resource}</span>
                                                                         </a>
                                                                     ))}
+                                                                </div>
+                                                            </div>
+                                                        )}
+
+                                                        {/* Historical Trend Chart */}
+                                                        {skill.trendHistory && skill.trendHistory.length > 0 && (
+                                                            <div>
+                                                                <h4 className={`font-semibold mb-3 ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>📈 Historical Trend (30 Days)</h4>
+                                                                <div className={`${isLightMode ? 'bg-gray-50' : 'bg-gray-800/50'} rounded-lg p-4`}>
+                                                                    {renderTrendChart(skill, 300, 150)}
                                                                 </div>
                                                             </div>
                                                         )}
@@ -51137,9 +52040,159 @@ Generate the repurposed content:`;
                             {/* Main Content */}
                             <div className="lg:col-span-2 space-y-6">
                                 <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-8`}>
-                                    <h2 className={`text-2xl font-bold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-6`}>My Skill Watchlist</h2>
+                                    <div className="flex items-center justify-between mb-6">
+                                        <h2 className={`text-2xl font-bold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>My Skill Watchlist</h2>
+                                        <div className="flex items-center gap-3">
+                                            <button
+                                                onClick={async () => {
+                                                    const supabaseClient = getSupabaseClient();
+                                                    if (!supabaseClient) return;
+                                                    
+                                                    const { data: { user } } = await supabaseClient.auth.getUser();
+                                                    if (!user) return;
+                                                    
+                                                    const watchedSkills = skills.filter(s => s.isWatched);
+                                                    for (const skill of watchedSkills) {
+                                                        await recordWatchlistHistory(skill.id, skill);
+                                                    }
+                                                    
+                                                    // Reload history
+                                                    const skillIds = watchedSkills.map(s => s.id);
+                                                    await loadWatchlistHistory(skillIds, user.id, supabaseClient);
+                                                }}
+                                                className={`px-3 py-2 text-sm rounded-lg font-medium transition-colors ${
+                                                    isLightMode 
+                                                        ? 'bg-blue-100 text-blue-700 hover:bg-blue-200' 
+                                                        : 'bg-blue-600 text-white hover:bg-blue-700'
+                                                }`}
+                                                title="Update history for all watched skills"
+                                            >
+                                                🔄 Update History
+                                            </button>
+                                            <span className={`text-sm ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                {getFilteredAndSortedWatchlist().length} of {skills.filter(s => s.isWatched).length} skills
+                                            </span>
+                                        </div>
+                                    </div>
                                     
-                                    {skills.filter(skill => skill.isWatched).length === 0 ? (
+                                    {/* Filtering and Sorting Controls */}
+                                    {skills.filter(skill => skill.isWatched).length > 0 && (
+                                        <div className={`${isLightMode ? 'bg-white/30' : 'bg-gray-800/50'} rounded-lg p-4 mb-6 space-y-4`}>
+                                            {/* Search */}
+                                            <div>
+                                                <input
+                                                    type="text"
+                                                    placeholder="Search watchlist..."
+                                                    value={watchlistFilter.searchQuery}
+                                                    onChange={(e) => setWatchlistFilter(prev => ({ ...prev, searchQuery: e.target.value }))}
+                                                    className={`w-full px-4 py-2 rounded-lg border ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                                                />
+                                            </div>
+                                            
+                                            {/* Filters Row */}
+                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                                {/* Category Filter */}
+                                                <div>
+                                                    <label className={`block text-xs font-medium mb-1 ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>Category</label>
+                                                    <select
+                                                        value={watchlistFilter.category}
+                                                        onChange={(e) => setWatchlistFilter(prev => ({ ...prev, category: e.target.value }))}
+                                                        className={`w-full px-3 py-2 text-sm rounded-lg border ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                                                    >
+                                                        <option value="all">All Categories</option>
+                                                        <option value="technical">Technical</option>
+                                                        <option value="soft">Soft Skills</option>
+                                                        <option value="tools">Tools</option>
+                                                        <option value="industry">Industry</option>
+                                                    </select>
+                                                </div>
+                                                
+                                                {/* Trend Filter */}
+                                                <div>
+                                                    <label className={`block text-xs font-medium mb-1 ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>Trend</label>
+                                                    <select
+                                                        value={watchlistFilter.trend}
+                                                        onChange={(e) => setWatchlistFilter(prev => ({ ...prev, trend: e.target.value }))}
+                                                        className={`w-full px-3 py-2 text-sm rounded-lg border ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                                                    >
+                                                        <option value="all">All Trends</option>
+                                                        <option value="rising">Rising</option>
+                                                        <option value="falling">Falling</option>
+                                                        <option value="stable">Stable</option>
+                                                    </select>
+                                                </div>
+                                                
+                                                {/* Status Filter */}
+                                                <div>
+                                                    <label className={`block text-xs font-medium mb-1 ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>Status</label>
+                                                    <select
+                                                        value={watchlistFilter.emergingStatus}
+                                                        onChange={(e) => setWatchlistFilter(prev => ({ ...prev, emergingStatus: e.target.value }))}
+                                                        className={`w-full px-3 py-2 text-sm rounded-lg border ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                                                    >
+                                                        <option value="all">All Status</option>
+                                                        <option value="hot">Hot</option>
+                                                        <option value="emerging">Emerging</option>
+                                                        <option value="established">Established</option>
+                                                        <option value="declining">Declining</option>
+                                                    </select>
+                                                </div>
+                                                
+                                                {/* Priority Filter */}
+                                                <div>
+                                                    <label className={`block text-xs font-medium mb-1 ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>Priority</label>
+                                                    <select
+                                                        value={watchlistFilter.priority}
+                                                        onChange={(e) => setWatchlistFilter(prev => ({ ...prev, priority: e.target.value }))}
+                                                        className={`w-full px-3 py-2 text-sm rounded-lg border ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                                                    >
+                                                        <option value="all">All Priorities</option>
+                                                        <option value="high">High</option>
+                                                        <option value="medium">Medium</option>
+                                                        <option value="low">Low</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            
+                                            {/* Sort Controls */}
+                                            <div className="flex items-center gap-3">
+                                                <label className={`text-sm font-medium ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>Sort by:</label>
+                                                <select
+                                                    value={watchlistSortBy}
+                                                    onChange={(e) => setWatchlistSortBy(e.target.value)}
+                                                    className={`px-3 py-2 text-sm rounded-lg border ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                                                >
+                                                    <option value="dateAdded">Date Added</option>
+                                                    <option value="demand">Demand Score</option>
+                                                    <option value="growth">Growth Rate</option>
+                                                    <option value="salary">Salary Impact</option>
+                                                    <option value="jobs">Job Openings</option>
+                                                    <option value="priority">Priority</option>
+                                                </select>
+                                                <button
+                                                    onClick={() => setWatchlistSortOrder(prev => prev === 'asc' ? 'desc' : 'asc')}
+                                                    className={`px-3 py-2 rounded-lg border ${isLightMode ? 'bg-white border-gray-300 text-gray-900 hover:bg-gray-50' : 'bg-gray-700 border-gray-600 text-gray-50 hover:bg-gray-600'} focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-colors`}
+                                                    title={watchlistSortOrder === 'asc' ? 'Sort Descending' : 'Sort Ascending'}
+                                                >
+                                                    {watchlistSortOrder === 'asc' ? '↑' : '↓'}
+                                                </button>
+                                                {(watchlistFilter.category !== 'all' || watchlistFilter.trend !== 'all' || watchlistFilter.emergingStatus !== 'all' || watchlistFilter.priority !== 'all' || watchlistFilter.searchQuery) && (
+                                                    <button
+                                                        onClick={() => setWatchlistFilter({ category: 'all', trend: 'all', emergingStatus: 'all', priority: 'all', searchQuery: '' })}
+                                                        className={`px-3 py-2 text-sm rounded-lg ${isLightMode ? 'bg-gray-200 text-gray-700 hover:bg-gray-300' : 'bg-gray-600 text-gray-200 hover:bg-gray-500'} transition-colors`}
+                                                    >
+                                                        Clear Filters
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+                                    
+                                    {isLoadingWatchlist ? (
+                                        <div className="text-center py-20">
+                                            <div className={`${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>Loading watchlist...</div>
+                                        </div>
+                                    ) : getFilteredAndSortedWatchlist().length === 0 ? (
                                         <div className="text-center py-20">
                                             <div className={`w-16 h-16 ${isLightMode ? 'bg-gray-200' : 'bg-gray-700'} rounded-full flex items-center justify-center mx-auto mb-4`}>
                                                 <div className={`w-8 h-8 ${isLightMode ? 'text-gray-500' : 'text-gray-400'} text-2xl`}>⭐</div>
@@ -51152,7 +52205,10 @@ Generate the repurposed content:`;
                                         </div>
                                     ) : (
                                         <div className="space-y-4">
-                                            {skills.filter(skill => skill.isWatched).map((skill) => (
+                                            {getFilteredAndSortedWatchlist().map((skill) => {
+                                                const metadata = watchlistData[skill.id] || {};
+                                                const addedDate = metadata.added_at ? new Date(metadata.added_at) : null;
+                                                return (
                                                 <div key={skill.id} className={`${isLightMode ? 'bg-white/30 backdrop-blur-xl border-yellow-500/30' : 'bg-gray-800 border-yellow-500/30'} border rounded-lg p-6`}>
                                                     <div className="flex items-start justify-between mb-4">
                                                         <div className="flex items-start gap-4">
@@ -51168,15 +52224,50 @@ Generate the repurposed content:`;
                                                                     <span className={`px-2 py-1 rounded-full text-xs font-medium ${getEmergingColor(skill.emergingStatus)}`}>
                                                                         {skill.emergingStatus}
                                                                     </span>
+                                                                    {metadata.priority && (
+                                                                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                                                            metadata.priority === 'high' ? 'text-red-400 bg-red-500/20' :
+                                                                            metadata.priority === 'medium' ? 'text-yellow-400 bg-yellow-500/20' :
+                                                                            'text-blue-400 bg-blue-500/20'
+                                                                        }`}>
+                                                                            {metadata.priority}
+                                                                        </span>
+                                                                    )}
                                                                 </div>
+                                                                {addedDate && (
+                                                                    <div className={`text-xs ${isLightMode ? 'text-gray-500' : 'text-gray-400'} mb-2`}>
+                                                                        Added {addedDate.toLocaleDateString()}
+                                                                    </div>
+                                                                )}
                                                                 <div className={`flex items-center gap-4 text-sm ${isLightMode ? 'text-gray-500' : 'text-gray-400'} mb-3`}>
                                                                     <span>Demand: {skill.demandScore}</span>
+                                                                    {skillChanges[skill.id]?.demandChange && (
+                                                                        <span className={`text-xs font-medium ${
+                                                                            skillChanges[skill.id].demandChange > 0 ? 'text-green-400' : 'text-red-400'
+                                                                        }`}>
+                                                                            ({skillChanges[skill.id].demandChange > 0 ? '+' : ''}{skillChanges[skill.id].demandChange})
+                                                                        </span>
+                                                                    )}
                                                                     <span>•</span>
                                                                     <span className={`flex items-center gap-1 ${getGrowthColor(skill.growthRate)}`}>
                                                                         {getTrendIcon(skill.trend)} {skill.growthRate}%
                                                                     </span>
+                                                                    {skillChanges[skill.id]?.growthChange && (
+                                                                        <span className={`text-xs font-medium ${
+                                                                            skillChanges[skill.id].growthChange > 0 ? 'text-green-400' : 'text-red-400'
+                                                                        }`}>
+                                                                            ({skillChanges[skill.id].growthChange > 0 ? '+' : ''}{skillChanges[skill.id].growthChange.toFixed(1)}%)
+                                                                        </span>
+                                                                    )}
                                                                     <span>•</span>
                                                                     <span>{skill.jobCount.toLocaleString()} jobs</span>
+                                                                    {skillChanges[skill.id]?.jobChangePercent && (
+                                                                        <span className={`text-xs font-medium ${
+                                                                            skillChanges[skill.id].jobChangePercent > 0 ? 'text-green-400' : 'text-red-400'
+                                                                        }`}>
+                                                                            ({skillChanges[skill.id].jobChangePercent > 0 ? '+' : ''}{skillChanges[skill.id].jobChangePercent}%)
+                                                                        </span>
+                                                                    )}
                                                                 </div>
                                                             </div>
                                                         </div>
@@ -51188,28 +52279,143 @@ Generate the repurposed content:`;
                                                         </button>
                                                     </div>
                                                     
-                                                    <div className="grid grid-cols-4 gap-4">
+                                                    {/* Change Alerts */}
+                                                    {skillChanges[skill.id] && (
+                                                        <div className={`mb-4 p-3 rounded-lg ${
+                                                            skillChanges[skill.id].demandChange > 0 || skillChanges[skill.id].growthChange > 0
+                                                                ? 'bg-green-500/20 border border-green-500/50'
+                                                                : 'bg-red-500/20 border border-red-500/50'
+                                                        }`}>
+                                                            <div className="flex items-center gap-2 mb-1">
+                                                                <span className="text-lg">
+                                                                    {skillChanges[skill.id].demandChange > 0 || skillChanges[skill.id].growthChange > 0 ? '📈' : '📉'}
+                                                                </span>
+                                                                <span className={`text-sm font-semibold ${
+                                                                    skillChanges[skill.id].demandChange > 0 || skillChanges[skill.id].growthChange > 0
+                                                                        ? 'text-green-400'
+                                                                        : 'text-red-400'
+                                                                }`}>
+                                                                    Significant Change Detected
+                                                                </span>
+                                                            </div>
+                                                            <div className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-300'}`}>
+                                                                {skillChanges[skill.id].daysSinceLastChange > 0 && (
+                                                                    <span>Last updated {skillChanges[skill.id].daysSinceLastChange} day{skillChanges[skill.id].daysSinceLastChange !== 1 ? 's' : ''} ago</span>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                    
+                                                    {/* Trend Charts */}
+                                                    <div className="grid grid-cols-4 gap-4 mb-4">
                                                         <div className="text-center">
-                                                            <div className="text-2xl font-bold text-indigo-400">{skill.demandScore}</div>
-                                                            <div className="text-xs text-gray-400">Demand Score</div>
+                                                            <div className="text-2xl font-bold text-indigo-400 mb-2">{skill.demandScore}</div>
+                                                            <div className="text-xs text-gray-400 mb-2">Demand Score</div>
+                                                            {renderMiniTrendChart(skill.id, 'demandScore')}
                                                         </div>
                                                         <div className="text-center">
-                                                            <div className={`text-2xl font-bold ${getGrowthColor(skill.growthRate)}`}>
+                                                            <div className={`text-2xl font-bold ${getGrowthColor(skill.growthRate)} mb-2`}>
                                                                 {skill.growthRate}%
                                                             </div>
-                                                            <div className="text-xs text-gray-400">Growth Rate</div>
+                                                            <div className="text-xs text-gray-400 mb-2">Growth Rate</div>
+                                                            {renderMiniTrendChart(skill.id, 'growthRate')}
                                                         </div>
                                                         <div className="text-center">
-                                                            <div className="text-2xl font-bold text-green-400">+{skill.salaryImpact}%</div>
-                                                            <div className="text-xs text-gray-400">Salary Impact</div>
+                                                            <div className="text-2xl font-bold text-green-400 mb-2">+{skill.salaryImpact}%</div>
+                                                            <div className="text-xs text-gray-400 mb-2">Salary Impact</div>
+                                                            {renderMiniTrendChart(skill.id, 'salaryImpact')}
                                                         </div>
                                                         <div className="text-center">
-                                                            <div className="text-2xl font-bold text-purple-400">{skill.jobCount.toLocaleString()}</div>
-                                                            <div className="text-xs text-gray-400">Job Openings</div>
+                                                            <div className="text-2xl font-bold text-purple-400 mb-2">{skill.jobCount.toLocaleString()}</div>
+                                                            <div className="text-xs text-gray-400 mb-2">Job Openings</div>
+                                                            {renderMiniTrendChart(skill.id, 'jobCount')}
                                                         </div>
                                                     </div>
                                                 </div>
-                                            ))}
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                    
+                                    {/* Timeline View */}
+                                    {Object.keys(skillChanges).length > 0 && (
+                                        <div className={`mt-8 ${isLightMode ? 'bg-white/30' : 'bg-gray-800/50'} rounded-lg p-6`}>
+                                            <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-4 flex items-center gap-2`}>
+                                                <span>📅</span>
+                                                Recent Changes Timeline
+                                            </h3>
+                                            <div className="space-y-4">
+                                                {getFilteredAndSortedWatchlist()
+                                                    .filter(skill => skillChanges[skill.id])
+                                                    .map((skill) => {
+                                                        const change = skillChanges[skill.id];
+                                                        const history = watchlistHistory[skill.id] || [];
+                                                        const latest = history[history.length - 1];
+                                                        const previous = history[history.length - 2];
+                                                        
+                                                        return (
+                                                            <div key={skill.id} className={`${isLightMode ? 'bg-white/50' : 'bg-gray-700/50'} rounded-lg p-4 border-l-4 ${
+                                                                change.demandChange > 0 || change.growthChange > 0
+                                                                    ? 'border-green-500'
+                                                                    : 'border-red-500'
+                                                            }`}>
+                                                                <div className="flex items-start justify-between mb-2">
+                                                                    <div>
+                                                                        <h4 className={`font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                                            {skill.name}
+                                                                        </h4>
+                                                                        {latest && previous && (
+                                                                            <div className={`text-xs ${isLightMode ? 'text-gray-500' : 'text-gray-400'} mt-1`}>
+                                                                                {change.daysSinceLastChange > 0 && (
+                                                                                    <span>Updated {change.daysSinceLastChange} day{change.daysSinceLastChange !== 1 ? 's' : ''} ago</span>
+                                                                                )}
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                    <span className={`text-lg ${
+                                                                        change.demandChange > 0 || change.growthChange > 0
+                                                                            ? 'text-green-400'
+                                                                            : 'text-red-400'
+                                                                    }`}>
+                                                                        {change.demandChange > 0 || change.growthChange > 0 ? '📈' : '📉'}
+                                                                    </span>
+                                                                </div>
+                                                                <div className="grid grid-cols-3 gap-3 mt-3">
+                                                                    {change.demandChange !== 0 && (
+                                                                        <div>
+                                                                            <div className={`text-xs ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>Demand</div>
+                                                                            <div className={`text-sm font-semibold ${
+                                                                                change.demandChange > 0 ? 'text-green-400' : 'text-red-400'
+                                                                            }`}>
+                                                                                {change.demandChange > 0 ? '+' : ''}{change.demandChange} points
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
+                                                                    {change.growthChange !== 0 && (
+                                                                        <div>
+                                                                            <div className={`text-xs ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>Growth</div>
+                                                                            <div className={`text-sm font-semibold ${
+                                                                                change.growthChange > 0 ? 'text-green-400' : 'text-red-400'
+                                                                            }`}>
+                                                                                {change.growthChange > 0 ? '+' : ''}{change.growthChange.toFixed(1)}%
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
+                                                                    {change.jobChangePercent !== 0 && (
+                                                                        <div>
+                                                                            <div className={`text-xs ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>Jobs</div>
+                                                                            <div className={`text-sm font-semibold ${
+                                                                                change.jobChangePercent > 0 ? 'text-green-400' : 'text-red-400'
+                                                                            }`}>
+                                                                                {change.jobChangePercent > 0 ? '+' : ''}{change.jobChangePercent}%
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                            </div>
                                         </div>
                                     )}
                                 </div>
