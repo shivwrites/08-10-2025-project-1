@@ -48207,6 +48207,13 @@ Generate the repurposed content:`;
             const [lastScanTime, setLastScanTime] = useState('2024-03-15 14:30');
             const [notifications, setNotifications] = useState([]);
             const [showOnboarding, setShowOnboarding] = useState(false);
+            // Advanced Sorting & Filtering
+            const [sortBy, setSortBy] = useState('demand'); // demand, growth, salary, jobs
+            const [sortOrder, setSortOrder] = useState('desc'); // asc, desc
+            const [demandRange, setDemandRange] = useState([0, 100]);
+            const [growthRange, setGrowthRange] = useState([-100, 100]);
+            const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+            const [expandedSkills, setExpandedSkills] = useState(new Set());
             const [personalization, setPersonalization] = useState({
                 role: 'Software Engineer',
                 industry: 'Technology',
@@ -48234,7 +48241,8 @@ Generate the repurposed content:`;
                     emergingStatus: 'hot',
                     learningResources: ['Coursera', 'Fast.ai', 'Kaggle'],
                     timeToLearn: '6-12 months',
-                    relatedSkills: ['Python', 'TensorFlow', 'Data Science']
+                    relatedSkills: ['Python', 'TensorFlow', 'Data Science'],
+                    trendHistory: [72, 75, 78, 82, 85, 88, 91, 93, 94, 95, 95, 95, 95, 95, 95, 95, 95, 95, 95, 95, 95, 95, 95, 95, 95, 95, 95, 95, 95, 95]
                 },
                 {
                     id: 2,
@@ -48250,7 +48258,8 @@ Generate the repurposed content:`;
                     emergingStatus: 'emerging',
                     learningResources: ['Kubernetes.io', 'CNCF', 'Linux Academy'],
                     timeToLearn: '3-6 months',
-                    relatedSkills: ['Docker', 'DevOps', 'Cloud']
+                    relatedSkills: ['Docker', 'DevOps', 'Cloud'],
+                    trendHistory: [68, 70, 72, 74, 76, 78, 80, 82, 83, 84, 85, 86, 86, 87, 87, 87, 87, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88, 88]
                 },
                 {
                     id: 3,
@@ -48266,7 +48275,8 @@ Generate the repurposed content:`;
                     emergingStatus: 'established',
                     learningResources: ['Product School', 'Reforge', 'Mind the Product'],
                     timeToLearn: '6-12 months',
-                    relatedSkills: ['Agile', 'User Research', 'Analytics']
+                    relatedSkills: ['Agile', 'User Research', 'Analytics'],
+                    trendHistory: [70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 79, 80, 80, 80, 81, 81, 81, 81, 82, 82, 82, 82, 82, 82, 82, 82, 82, 82, 82, 82]
                 },
                 {
                     id: 4,
@@ -48282,7 +48292,8 @@ Generate the repurposed content:`;
                     emergingStatus: 'hot',
                     learningResources: ['Cybrary', 'SANS', 'CompTIA'],
                     timeToLearn: '6-18 months',
-                    relatedSkills: ['Network Security', 'Penetration Testing', 'Compliance']
+                    relatedSkills: ['Network Security', 'Penetration Testing', 'Compliance'],
+                    trendHistory: [75, 77, 79, 81, 83, 84, 85, 86, 87, 88, 88, 89, 89, 90, 90, 90, 90, 91, 91, 91, 91, 91, 91, 91, 91, 91, 91, 91, 91, 91]
                 },
                 {
                     id: 5,
@@ -48298,7 +48309,8 @@ Generate the repurposed content:`;
                     emergingStatus: 'declining',
                     learningResources: ['Ethereum.org', 'CryptoZombies', 'Blockchain Council'],
                     timeToLearn: '3-9 months',
-                    relatedSkills: ['Solidity', 'Web3', 'Smart Contracts']
+                    relatedSkills: ['Solidity', 'Web3', 'Smart Contracts'],
+                    trendHistory: [78, 76, 74, 72, 70, 69, 68, 67, 66, 66, 66, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65]
                 },
                 {
                     id: 6,
@@ -48314,7 +48326,8 @@ Generate the repurposed content:`;
                     emergingStatus: 'established',
                     learningResources: ['Tableau', 'D3.js', 'Power BI'],
                     timeToLearn: '2-4 months',
-                    relatedSkills: ['Tableau', 'D3.js', 'Power BI']
+                    relatedSkills: ['Tableau', 'D3.js', 'Power BI'],
+                    trendHistory: [74, 74, 75, 75, 75, 75, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76, 76]
                 }
             ];
 
@@ -48382,6 +48395,182 @@ Generate the repurposed content:`;
                 }
             };
 
+            // Visual Trend Indicators - Helper Functions
+            const renderSparkline = (trendHistory, width = 80, height = 20, color = '#8b5cf6') => {
+                if (!trendHistory || trendHistory.length === 0) return null;
+                
+                const data = trendHistory.slice(-30); // Last 30 days
+                const min = Math.min(...data);
+                const max = Math.max(...data);
+                const range = max - min || 1;
+                
+                const points = data.map((value, index) => {
+                    const x = (index / (data.length - 1)) * width;
+                    const y = height - ((value - min) / range) * height;
+                    return `${x},${y}`;
+                }).join(' ');
+                
+                return (
+                    <svg width={width} height={height} className="sparkline">
+                        <polyline
+                            points={points}
+                            fill="none"
+                            stroke={color}
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                        />
+                        <circle
+                            cx={(data.length - 1) / (data.length - 1) * width}
+                            cy={height - ((data[data.length - 1] - min) / range) * height}
+                            r="2"
+                            fill={color}
+                        />
+                    </svg>
+                );
+            };
+
+            const getTrendArrow = (growthRate, trend) => {
+                const magnitude = Math.abs(growthRate);
+                let arrow = '';
+                let color = '';
+                let animation = '';
+                
+                if (trend === 'rising' || growthRate > 0) {
+                    if (magnitude > 30) {
+                        arrow = '↗️';
+                        color = 'text-green-400';
+                        animation = 'animate-pulse';
+                    } else if (magnitude > 15) {
+                        arrow = '↗';
+                        color = 'text-green-400';
+                    } else {
+                        arrow = '→';
+                        color = 'text-green-300';
+                    }
+                } else if (trend === 'falling' || growthRate < 0) {
+                    if (magnitude > 30) {
+                        arrow = '↘️';
+                        color = 'text-red-400';
+                        animation = 'animate-pulse';
+                    } else if (magnitude > 15) {
+                        arrow = '↘';
+                        color = 'text-red-400';
+                    } else {
+                        arrow = '→';
+                        color = 'text-red-300';
+                    }
+                } else {
+                    arrow = '→';
+                    color = 'text-gray-400';
+                }
+                
+                return { arrow, color, animation };
+            };
+
+            const getHeatMapColor = (demandScore) => {
+                if (demandScore >= 90) return 'bg-red-500';
+                if (demandScore >= 80) return 'bg-orange-500';
+                if (demandScore >= 70) return 'bg-yellow-500';
+                if (demandScore >= 60) return 'bg-green-500';
+                return 'bg-gray-500';
+            };
+
+            const getHeatMapIntensity = (demandScore) => {
+                if (demandScore >= 90) return 'opacity-100';
+                if (demandScore >= 80) return 'opacity-90';
+                if (demandScore >= 70) return 'opacity-75';
+                if (demandScore >= 60) return 'opacity-60';
+                return 'opacity-40';
+            };
+
+            // Enhanced Skill Cards - Helper Functions
+            const calculateROI = (skill) => {
+                if (!skill.timeToLearn || !skill.salaryImpact) return null;
+                
+                // Parse time to learn (e.g., "6-12 months" -> average 9 months)
+                const timeMatch = skill.timeToLearn.match(/(\d+)-(\d+)\s*(month|week|day|months|weeks|days)/i);
+                if (!timeMatch) {
+                    // Try single number format (e.g., "6 months")
+                    const singleMatch = skill.timeToLearn.match(/(\d+)\s*(month|week|day|months|weeks|days)/i);
+                    if (!singleMatch) return null;
+                    
+                    const time = parseInt(singleMatch[1]);
+                    const unit = singleMatch[2].toLowerCase();
+                    let monthsToLearn = time;
+                    if (unit.includes('week')) monthsToLearn = time / 4;
+                    if (unit.includes('day')) monthsToLearn = time / 30;
+                    
+                    const roiScore = skill.salaryImpact / monthsToLearn;
+                    const roiRating = roiScore > 5 ? 'Excellent' : roiScore > 3 ? 'Good' : roiScore > 1 ? 'Fair' : 'Low';
+                    
+                    return {
+                        monthsToLearn: monthsToLearn.toFixed(1),
+                        salaryImpact: skill.salaryImpact,
+                        roiScore: roiScore.toFixed(2),
+                        roiRating,
+                        timeToLearn: skill.timeToLearn
+                    };
+                }
+                
+                const minTime = parseInt(timeMatch[1]);
+                const maxTime = parseInt(timeMatch[2]);
+                const unit = timeMatch[3].toLowerCase();
+                const avgTime = (minTime + maxTime) / 2;
+                
+                // Convert to months
+                let monthsToLearn = avgTime;
+                if (unit.includes('week')) monthsToLearn = avgTime / 4;
+                if (unit.includes('day')) monthsToLearn = avgTime / 30;
+                
+                // Prevent division by zero
+                if (monthsToLearn === 0) return null;
+                
+                // Calculate ROI: salary impact % / months to learn
+                const roiScore = skill.salaryImpact / monthsToLearn;
+                const roiRating = roiScore > 5 ? 'Excellent' : roiScore > 3 ? 'Good' : roiScore > 1 ? 'Fair' : 'Low';
+                
+                return {
+                    monthsToLearn: monthsToLearn.toFixed(1),
+                    salaryImpact: skill.salaryImpact,
+                    roiScore: roiScore.toFixed(2),
+                    roiRating,
+                    timeToLearn: skill.timeToLearn
+                };
+            };
+
+            const findSimilarSkills = (currentSkill, allSkills, limit = 3) => {
+                return allSkills
+                    .filter(skill => 
+                        skill.id !== currentSkill.id &&
+                        (skill.category === currentSkill.category ||
+                         skill.relatedSkills.some(rs => currentSkill.relatedSkills.includes(rs)))
+                    )
+                    .map(skill => {
+                        // Calculate similarity score
+                        let score = 0;
+                        if (skill.category === currentSkill.category) score += 2;
+                        const commonRelated = skill.relatedSkills.filter(rs => 
+                            currentSkill.relatedSkills.includes(rs)
+                        ).length;
+                        score += commonRelated;
+                        
+                        return { ...skill, similarityScore: score };
+                    })
+                    .sort((a, b) => b.similarityScore - a.similarityScore)
+                    .slice(0, limit);
+            };
+
+            const toggleSkillExpansion = (skillId) => {
+                const newExpanded = new Set(expandedSkills);
+                if (newExpanded.has(skillId)) {
+                    newExpanded.delete(skillId);
+                } else {
+                    newExpanded.add(skillId);
+                }
+                setExpandedSkills(newExpanded);
+            };
+
             const handleMarketScan = () => {
                 setIsScanning(true);
                 setTimeout(() => {
@@ -48398,6 +48587,69 @@ Generate the repurposed content:`;
             const handleWatchlistToggle = (skillId) => {
                 // Toggle watchlist functionality
                 console.log('Toggle watchlist for skill:', skillId);
+            };
+
+            // Advanced filtering and sorting logic
+            const getFilteredAndSortedSkills = () => {
+                let filtered = [...skills];
+
+                // Apply search filter
+                if (searchQuery.trim()) {
+                    filtered = filtered.filter(skill =>
+                        skill.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                        skill.relatedSkills.some(rs => rs.toLowerCase().includes(searchQuery.toLowerCase()))
+                    );
+                }
+
+                // Apply category filter
+                if (selectedCategory !== 'all') {
+                    filtered = filtered.filter(skill => skill.category === selectedCategory);
+                }
+
+                // Apply demand range filter
+                filtered = filtered.filter(skill =>
+                    skill.demandScore >= demandRange[0] && skill.demandScore <= demandRange[1]
+                );
+
+                // Apply growth range filter
+                filtered = filtered.filter(skill =>
+                    skill.growthRate >= growthRange[0] && skill.growthRate <= growthRange[1]
+                );
+
+                // Apply sorting
+                filtered.sort((a, b) => {
+                    let aValue, bValue;
+                    
+                    switch (sortBy) {
+                        case 'demand':
+                            aValue = a.demandScore;
+                            bValue = b.demandScore;
+                            break;
+                        case 'growth':
+                            aValue = a.growthRate;
+                            bValue = b.growthRate;
+                            break;
+                        case 'salary':
+                            aValue = a.salaryImpact;
+                            bValue = b.salaryImpact;
+                            break;
+                        case 'jobs':
+                            aValue = a.jobCount;
+                            bValue = b.jobCount;
+                            break;
+                        default:
+                            aValue = a.demandScore;
+                            bValue = b.demandScore;
+                    }
+
+                    if (sortOrder === 'asc') {
+                        return aValue - bValue;
+                    } else {
+                        return bValue - aValue;
+                    }
+                });
+
+                return filtered;
             };
 
             const tabs = [
@@ -48650,14 +48902,116 @@ Generate the repurposed content:`;
                                             </select>
                                         </div>
                                     </div>
+
+                                    {/* Advanced Sorting & Filtering Controls */}
+                                    <div className={`${isLightMode ? 'bg-white/30 backdrop-blur-xl border-white/20' : 'bg-gray-800 border-gray-700'} border rounded-lg p-4 mb-6`}>
+                                        <div className="flex items-center justify-between mb-4">
+                                            <div className="flex items-center gap-4">
+                                                <label className={`text-sm font-medium ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>Sort by:</label>
+                                                <select
+                                                    value={sortBy}
+                                                    onChange={(e) => setSortBy(e.target.value)}
+                                                    className={`px-3 py-1.5 text-sm ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                                                >
+                                                    <option value="demand">Demand Score</option>
+                                                    <option value="growth">Growth Rate</option>
+                                                    <option value="salary">Salary Impact</option>
+                                                    <option value="jobs">Job Openings</option>
+                                                </select>
+                                                <button
+                                                    onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
+                                                    className={`p-1.5 ${isLightMode ? 'bg-gray-200 hover:bg-gray-300 text-gray-700' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'} rounded-lg transition-colors`}
+                                                    title={sortOrder === 'asc' ? 'Ascending' : 'Descending'}
+                                                >
+                                                    {sortOrder === 'asc' ? '↑' : '↓'}
+                                                </button>
+                                            </div>
+                                            <button
+                                                onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+                                                className={`text-sm px-3 py-1.5 ${isLightMode ? 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200' : 'bg-indigo-500/20 text-indigo-400 hover:bg-indigo-500/30'} rounded-lg transition-colors flex items-center gap-2`}
+                                            >
+                                                <span>🔍</span>
+                                                {showAdvancedFilters ? 'Hide Filters' : 'Advanced Filters'}
+                                            </button>
+                                        </div>
+
+                                        {/* Advanced Filters Panel */}
+                                        {showAdvancedFilters && (
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-gray-600">
+                                                <div>
+                                                    <label className={`block text-sm font-medium ${isLightMode ? 'text-gray-700' : 'text-gray-300'} mb-2`}>
+                                                        Demand Score: {demandRange[0]} - {demandRange[1]}
+                                                    </label>
+                                                    <div className="flex items-center gap-2">
+                                                        <input
+                                                            type="range"
+                                                            min="0"
+                                                            max="100"
+                                                            value={demandRange[0]}
+                                                            onChange={(e) => setDemandRange([parseInt(e.target.value), demandRange[1]])}
+                                                            className="flex-1"
+                                                        />
+                                                        <input
+                                                            type="range"
+                                                            min="0"
+                                                            max="100"
+                                                            value={demandRange[1]}
+                                                            onChange={(e) => setDemandRange([demandRange[0], parseInt(e.target.value)])}
+                                                            className="flex-1"
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <label className={`block text-sm font-medium ${isLightMode ? 'text-gray-700' : 'text-gray-300'} mb-2`}>
+                                                        Growth Rate: {growthRange[0]}% - {growthRange[1]}%
+                                                    </label>
+                                                    <div className="flex items-center gap-2">
+                                                        <input
+                                                            type="range"
+                                                            min="-100"
+                                                            max="100"
+                                                            value={growthRange[0]}
+                                                            onChange={(e) => setGrowthRange([parseInt(e.target.value), growthRange[1]])}
+                                                            className="flex-1"
+                                                        />
+                                                        <input
+                                                            type="range"
+                                                            min="-100"
+                                                            max="100"
+                                                            value={growthRange[1]}
+                                                            onChange={(e) => setGrowthRange([growthRange[0], parseInt(e.target.value)])}
+                                                            className="flex-1"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Results Count */}
+                                    <div className={`text-sm ${isLightMode ? 'text-gray-600' : 'text-gray-400'} mb-4`}>
+                                        Showing {getFilteredAndSortedSkills().length} of {skills.length} skills
+                                    </div>
                                     
                                     <div className="space-y-4">
-                                        {skills.map((skill) => (
-                                            <div key={skill.id} className={`${isLightMode ? 'bg-white/30 backdrop-blur-xl border-white/20' : 'bg-gray-800 border-gray-700'} border rounded-lg p-6 hover:border-indigo-500/50 transition-all duration-300`}>
+                                        {getFilteredAndSortedSkills().length === 0 ? (
+                                            <div className={`text-center py-12 ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                <div className="text-4xl mb-4">🔍</div>
+                                                <p className="text-lg font-medium mb-2">No skills found</p>
+                                                <p className="text-sm">Try adjusting your filters or search query</p>
+                                            </div>
+                                        ) : (
+                                            getFilteredAndSortedSkills().map((skill) => (
+                                            <div key={skill.id} data-skill-id={skill.id} className={`${isLightMode ? 'bg-white/30 backdrop-blur-xl border-white/20' : 'bg-gray-800 border-gray-700'} border rounded-lg p-6 hover:border-indigo-500/50 transition-all duration-300 relative overflow-hidden`}>
+                                                {/* Heat Map Background Indicator */}
+                                                <div className={`absolute top-0 left-0 right-0 h-1 ${getHeatMapColor(skill.demandScore)} ${getHeatMapIntensity(skill.demandScore)}`}></div>
+                                                
                                                 <div className="flex items-start justify-between mb-4">
                                                     <div className="flex items-start gap-4">
-                                                        <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center">
+                                                        <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center relative">
                                                             <div className="w-6 h-6 text-white text-xl">💻</div>
+                                                            {/* Heat Map Dot */}
+                                                            <div className={`absolute -top-1 -right-1 w-3 h-3 ${getHeatMapColor(skill.demandScore)} rounded-full border-2 ${isLightMode ? 'border-white' : 'border-gray-800'}`}></div>
                                                         </div>
                                                         <div className="flex-1">
                                                             <div className="flex items-center gap-3 mb-2">
@@ -48668,9 +49022,26 @@ Generate the repurposed content:`;
                                                                 <span className={`px-2 py-1 rounded-full text-xs font-medium ${getEmergingColor(skill.emergingStatus)}`}>
                                                                     {skill.emergingStatus}
                                                                 </span>
+                                                                {/* Animated Trend Arrow */}
+                                                                {(() => {
+                                                                    const trendArrow = getTrendArrow(skill.growthRate, skill.trend);
+                                                                    return (
+                                                                        <span className={`text-lg ${trendArrow.color} ${trendArrow.animation}`} title={`${skill.growthRate > 0 ? '+' : ''}${skill.growthRate}% growth`}>
+                                                                            {trendArrow.arrow}
+                                                                        </span>
+                                                                    );
+                                                                })()}
                                                             </div>
                                                             <div className={`flex items-center gap-4 text-sm ${isLightMode ? 'text-gray-500' : 'text-gray-400'} mb-3`}>
-                                                                <span>Demand: {skill.demandScore}</span>
+                                                                <span className="flex items-center gap-2">
+                                                                    <span>Demand: {skill.demandScore}</span>
+                                                                    {/* Mini Sparkline */}
+                                                                    {skill.trendHistory && (
+                                                                        <div className="flex items-center">
+                                                                            {renderSparkline(skill.trendHistory, 60, 16, skill.trend === 'rising' ? '#10b981' : skill.trend === 'falling' ? '#ef4444' : '#6b7280')}
+                                                                        </div>
+                                                                    )}
+                                                                </span>
                                                                 <span>•</span>
                                                                 <span className={`flex items-center gap-1 ${getGrowthColor(skill.growthRate)}`}>
                                                                     {getTrendIcon(skill.trend)} {skill.growthRate}%
@@ -48709,12 +49080,21 @@ Generate the repurposed content:`;
                                                 
                                                 <div className="grid grid-cols-4 gap-4">
                                                     <div className="text-center">
-                                                        <div className="text-2xl font-bold text-indigo-400">{skill.demandScore}</div>
+                                                        <div className="flex items-center justify-center gap-2">
+                                                            <div className="text-2xl font-bold text-indigo-400">{skill.demandScore}</div>
+                                                            {/* Heat Map Indicator */}
+                                                            <div className={`w-2 h-2 rounded-full ${getHeatMapColor(skill.demandScore)}`}></div>
+                                                        </div>
                                                         <div className="text-xs text-gray-400">Demand Score</div>
                                                     </div>
                                                     <div className="text-center">
-                                                        <div className={`text-2xl font-bold ${getGrowthColor(skill.growthRate)}`}>
-                                                            {skill.growthRate}%
+                                                        <div className={`text-2xl font-bold ${getGrowthColor(skill.growthRate)} flex items-center justify-center gap-1`}>
+                                                            {skill.growthRate > 0 ? '+' : ''}{skill.growthRate}%
+                                                            {/* Trend Arrow in Metric */}
+                                                            {(() => {
+                                                                const trendArrow = getTrendArrow(skill.growthRate, skill.trend);
+                                                                return <span className={`text-sm ${trendArrow.color}`}>{trendArrow.arrow}</span>;
+                                                            })()}
                                                         </div>
                                                         <div className="text-xs text-gray-400">Growth Rate</div>
                                                     </div>
@@ -48727,14 +49107,193 @@ Generate the repurposed content:`;
                                                         <div className="text-xs text-gray-400">Job Openings</div>
                                                     </div>
                                                 </div>
+
+                                                {/* Expand/Collapse Button */}
+                                                <div className="mt-4 pt-4 border-t border-gray-700">
+                                                    <button
+                                                        onClick={() => toggleSkillExpansion(skill.id)}
+                                                        className={`w-full flex items-center justify-between ${isLightMode ? 'text-gray-600 hover:text-gray-900' : 'text-gray-400 hover:text-gray-200'} transition-colors`}
+                                                    >
+                                                        <span className="text-sm font-medium">
+                                                            {expandedSkills.has(skill.id) ? 'Hide Details' : 'Show Details'}
+                                                        </span>
+                                                        <span className={`transform transition-transform ${expandedSkills.has(skill.id) ? 'rotate-180' : ''}`}>
+                                                            ▼
+                                                        </span>
+                                                    </button>
+                                                </div>
+
+                                                {/* Expandable Details Section */}
+                                                {expandedSkills.has(skill.id) && (
+                                                    <div className="mt-4 pt-4 border-t border-gray-700 space-y-6 transition-all duration-300">
+                                                        {/* ROI Calculator */}
+                                                        {(() => {
+                                                            const roi = calculateROI(skill);
+                                                            return roi ? (
+                                                                <div className={`${isLightMode ? 'bg-indigo-50 border-indigo-200' : 'bg-indigo-500/10 border-indigo-500/30'} border rounded-lg p-4`}>
+                                                                    <div className="flex items-center justify-between mb-3">
+                                                                        <h4 className={`font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>💰 ROI Calculator</h4>
+                                                                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                                                            roi.roiRating === 'Excellent' ? 'bg-green-500/20 text-green-400' :
+                                                                            roi.roiRating === 'Good' ? 'bg-blue-500/20 text-blue-400' :
+                                                                            roi.roiRating === 'Fair' ? 'bg-yellow-500/20 text-yellow-400' :
+                                                                            'bg-gray-500/20 text-gray-400'
+                                                                        }`}>
+                                                                            {roi.roiRating} ROI
+                                                                        </span>
+                                                                    </div>
+                                                                    <div className="grid grid-cols-2 gap-4 text-sm">
+                                                                        <div>
+                                                                            <span className={isLightMode ? 'text-gray-600' : 'text-gray-400'}>Time to Learn:</span>
+                                                                            <span className={`ml-2 font-medium ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>{roi.timeToLearn}</span>
+                                                                        </div>
+                                                                        <div>
+                                                                            <span className={isLightMode ? 'text-gray-600' : 'text-gray-400'}>Salary Impact:</span>
+                                                                            <span className={`ml-2 font-medium text-green-400`}>+{roi.salaryImpact}%</span>
+                                                                        </div>
+                                                                        <div>
+                                                                            <span className={isLightMode ? 'text-gray-600' : 'text-gray-400'}>ROI Score:</span>
+                                                                            <span className={`ml-2 font-medium ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>{roi.roiScore}% per month</span>
+                                                                        </div>
+                                                                        <div>
+                                                                            <span className={isLightMode ? 'text-gray-600' : 'text-gray-400'}>Est. Months:</span>
+                                                                            <span className={`ml-2 font-medium ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>{roi.monthsToLearn} months</span>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            ) : null;
+                                                        })()}
+
+                                                        {/* Learning Resources */}
+                                                        {skill.learningResources && skill.learningResources.length > 0 && (
+                                                            <div>
+                                                                <h4 className={`font-semibold mb-3 ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>📚 Learning Resources</h4>
+                                                                <div className="grid grid-cols-1 gap-2">
+                                                                    {skill.learningResources.map((resource, idx) => (
+                                                                        <a
+                                                                            key={idx}
+                                                                            href="#"
+                                                                            className={`flex items-center gap-2 p-2 rounded-lg ${isLightMode ? 'bg-gray-100 hover:bg-gray-200 text-gray-700' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'} transition-colors`}
+                                                                        >
+                                                                            <span>🔗</span>
+                                                                            <span className="text-sm">{resource}</span>
+                                                                        </a>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        )}
+
+                                                        {/* Time to Learn */}
+                                                        {skill.timeToLearn && (
+                                                            <div>
+                                                                <h4 className={`font-semibold mb-2 ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>⏱️ Time to Learn</h4>
+                                                                <div className={`flex items-center gap-2 p-3 rounded-lg ${isLightMode ? 'bg-blue-50 border-blue-200' : 'bg-blue-500/10 border-blue-500/30'} border`}>
+                                                                    <span className="text-2xl">⏰</span>
+                                                                    <div>
+                                                                        <div className={`font-medium ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>{skill.timeToLearn}</div>
+                                                                        <div className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>Estimated learning duration</div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        )}
+
+                                                        {/* Similar Skills */}
+                                                        {(() => {
+                                                            const similarSkills = findSimilarSkills(skill, skills);
+                                                            return similarSkills.length > 0 ? (
+                                                                <div>
+                                                                    <h4 className={`font-semibold mb-3 ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>🔗 Similar Skills</h4>
+                                                                    <div className="space-y-2">
+                                                                        {similarSkills.map((similarSkill) => (
+                                                                            <div
+                                                                                key={similarSkill.id}
+                                                                                className={`flex items-center justify-between p-2 rounded-lg ${isLightMode ? 'bg-gray-100 hover:bg-gray-200' : 'bg-gray-700 hover:bg-gray-600'} transition-colors cursor-pointer`}
+                                                                                onClick={() => {
+                                                                                    // Scroll to skill or highlight it
+                                                                                    const element = document.querySelector(`[data-skill-id="${similarSkill.id}"]`);
+                                                                                    if (element) {
+                                                                                        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                                                                        element.classList.add('ring-2', 'ring-indigo-500');
+                                                                                        setTimeout(() => element.classList.remove('ring-2', 'ring-indigo-500'), 2000);
+                                                                                    }
+                                                                                }}
+                                                                            >
+                                                                                <div className="flex items-center gap-2">
+                                                                                    <span className={`w-2 h-2 rounded-full ${getHeatMapColor(similarSkill.demandScore)}`}></span>
+                                                                                    <span className={`text-sm ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>{similarSkill.name}</span>
+                                                                                </div>
+                                                                                <div className="flex items-center gap-2">
+                                                                                    <span className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>
+                                                                                        {similarSkill.demandScore}
+                                                                                    </span>
+                                                                                    <span className={`text-xs ${getGrowthColor(similarSkill.growthRate)}`}>
+                                                                                        {similarSkill.growthRate > 0 ? '+' : ''}{similarSkill.growthRate}%
+                                                                                    </span>
+                                                                                </div>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+                                                            ) : null;
+                                                        })()}
+
+                                                        {/* Quick Actions */}
+                                                        <div className="grid grid-cols-2 gap-2">
+                                                            <button className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${
+                                                                skill.isWatched 
+                                                                    ? 'bg-yellow-500 text-white hover:bg-yellow-600' 
+                                                                    : 'bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30'
+                                                            }`}>
+                                                                {skill.isWatched ? '⭐ In Watchlist' : '⭐ Add to Watchlist'}
+                                                            </button>
+                                                            <button className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium text-sm hover:bg-indigo-700 transition-colors">
+                                                                🎓 Start Learning
+                                                            </button>
+                                                            <button className="px-4 py-2 bg-green-600 text-white rounded-lg font-medium text-sm hover:bg-green-700 transition-colors">
+                                                                💼 Find Jobs
+                                                            </button>
+                                                            <button className="px-4 py-2 bg-purple-600 text-white rounded-lg font-medium text-sm hover:bg-purple-700 transition-colors">
+                                                                📊 View Details
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </div>
-                                        ))}
+                                            ))
+                                        )}
                                     </div>
                                 </div>
                             </div>
 
                             {/* Sidebar */}
                             <div className="space-y-6">
+                                {/* Demand Heat Map */}
+                                <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
+                                    <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-4`}>Demand Heat Map</h3>
+                                    <div className="space-y-3">
+                                        <div className="flex items-center justify-between text-xs mb-2">
+                                            <span className={isLightMode ? 'text-gray-500' : 'text-gray-400'}>Low</span>
+                                            <span className={isLightMode ? 'text-gray-500' : 'text-gray-400'}>High</span>
+                                        </div>
+                                        <div className="flex gap-1 h-4 rounded overflow-hidden">
+                                            <div className="flex-1 bg-gray-500"></div>
+                                            <div className="flex-1 bg-green-500"></div>
+                                            <div className="flex-1 bg-yellow-500"></div>
+                                            <div className="flex-1 bg-orange-500"></div>
+                                            <div className="flex-1 bg-red-500"></div>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-2 mt-4">
+                                            {getFilteredAndSortedSkills().slice(0, 6).map((skill) => (
+                                                <div key={skill.id} className="flex items-center gap-2">
+                                                    <div className={`w-3 h-3 rounded-full ${getHeatMapColor(skill.demandScore)} ${getHeatMapIntensity(skill.demandScore)}`}></div>
+                                                    <span className={`text-xs truncate ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>{skill.name}</span>
+                                                    <span className={`text-xs font-medium ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>{skill.demandScore}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+
                                 {/* Category Breakdown */}
                                 <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
                                     <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-4`}>Category Breakdown</h3>
