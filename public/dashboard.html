@@ -48214,6 +48214,8 @@ Generate the repurposed content:`;
             const [growthRange, setGrowthRange] = useState([-100, 100]);
             const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
             const [expandedSkills, setExpandedSkills] = useState(new Set());
+            const [comparisonMode, setComparisonMode] = useState(false);
+            const [comparisonSkills, setComparisonSkills] = useState([]);
             const [personalization, setPersonalization] = useState({
                 role: 'Software Engineer',
                 industry: 'Technology',
@@ -48222,6 +48224,8 @@ Generate the repurposed content:`;
                 careerGoals: 'Senior Developer',
                 skillLevel: 'Intermediate'
             });
+            const [userSkills, setUserSkills] = useState(['Python', 'JavaScript', 'React', 'Node.js', 'Git']);
+            const [showPersonalization, setShowPersonalization] = useState(true);
 
             // Check for light mode
             const isLightMode = !document.documentElement.classList.contains('dark');
@@ -48569,6 +48573,234 @@ Generate the repurposed content:`;
                     newExpanded.add(skillId);
                 }
                 setExpandedSkills(newExpanded);
+            };
+
+            // Comparison Mode - Helper Functions
+            const toggleComparisonSkill = (skill) => {
+                const isInComparison = comparisonSkills.some(s => s.id === skill.id);
+                let newComparisonSkills;
+                
+                if (isInComparison) {
+                    newComparisonSkills = comparisonSkills.filter(s => s.id !== skill.id);
+                    setComparisonSkills(newComparisonSkills);
+                    // Auto-close if less than 2 skills
+                    if (newComparisonSkills.length < 2) {
+                        setComparisonMode(false);
+                    }
+                } else {
+                    if (comparisonSkills.length >= 4) {
+                        // Replace the oldest skill if limit reached
+                        newComparisonSkills = [...comparisonSkills.slice(1), skill];
+                    } else {
+                        newComparisonSkills = [...comparisonSkills, skill];
+                    }
+                    setComparisonSkills(newComparisonSkills);
+                    // Auto-open if 2+ skills selected
+                    if (newComparisonSkills.length >= 2) {
+                        setComparisonMode(true);
+                    }
+                }
+            };
+
+            const clearComparison = () => {
+                setComparisonSkills([]);
+                setComparisonMode(false);
+            };
+
+            const getComparisonData = () => {
+                if (comparisonSkills.length < 2) return null;
+                
+                const metrics = ['demandScore', 'growthRate', 'salaryImpact', 'jobCount'];
+                const maxValues = {};
+                metrics.forEach(metric => {
+                    maxValues[metric] = Math.max(...comparisonSkills.map(s => s[metric]));
+                });
+
+                return {
+                    skills: comparisonSkills,
+                    maxValues,
+                    metrics
+                };
+            };
+
+            const renderComparisonChart = (metric, skills, maxValue) => {
+                // For growth rate, handle negative values
+                const isGrowthRate = metric === 'growthRate';
+                const minValue = isGrowthRate ? Math.min(...skills.map(s => s[metric])) : 0;
+                const range = maxValue - minValue || 1;
+                
+                return (
+                    <div className="space-y-2">
+                        {skills.map((skill, idx) => {
+                            const value = skill[metric];
+                            const normalizedValue = isGrowthRate ? value - minValue : value;
+                            const percentage = Math.max(0, Math.min(100, (normalizedValue / range) * 100));
+                            const color = idx === 0 ? 'bg-indigo-500' : 
+                                         idx === 1 ? 'bg-purple-500' : 
+                                         idx === 2 ? 'bg-pink-500' : 'bg-orange-500';
+                            
+                            return (
+                                <div key={skill.id} className="flex items-center gap-3">
+                                    <div className="w-20 text-sm truncate" title={skill.name}>
+                                        {skill.name}
+                                    </div>
+                                    <div className="flex-1 h-6 bg-gray-700 rounded-full overflow-hidden relative">
+                                        <div 
+                                            className={`h-full ${color} transition-all duration-500 rounded-full flex items-center justify-end pr-2`}
+                                            style={{ width: `${percentage}%` }}
+                                        >
+                                            <span className="text-xs text-white font-medium">
+                                                {isGrowthRate && value > 0 ? '+' : ''}{value}{isGrowthRate ? '%' : metric === 'jobCount' ? '' : ''}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                );
+            };
+
+            // Personalization - Helper Functions
+            const getPersonalizedSkills = () => {
+                return skills.map(skill => {
+                    let matchScore = 0;
+                    const reasons = [];
+
+                    // Check if user already has this skill
+                    const hasSkill = userSkills.some(us => 
+                        skill.name.toLowerCase().includes(us.toLowerCase()) ||
+                        skill.relatedSkills.some(rs => rs.toLowerCase().includes(us.toLowerCase()))
+                    );
+
+                    if (hasSkill) {
+                        matchScore -= 10; // Lower priority for skills user already has
+                        reasons.push('You already have related skills');
+                    }
+
+                    // Role-based matching
+                    if (personalization.role) {
+                        const roleLower = personalization.role.toLowerCase();
+                        if (roleLower.includes('engineer') || roleLower.includes('developer')) {
+                            if (skill.category === 'technical' || skill.category === 'tools') {
+                                matchScore += 15;
+                                reasons.push('Matches your technical role');
+                            }
+                        } else if (roleLower.includes('manager') || roleLower.includes('product')) {
+                            if (skill.category === 'soft' || skill.name.toLowerCase().includes('management')) {
+                                matchScore += 15;
+                                reasons.push('Matches your management role');
+                            }
+                        }
+                    }
+
+                    // Experience level matching
+                    if (personalization.experienceLevel) {
+                        const expLevel = personalization.experienceLevel.toLowerCase();
+                        if (expLevel.includes('senior') || expLevel.includes('lead')) {
+                            if (skill.demandScore >= 85) {
+                                matchScore += 10;
+                                reasons.push('High demand for senior roles');
+                            }
+                        } else if (expLevel.includes('junior') || expLevel.includes('entry')) {
+                            if (skill.emergingStatus === 'emerging' || skill.emergingStatus === 'hot') {
+                                matchScore += 10;
+                                reasons.push('Great for career growth');
+                            }
+                        }
+                    }
+
+                    // Career goals matching
+                    if (personalization.careerGoals) {
+                        const goals = personalization.careerGoals.toLowerCase();
+                        if (goals.includes('senior') || goals.includes('lead')) {
+                            if (skill.salaryImpact >= 20) {
+                                matchScore += 12;
+                                reasons.push('High salary impact for advancement');
+                            }
+                        }
+                    }
+
+                    // High demand bonus
+                    if (skill.demandScore >= 90) {
+                        matchScore += 8;
+                        reasons.push('Very high market demand');
+                    }
+
+                    // High growth bonus
+                    if (skill.growthRate >= 30) {
+                        matchScore += 8;
+                        reasons.push('Rapidly growing skill');
+                    }
+
+                    // High ROI bonus
+                    const roi = calculateROI(skill);
+                    if (roi && roi.roiRating === 'Excellent') {
+                        matchScore += 10;
+                        reasons.push('Excellent ROI');
+                    }
+
+                    return {
+                        ...skill,
+                        matchScore,
+                        reasons: reasons.slice(0, 3), // Top 3 reasons
+                        hasSkill
+                    };
+                })
+                .filter(skill => !skill.hasSkill) // Filter out skills user already has
+                .sort((a, b) => b.matchScore - a.matchScore)
+                .slice(0, 10); // Top 10 recommendations
+            };
+
+            const getGapAnalysis = () => {
+                const trendingSkills = skills.filter(skill => skill.demandScore >= 80);
+                const userSkillNames = userSkills.map(s => s.toLowerCase());
+                
+                const gaps = trendingSkills.map(skill => {
+                    const hasDirectMatch = userSkillNames.some(us => 
+                        skill.name.toLowerCase().includes(us) || 
+                        us.includes(skill.name.toLowerCase())
+                    );
+                    
+                    const hasRelatedMatch = skill.relatedSkills.some(rs => 
+                        userSkillNames.some(us => 
+                            rs.toLowerCase().includes(us) || 
+                            us.includes(rs.toLowerCase())
+                        )
+                    );
+
+                    let gapLevel = 'high';
+                    if (hasDirectMatch) {
+                        gapLevel = 'none';
+                    } else if (hasRelatedMatch) {
+                        gapLevel = 'medium';
+                    }
+
+                    return {
+                        ...skill,
+                        gapLevel,
+                        hasDirectMatch,
+                        hasRelatedMatch,
+                        priority: skill.demandScore + (skill.growthRate * 0.5)
+                    };
+                })
+                .filter(gap => gap.gapLevel !== 'none')
+                .sort((a, b) => b.priority - a.priority)
+                .slice(0, 5);
+
+                return gaps;
+            };
+
+            const getPersonalizedLearningPath = () => {
+                const recommendations = getPersonalizedSkills().slice(0, 5);
+                const gaps = getGapAnalysis().slice(0, 3);
+
+                return {
+                    immediate: recommendations.filter(r => r.matchScore >= 30).slice(0, 2),
+                    shortTerm: recommendations.filter(r => r.matchScore >= 20 && r.matchScore < 30).slice(0, 2),
+                    gapFillers: gaps.slice(0, 2),
+                    strategic: recommendations.filter(r => r.salaryImpact >= 20).slice(0, 2)
+                };
             };
 
             const handleMarketScan = () => {
@@ -49060,6 +49292,17 @@ Generate the repurposed content:`;
                                                     </div>
                                                     <div className="flex items-center gap-2">
                                                         <button
+                                                            onClick={() => toggleComparisonSkill(skill)}
+                                                            className={`p-2 rounded-lg transition-colors duration-200 ${
+                                                                comparisonSkills.some(s => s.id === skill.id)
+                                                                    ? 'bg-blue-500 text-white' 
+                                                                    : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
+                                                            }`}
+                                                            title={comparisonSkills.some(s => s.id === skill.id) ? 'Remove from comparison' : 'Add to comparison'}
+                                                        >
+                                                            <div className="w-4 h-4">⚖️</div>
+                                                        </button>
+                                                        <button
                                                             onClick={() => handleWatchlistToggle(skill.id)}
                                                             className={`p-2 rounded-lg transition-colors duration-200 ${
                                                                 skill.isWatched 
@@ -49322,6 +49565,187 @@ Generate the repurposed content:`;
                                         </button>
                                     </div>
                                 </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Comparison Mode Panel */}
+                    {comparisonSkills.length > 0 && (
+                        <div className={`fixed bottom-4 right-4 z-50 ${isLightMode ? 'bg-white/95 backdrop-blur-xl border-white/30' : 'bg-[#111827]/95 backdrop-blur-xl border-gray-700/50'} border rounded-2xl shadow-2xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto`}>
+                            <div className="sticky top-0 bg-inherit border-b border-gray-700 p-4 flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <div className="text-2xl">⚖️</div>
+                                    <div>
+                                        <h3 className={`text-lg font-bold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                            Compare Skills ({comparisonSkills.length}/4)
+                                        </h3>
+                                        <p className={`text-xs ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                            Select 2-4 skills to compare side-by-side
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    {comparisonSkills.length >= 2 && (
+                                        <button
+                                            onClick={() => setComparisonMode(!comparisonMode)}
+                                            className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${
+                                                comparisonMode
+                                                    ? 'bg-indigo-600 text-white hover:bg-indigo-700'
+                                                    : isLightMode
+                                                        ? 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                                            }`}
+                                        >
+                                            {comparisonMode ? 'Hide Comparison' : 'Show Comparison'}
+                                        </button>
+                                    )}
+                                    <button
+                                        onClick={clearComparison}
+                                        className="p-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                                        title="Clear comparison"
+                                    >
+                                        <div className="w-4 h-4">✕</div>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="p-4">
+                                {/* Selected Skills Chips */}
+                                <div className="flex flex-wrap gap-2 mb-4">
+                                    {comparisonSkills.map((skill) => (
+                                        <div
+                                            key={skill.id}
+                                            className={`flex items-center gap-2 px-3 py-2 rounded-lg ${isLightMode ? 'bg-indigo-100 text-indigo-700' : 'bg-indigo-500/20 text-indigo-400'} border border-indigo-500/30`}
+                                        >
+                                            <span className="font-medium text-sm">{skill.name}</span>
+                                            <button
+                                                onClick={() => toggleComparisonSkill(skill)}
+                                                className="hover:bg-indigo-500/30 rounded p-1 transition-colors"
+                                            >
+                                                <span className="text-xs">✕</span>
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {/* Comparison View */}
+                                {comparisonMode && comparisonSkills.length >= 2 && (() => {
+                                    const comparisonData = getComparisonData();
+                                    if (!comparisonData) return null;
+
+                                    return (
+                                        <div className="space-y-6">
+                                            {/* Comparison Metrics Table */}
+                                            <div className={`${isLightMode ? 'bg-white/50' : 'bg-gray-800/50'} rounded-lg p-4`}>
+                                                <h4 className={`font-semibold mb-4 ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>📊 Metrics Comparison</h4>
+                                                <div className="overflow-x-auto">
+                                                    <table className="w-full text-sm">
+                                                        <thead>
+                                                            <tr className={`border-b ${isLightMode ? 'border-gray-300' : 'border-gray-700'}`}>
+                                                                <th className={`text-left py-2 px-3 ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>Metric</th>
+                                                                {comparisonData.skills.map((skill, idx) => (
+                                                                    <th key={skill.id} className={`text-center py-2 px-3 ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>
+                                                                        {skill.name}
+                                                                    </th>
+                                                                ))}
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            <tr className={`border-b ${isLightMode ? 'border-gray-200' : 'border-gray-700'}`}>
+                                                                <td className={`py-2 px-3 font-medium ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>Demand Score</td>
+                                                                {comparisonData.skills.map((skill) => (
+                                                                    <td key={skill.id} className="text-center py-2 px-3">
+                                                                        <span className="font-bold text-indigo-400">{skill.demandScore}</span>
+                                                                    </td>
+                                                                ))}
+                                                            </tr>
+                                                            <tr className={`border-b ${isLightMode ? 'border-gray-200' : 'border-gray-700'}`}>
+                                                                <td className={`py-2 px-3 font-medium ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>Growth Rate</td>
+                                                                {comparisonData.skills.map((skill) => (
+                                                                    <td key={skill.id} className="text-center py-2 px-3">
+                                                                        <span className={`font-bold ${getGrowthColor(skill.growthRate)}`}>
+                                                                            {skill.growthRate > 0 ? '+' : ''}{skill.growthRate}%
+                                                                        </span>
+                                                                    </td>
+                                                                ))}
+                                                            </tr>
+                                                            <tr className={`border-b ${isLightMode ? 'border-gray-200' : 'border-gray-700'}`}>
+                                                                <td className={`py-2 px-3 font-medium ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>Salary Impact</td>
+                                                                {comparisonData.skills.map((skill) => (
+                                                                    <td key={skill.id} className="text-center py-2 px-3">
+                                                                        <span className="font-bold text-green-400">+{skill.salaryImpact}%</span>
+                                                                    </td>
+                                                                ))}
+                                                            </tr>
+                                                            <tr className={`border-b ${isLightMode ? 'border-gray-200' : 'border-gray-700'}`}>
+                                                                <td className={`py-2 px-3 font-medium ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>Job Openings</td>
+                                                                {comparisonData.skills.map((skill) => (
+                                                                    <td key={skill.id} className="text-center py-2 px-3">
+                                                                        <span className="font-bold text-purple-400">{skill.jobCount.toLocaleString()}</span>
+                                                                    </td>
+                                                                ))}
+                                                            </tr>
+                                                            <tr>
+                                                                <td className={`py-2 px-3 font-medium ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>Time to Learn</td>
+                                                                {comparisonData.skills.map((skill) => (
+                                                                    <td key={skill.id} className="text-center py-2 px-3">
+                                                                        <span className={`${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>{skill.timeToLearn || 'N/A'}</span>
+                                                                    </td>
+                                                                ))}
+                                                            </tr>
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+
+                                            {/* Visual Comparison Charts */}
+                                            <div className="space-y-4">
+                                                <h4 className={`font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>📈 Visual Comparison</h4>
+                                                
+                                                {/* Demand Score Chart */}
+                                                <div className={`${isLightMode ? 'bg-white/50' : 'bg-gray-800/50'} rounded-lg p-4`}>
+                                                    <h5 className={`text-sm font-medium mb-3 ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>Demand Score</h5>
+                                                    {renderComparisonChart('demandScore', comparisonData.skills, comparisonData.maxValues.demandScore)}
+                                                </div>
+
+                                                {/* Growth Rate Chart */}
+                                                <div className={`${isLightMode ? 'bg-white/50' : 'bg-gray-800/50'} rounded-lg p-4`}>
+                                                    <h5 className={`text-sm font-medium mb-3 ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>Growth Rate</h5>
+                                                    {renderComparisonChart('growthRate', comparisonData.skills, Math.max(...comparisonData.skills.map(s => Math.abs(s.growthRate))))}
+                                                </div>
+
+                                                {/* Salary Impact Chart */}
+                                                <div className={`${isLightMode ? 'bg-white/50' : 'bg-gray-800/50'} rounded-lg p-4`}>
+                                                    <h5 className={`text-sm font-medium mb-3 ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>Salary Impact</h5>
+                                                    {renderComparisonChart('salaryImpact', comparisonData.skills, comparisonData.maxValues.salaryImpact)}
+                                                </div>
+
+                                                {/* Job Count Chart */}
+                                                <div className={`${isLightMode ? 'bg-white/50' : 'bg-gray-800/50'} rounded-lg p-4`}>
+                                                    <h5 className={`text-sm font-medium mb-3 ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>Job Openings</h5>
+                                                    {renderComparisonChart('jobCount', comparisonData.skills, comparisonData.maxValues.jobCount)}
+                                                </div>
+                                            </div>
+
+                                            {/* Summary Insights */}
+                                            <div className={`${isLightMode ? 'bg-blue-50 border-blue-200' : 'bg-blue-500/10 border-blue-500/30'} border rounded-lg p-4`}>
+                                                <h5 className={`font-semibold mb-2 ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>💡 Comparison Insights</h5>
+                                                <ul className={`space-y-1 text-sm ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>
+                                                    <li>• Highest demand: <strong>{comparisonData.skills.reduce((max, s) => s.demandScore > max.demandScore ? s : max).name}</strong> ({comparisonData.maxValues.demandScore})</li>
+                                                    <li>• Fastest growing: <strong>{comparisonData.skills.reduce((max, s) => s.growthRate > max.growthRate ? s : max).name}</strong> ({comparisonData.skills.reduce((max, s) => s.growthRate > max.growthRate ? s : max).growthRate}%)</li>
+                                                    <li>• Best salary impact: <strong>{comparisonData.skills.reduce((max, s) => s.salaryImpact > max.salaryImpact ? s : max).name}</strong> (+{comparisonData.maxValues.salaryImpact}%)</li>
+                                                    <li>• Most job openings: <strong>{comparisonData.skills.reduce((max, s) => s.jobCount > max.jobCount ? s : max).name}</strong> ({comparisonData.maxValues.jobCount.toLocaleString()})</li>
+                                                </ul>
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
+
+                                {comparisonSkills.length < 2 && (
+                                    <div className={`text-center py-8 ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                        <p>Select at least 2 skills to compare</p>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}
