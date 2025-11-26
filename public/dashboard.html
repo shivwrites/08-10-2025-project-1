@@ -49368,6 +49368,83 @@ Generate the repurposed content:`;
                 setLearningGoals(learningGoals.filter(goal => goal.id !== goalId));
             };
 
+            // Enhanced Sidebar - Helper Functions
+            const getTopTrendingThisWeek = () => {
+                return skills
+                    .filter(skill => skill.growthRate > 0)
+                    .sort((a, b) => {
+                        // Calculate a "trending score" based on growth and demand
+                        const scoreA = (a.growthRate * 0.6) + (a.demandScore * 0.4);
+                        const scoreB = (b.growthRate * 0.6) + (b.demandScore * 0.4);
+                        return scoreB - scoreA;
+                    })
+                    .slice(0, 5);
+            };
+
+            const getTopTrendingThisMonth = () => {
+                return skills
+                    .filter(skill => skill.growthRate > 15 && skill.demandScore >= 75)
+                    .sort((a, b) => {
+                        const scoreA = (a.growthRate * 0.5) + (a.demandScore * 0.5);
+                        const scoreB = (b.growthRate * 0.5) + (b.demandScore * 0.5);
+                        return scoreB - scoreA;
+                    })
+                    .slice(0, 5);
+            };
+
+            const getDecliningSkills = () => {
+                return skills
+                    .filter(skill => skill.growthRate < 0 || skill.emergingStatus === 'declining')
+                    .sort((a, b) => a.growthRate - b.growthRate)
+                    .slice(0, 3);
+            };
+
+            const getWatchlistMatches = () => {
+                const watchedSkills = skills.filter(s => s.isWatched);
+                if (watchedSkills.length === 0) return [];
+                
+                // Find skills similar to watched skills
+                const matches = [];
+                watchedSkills.forEach(watched => {
+                    const similar = findSimilarSkills(watched, skills, 2);
+                    similar.forEach(skill => {
+                        if (!watchedSkills.some(ws => ws.id === skill.id) && 
+                            !matches.some(m => m.id === skill.id)) {
+                            matches.push(skill);
+                        }
+                    });
+                });
+                
+                return matches
+                    .sort((a, b) => b.demandScore - a.demandScore)
+                    .slice(0, 5);
+            };
+
+            const getQuickStats = () => {
+                const filtered = getFilteredAndSortedSkills();
+                const totalSkills = filtered.length;
+                const hotSkills = filtered.filter(s => s.emergingStatus === 'hot').length;
+                const risingSkills = filtered.filter(s => s.trend === 'rising').length;
+                const avgDemand = totalSkills > 0 
+                    ? Math.round(filtered.reduce((sum, s) => sum + s.demandScore, 0) / totalSkills)
+                    : 0;
+                const avgGrowth = totalSkills > 0
+                    ? Math.round(filtered.reduce((sum, s) => sum + s.growthRate, 0) / totalSkills)
+                    : 0;
+                const totalJobs = filtered.reduce((sum, s) => sum + s.jobCount, 0);
+                const watchedCount = filtered.filter(s => s.isWatched).length;
+                
+                return {
+                    totalSkills,
+                    hotSkills,
+                    risingSkills,
+                    avgDemand,
+                    avgGrowth,
+                    totalJobs,
+                    watchedCount
+                };
+            };
+
             const handleMarketScan = () => {
                 setIsScanning(true);
                 setTimeout(() => {
@@ -50334,6 +50411,224 @@ Generate the repurposed content:`;
 
                             {/* Sidebar */}
                             <div className="space-y-6">
+                                {/* Quick Stats Dashboard */}
+                                {(() => {
+                                    const stats = getQuickStats();
+                                    return (
+                                        <div className={`${isLightMode ? 'bg-gradient-to-br from-indigo-50 to-purple-50 border-indigo-200' : 'bg-gradient-to-br from-indigo-500/10 to-purple-500/10 border-indigo-500/30'} border rounded-2xl p-6`}>
+                                            <h3 className={`text-lg font-semibold mb-4 ${isLightMode ? 'text-gray-900' : 'text-gray-50'} flex items-center gap-2`}>
+                                                <span>📊</span>
+                                                Quick Stats
+                                            </h3>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div className="text-center">
+                                                    <div className="text-2xl font-bold text-indigo-400">{stats.totalSkills}</div>
+                                                    <div className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>Total Skills</div>
+                                                </div>
+                                                <div className="text-center">
+                                                    <div className="text-2xl font-bold text-red-400">{stats.hotSkills}</div>
+                                                    <div className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>Hot Skills</div>
+                                                </div>
+                                                <div className="text-center">
+                                                    <div className="text-2xl font-bold text-green-400">{stats.risingSkills}</div>
+                                                    <div className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>Rising</div>
+                                                </div>
+                                                <div className="text-center">
+                                                    <div className="text-2xl font-bold text-purple-400">{stats.avgDemand}</div>
+                                                    <div className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>Avg Demand</div>
+                                                </div>
+                                                <div className="text-center">
+                                                    <div className={`text-2xl font-bold ${stats.avgGrowth >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                                        {stats.avgGrowth > 0 ? '+' : ''}{stats.avgGrowth}%
+                                                    </div>
+                                                    <div className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>Avg Growth</div>
+                                                </div>
+                                                <div className="text-center">
+                                                    <div className="text-2xl font-bold text-blue-400">
+                                                        {(stats.totalJobs / 1000).toFixed(1)}k
+                                                    </div>
+                                                    <div className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>Total Jobs</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
+
+                                {/* Top Trending This Week */}
+                                {(() => {
+                                    const trendingWeek = getTopTrendingThisWeek();
+                                    return trendingWeek.length > 0 ? (
+                                        <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
+                                            <h3 className={`text-lg font-semibold mb-4 ${isLightMode ? 'text-gray-900' : 'text-gray-50'} flex items-center gap-2`}>
+                                                <span>🔥</span>
+                                                Trending This Week
+                                            </h3>
+                                            <div className="space-y-2">
+                                                {trendingWeek.map((skill, idx) => (
+                                                    <div
+                                                        key={skill.id}
+                                                        className={`flex items-center justify-between p-2 rounded-lg ${isLightMode ? 'bg-gray-50 hover:bg-gray-100' : 'bg-gray-800 hover:bg-gray-700'} transition-colors cursor-pointer`}
+                                                        onClick={() => {
+                                                            const element = document.querySelector(`[data-skill-id="${skill.id}"]`);
+                                                            if (element) {
+                                                                element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                                                element.classList.add('ring-2', 'ring-indigo-500');
+                                                                setTimeout(() => element.classList.remove('ring-2', 'ring-indigo-500'), 2000);
+                                                            }
+                                                        }}
+                                                    >
+                                                        <div className="flex items-center gap-2">
+                                                            <span className={`text-xs font-bold ${isLightMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                                                #{idx + 1}
+                                                            </span>
+                                                            <span className={`text-sm font-medium ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                                {skill.name}
+                                                            </span>
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <span className={`text-xs ${getGrowthColor(skill.growthRate)} font-medium`}>
+                                                                +{skill.growthRate}%
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ) : null;
+                                })()}
+
+                                {/* Top Trending This Month */}
+                                {(() => {
+                                    const trendingMonth = getTopTrendingThisMonth();
+                                    return trendingMonth.length > 0 ? (
+                                        <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
+                                            <h3 className={`text-lg font-semibold mb-4 ${isLightMode ? 'text-gray-900' : 'text-gray-50'} flex items-center gap-2`}>
+                                                <span>📈</span>
+                                                Trending This Month
+                                            </h3>
+                                            <div className="space-y-2">
+                                                {trendingMonth.map((skill, idx) => (
+                                                    <div
+                                                        key={skill.id}
+                                                        className={`flex items-center justify-between p-2 rounded-lg ${isLightMode ? 'bg-gray-50 hover:bg-gray-100' : 'bg-gray-800 hover:bg-gray-700'} transition-colors cursor-pointer`}
+                                                        onClick={() => {
+                                                            const element = document.querySelector(`[data-skill-id="${skill.id}"]`);
+                                                            if (element) {
+                                                                element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                                                element.classList.add('ring-2', 'ring-indigo-500');
+                                                                setTimeout(() => element.classList.remove('ring-2', 'ring-indigo-500'), 2000);
+                                                            }
+                                                        }}
+                                                    >
+                                                        <div className="flex items-center gap-2">
+                                                            <span className={`w-2 h-2 rounded-full ${getHeatMapColor(skill.demandScore)}`}></span>
+                                                            <span className={`text-sm ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                                {skill.name}
+                                                            </span>
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <span className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>
+                                                                {skill.demandScore}
+                                                            </span>
+                                                            <span className={`text-xs ${getGrowthColor(skill.growthRate)}`}>
+                                                                +{skill.growthRate}%
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ) : null;
+                                })()}
+
+                                {/* Declining Skills Alert */}
+                                {(() => {
+                                    const declining = getDecliningSkills();
+                                    return declining.length > 0 ? (
+                                        <div className={`${isLightMode ? 'bg-red-50 border-red-200' : 'bg-red-500/10 border-red-500/30'} border rounded-2xl p-6`}>
+                                            <h3 className={`text-lg font-semibold mb-4 ${isLightMode ? 'text-gray-900' : 'text-red-400'} flex items-center gap-2`}>
+                                                <span>⚠️</span>
+                                                Declining Skills Alert
+                                            </h3>
+                                            <p className={`text-xs mb-3 ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>
+                                                Skills showing negative growth trends
+                                            </p>
+                                            <div className="space-y-2">
+                                                {declining.map((skill) => (
+                                                    <div
+                                                        key={skill.id}
+                                                        className={`flex items-center justify-between p-2 rounded-lg ${isLightMode ? 'bg-white border-red-200' : 'bg-gray-800 border-red-500/30'} border`}
+                                                    >
+                                                        <div className="flex items-center gap-2">
+                                                            <span className={`text-sm font-medium ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                                {skill.name}
+                                                            </span>
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <span className={`text-xs font-medium ${getGrowthColor(skill.growthRate)}`}>
+                                                                {skill.growthRate}%
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ) : null;
+                                })()}
+
+                                {/* Skills Matching Your Watchlist */}
+                                {(() => {
+                                    const matches = getWatchlistMatches();
+                                    return matches.length > 0 ? (
+                                        <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
+                                            <h3 className={`text-lg font-semibold mb-4 ${isLightMode ? 'text-gray-900' : 'text-gray-50'} flex items-center gap-2`}>
+                                                <span>⭐</span>
+                                                Watchlist Matches
+                                            </h3>
+                                            <p className={`text-xs mb-3 ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>
+                                                Skills similar to your watchlist
+                                            </p>
+                                            <div className="space-y-2">
+                                                {matches.map((skill) => (
+                                                    <div
+                                                        key={skill.id}
+                                                        className={`flex items-center justify-between p-2 rounded-lg ${isLightMode ? 'bg-gray-50 hover:bg-gray-100' : 'bg-gray-800 hover:bg-gray-700'} transition-colors cursor-pointer`}
+                                                        onClick={() => {
+                                                            const element = document.querySelector(`[data-skill-id="${skill.id}"]`);
+                                                            if (element) {
+                                                                element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                                                element.classList.add('ring-2', 'ring-indigo-500');
+                                                                setTimeout(() => element.classList.remove('ring-2', 'ring-indigo-500'), 2000);
+                                                            }
+                                                        }}
+                                                    >
+                                                        <div className="flex items-center gap-2">
+                                                            <span className={`w-2 h-2 rounded-full ${getHeatMapColor(skill.demandScore)}`}></span>
+                                                            <span className={`text-sm ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                                {skill.name}
+                                                            </span>
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <span className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>
+                                                                {skill.demandScore}
+                                                            </span>
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    handleWatchlistToggle(skill.id);
+                                                                }}
+                                                                className={`p-1 rounded ${skill.isWatched ? 'bg-yellow-500 text-white' : 'bg-gray-600 text-gray-400'}`}
+                                                            >
+                                                                <span className="text-xs">⭐</span>
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ) : null;
+                                })()}
+
                                 {/* Your Skills */}
                                 <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
                                     <div className="flex items-center justify-between mb-4">
