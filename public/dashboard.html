@@ -48227,6 +48227,12 @@ Generate the repurposed content:`;
             });
             const [userSkills, setUserSkills] = useState(['Python', 'JavaScript', 'React', 'Node.js', 'Git']);
             const [showPersonalization, setShowPersonalization] = useState(true);
+            const [selectedSkills, setSelectedSkills] = useState(new Set());
+            const [learningGoals, setLearningGoals] = useState([
+                { id: 1, skillId: 1, skillName: 'AI/ML', targetDate: '2024-06-01', status: 'in-progress', progress: 45 },
+                { id: 2, skillId: 4, skillName: 'Cybersecurity', targetDate: '2024-08-15', status: 'planned', progress: 0 }
+            ]);
+            const [showBulkActions, setShowBulkActions] = useState(false);
 
             // Check for light mode
             const isLightMode = !document.documentElement.classList.contains('dark');
@@ -49174,6 +49180,194 @@ Generate the repurposed content:`;
                 );
             };
 
+            // Interactive Features - Helper Functions
+            const toggleSkillSelection = (skillId) => {
+                const newSelected = new Set(selectedSkills);
+                if (newSelected.has(skillId)) {
+                    newSelected.delete(skillId);
+                } else {
+                    newSelected.add(skillId);
+                }
+                setSelectedSkills(newSelected);
+                if (newSelected.size > 0) {
+                    setShowBulkActions(true);
+                } else {
+                    setShowBulkActions(false);
+                }
+            };
+
+            const selectAllSkills = () => {
+                const allSkillIds = new Set(getFilteredAndSortedSkills().map(s => s.id));
+                setSelectedSkills(allSkillIds);
+                setShowBulkActions(true);
+            };
+
+            const clearSelection = () => {
+                setSelectedSkills(new Set());
+                setShowBulkActions(false);
+            };
+
+            const bulkAddToWatchlist = () => {
+                const selected = Array.from(selectedSkills);
+                selected.forEach(skillId => {
+                    const skill = skills.find(s => s.id === skillId);
+                    if (skill && !skill.isWatched) {
+                        handleWatchlistToggle(skillId);
+                    }
+                });
+                clearSelection();
+            };
+
+            const bulkAddToComparison = () => {
+                const selected = Array.from(selectedSkills);
+                selected.forEach(skillId => {
+                    const skill = skills.find(s => s.id === skillId);
+                    if (skill && !comparisonSkills.some(s => s.id === skillId)) {
+                        toggleComparisonSkill(skill);
+                    }
+                });
+                clearSelection();
+            };
+
+            const exportToCSV = () => {
+                const skillsToExport = getFilteredAndSortedSkills();
+                const headers = ['Name', 'Category', 'Demand Score', 'Growth Rate', 'Salary Impact', 'Job Count', 'Status', 'Time to Learn'];
+                const rows = skillsToExport.map(skill => [
+                    skill.name,
+                    skill.category,
+                    skill.demandScore,
+                    skill.growthRate,
+                    skill.salaryImpact,
+                    skill.jobCount,
+                    skill.emergingStatus,
+                    skill.timeToLearn || 'N/A'
+                ]);
+
+                const csvContent = [
+                    headers.join(','),
+                    ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+                ].join('\n');
+
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement('a');
+                const url = URL.createObjectURL(blob);
+                link.setAttribute('href', url);
+                link.setAttribute('download', `trending-skills-${new Date().toISOString().split('T')[0]}.csv`);
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            };
+
+            const exportToPDF = () => {
+                // Create a printable version
+                const skillsToExport = getFilteredAndSortedSkills();
+                const printWindow = window.open('', '_blank');
+                printWindow.document.write(`
+                    <html>
+                        <head>
+                            <title>Trending Skills Report</title>
+                            <style>
+                                body { font-family: Arial, sans-serif; padding: 20px; }
+                                h1 { color: #4f46e5; }
+                                table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+                                th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                                th { background-color: #4f46e5; color: white; }
+                                tr:nth-child(even) { background-color: #f2f2f2; }
+                            </style>
+                        </head>
+                        <body>
+                            <h1>Trending Skills Report</h1>
+                            <p>Generated: ${new Date().toLocaleString()}</p>
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Name</th>
+                                        <th>Category</th>
+                                        <th>Demand</th>
+                                        <th>Growth</th>
+                                        <th>Salary Impact</th>
+                                        <th>Jobs</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${skillsToExport.map(skill => `
+                                        <tr>
+                                            <td>${skill.name}</td>
+                                            <td>${skill.category}</td>
+                                            <td>${skill.demandScore}</td>
+                                            <td>${skill.growthRate}%</td>
+                                            <td>+${skill.salaryImpact}%</td>
+                                            <td>${skill.jobCount.toLocaleString()}</td>
+                                            <td>${skill.emergingStatus}</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </body>
+                    </html>
+                `);
+                printWindow.document.close();
+                setTimeout(() => {
+                    printWindow.print();
+                }, 250);
+            };
+
+            const shareSkillInsights = (skill) => {
+                const insights = {
+                    name: skill.name,
+                    demandScore: skill.demandScore,
+                    growthRate: skill.growthRate,
+                    salaryImpact: skill.salaryImpact,
+                    jobCount: skill.jobCount,
+                    status: skill.emergingStatus
+                };
+
+                const shareText = `Check out ${skill.name}! 📊\n\n` +
+                    `Demand Score: ${skill.demandScore}/100\n` +
+                    `Growth Rate: ${skill.growthRate}%\n` +
+                    `Salary Impact: +${skill.salaryImpact}%\n` +
+                    `Job Openings: ${skill.jobCount.toLocaleString()}\n` +
+                    `Status: ${skill.emergingStatus}\n\n` +
+                    `#SkillRadar #CareerDevelopment`;
+
+                if (navigator.share) {
+                    navigator.share({
+                        title: `${skill.name} - Skill Insights`,
+                        text: shareText,
+                        url: window.location.href
+                    }).catch(err => console.log('Error sharing:', err));
+                } else {
+                    // Fallback: copy to clipboard
+                    navigator.clipboard.writeText(shareText).then(() => {
+                        alert('Insights copied to clipboard!');
+                    });
+                }
+            };
+
+            const addLearningGoal = (skillId, skillName, targetDate) => {
+                const newGoal = {
+                    id: learningGoals.length + 1,
+                    skillId,
+                    skillName,
+                    targetDate,
+                    status: 'planned',
+                    progress: 0
+                };
+                setLearningGoals([...learningGoals, newGoal]);
+            };
+
+            const updateLearningGoal = (goalId, updates) => {
+                setLearningGoals(learningGoals.map(goal =>
+                    goal.id === goalId ? { ...goal, ...updates } : goal
+                ));
+            };
+
+            const deleteLearningGoal = (goalId) => {
+                setLearningGoals(learningGoals.filter(goal => goal.id !== goalId));
+            };
+
             const handleMarketScan = () => {
                 setIsScanning(true);
                 setTimeout(() => {
@@ -49776,9 +49970,62 @@ Generate the repurposed content:`;
                                         </div>
                                     )}
 
-                                    {/* Results Count */}
-                                    <div className={`text-sm ${isLightMode ? 'text-gray-600' : 'text-gray-400'} mb-4`}>
-                                        Showing {getFilteredAndSortedSkills().length} of {skills.length} skills
+                                    {/* Results Count & Actions */}
+                                    <div className="flex items-center justify-between mb-4">
+                                        <div className={`text-sm ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>
+                                            Showing {getFilteredAndSortedSkills().length} of {skills.length} skills
+                                            {selectedSkills.size > 0 && (
+                                                <span className={`ml-2 px-2 py-1 rounded ${isLightMode ? 'bg-indigo-100 text-indigo-700' : 'bg-indigo-500/20 text-indigo-400'}`}>
+                                                    {selectedSkills.size} selected
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            {selectedSkills.size > 0 && (
+                                                <>
+                                                    <button
+                                                        onClick={bulkAddToWatchlist}
+                                                        className={`px-3 py-1.5 text-sm rounded-lg font-medium transition-colors ${isLightMode ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200' : 'bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30'}`}
+                                                    >
+                                                        ⭐ Add to Watchlist
+                                                    </button>
+                                                    <button
+                                                        onClick={bulkAddToComparison}
+                                                        className={`px-3 py-1.5 text-sm rounded-lg font-medium transition-colors ${isLightMode ? 'bg-blue-100 text-blue-700 hover:bg-blue-200' : 'bg-blue-500/20 text-blue-400 hover:bg-blue-500/30'}`}
+                                                    >
+                                                        ⚖️ Compare
+                                                    </button>
+                                                    <button
+                                                        onClick={clearSelection}
+                                                        className={`px-3 py-1.5 text-sm rounded-lg font-medium transition-colors ${isLightMode ? 'bg-gray-200 text-gray-700 hover:bg-gray-300' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
+                                                    >
+                                                        Clear
+                                                    </button>
+                                                </>
+                                            )}
+                                            <button
+                                                onClick={selectAllSkills}
+                                                className={`px-3 py-1.5 text-sm rounded-lg font-medium transition-colors ${isLightMode ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}
+                                            >
+                                                Select All
+                                            </button>
+                                            <div className={`flex items-center gap-1 ${isLightMode ? 'bg-gray-100' : 'bg-gray-700'} rounded-lg p-1`}>
+                                                <button
+                                                    onClick={exportToCSV}
+                                                    className={`px-3 py-1.5 text-sm rounded transition-colors ${isLightMode ? 'text-gray-700 hover:bg-gray-200' : 'text-gray-300 hover:bg-gray-600'}`}
+                                                    title="Export to CSV"
+                                                >
+                                                    📥 CSV
+                                                </button>
+                                                <button
+                                                    onClick={exportToPDF}
+                                                    className={`px-3 py-1.5 text-sm rounded transition-colors ${isLightMode ? 'text-gray-700 hover:bg-gray-200' : 'text-gray-300 hover:bg-gray-600'}`}
+                                                    title="Export to PDF"
+                                                >
+                                                    📄 PDF
+                                                </button>
+                                            </div>
+                                        </div>
                                     </div>
                                     
                                     <div className="space-y-4">
@@ -49803,6 +50050,13 @@ Generate the repurposed content:`;
                                                 
                                                 <div className="flex items-start justify-between mb-4">
                                                     <div className="flex items-start gap-4">
+                                                        {/* Selection Checkbox */}
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={selectedSkills.has(skill.id)}
+                                                            onChange={() => toggleSkillSelection(skill.id)}
+                                                            className="mt-2 w-5 h-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                                        />
                                                         <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center relative">
                                                             <div className="w-6 h-6 text-white text-xl">💻</div>
                                                             {/* Heat Map Dot */}
@@ -49854,6 +50108,13 @@ Generate the repurposed content:`;
                                                         </div>
                                                     </div>
                                                     <div className="flex items-center gap-2">
+                                                        <button
+                                                            onClick={() => shareSkillInsights(skill)}
+                                                            className="p-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors duration-200"
+                                                            title="Share skill insights"
+                                                        >
+                                                            <div className="w-4 h-4">📤</div>
+                                                        </button>
                                                         <button
                                                             onClick={() => toggleComparisonSkill(skill)}
                                                             className={`p-2 rounded-lg transition-colors duration-200 ${
@@ -50291,6 +50552,106 @@ Generate the repurposed content:`;
                                         </div>
                                     );
                                 })()}
+
+                                {/* Learning Goals */}
+                                <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
+                                    <div className="flex items-center justify-between mb-4">
+                                        <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} flex items-center gap-2`}>
+                                            <span>🎯</span>
+                                            Learning Goals
+                                        </h3>
+                                        <button
+                                            onClick={() => {
+                                                const skillName = prompt('Enter skill name:');
+                                                const targetDate = prompt('Enter target date (YYYY-MM-DD):');
+                                                if (skillName && targetDate) {
+                                                    const skill = skills.find(s => s.name.toLowerCase().includes(skillName.toLowerCase()));
+                                                    if (skill) {
+                                                        addLearningGoal(skill.id, skill.name, targetDate);
+                                                    } else {
+                                                        addLearningGoal(null, skillName, targetDate);
+                                                    }
+                                                }
+                                            }}
+                                            className={`text-xs px-2 py-1 ${isLightMode ? 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200' : 'bg-indigo-500/20 text-indigo-400 hover:bg-indigo-500/30'} rounded transition-colors`}
+                                        >
+                                            + Add Goal
+                                        </button>
+                                    </div>
+                                    {learningGoals.length === 0 ? (
+                                        <p className={`text-sm text-center py-4 ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                            No learning goals set. Add one to track your progress!
+                                        </p>
+                                    ) : (
+                                        <div className="space-y-3">
+                                            {learningGoals.map((goal) => {
+                                                const skill = skills.find(s => s.id === goal.skillId);
+                                                const daysRemaining = Math.ceil((new Date(goal.targetDate) - new Date()) / (1000 * 60 * 60 * 24));
+                                                
+                                                return (
+                                                    <div
+                                                        key={goal.id}
+                                                        className={`${isLightMode ? 'bg-gray-50 border-gray-200' : 'bg-gray-800 border-gray-700'} border rounded-lg p-3`}
+                                                    >
+                                                        <div className="flex items-start justify-between mb-2">
+                                                            <div className="flex-1">
+                                                                <h4 className={`font-medium text-sm ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                                    {goal.skillName}
+                                                                </h4>
+                                                                <div className="flex items-center gap-2 mt-1">
+                                                                    <span className={`text-xs px-2 py-0.5 rounded ${
+                                                                        goal.status === 'completed' ? 'bg-green-500/20 text-green-400' :
+                                                                        goal.status === 'in-progress' ? 'bg-blue-500/20 text-blue-400' :
+                                                                        'bg-gray-500/20 text-gray-400'
+                                                                    }`}>
+                                                                        {goal.status}
+                                                                    </span>
+                                                                    <span className={`text-xs ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                                        Target: {new Date(goal.targetDate).toLocaleDateString()}
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                            <button
+                                                                onClick={() => deleteLearningGoal(goal.id)}
+                                                                className="text-xs text-red-400 hover:text-red-300"
+                                                            >
+                                                                ✕
+                                                            </button>
+                                                        </div>
+                                                        <div className="mt-2">
+                                                            <div className="flex items-center justify-between mb-1">
+                                                                <span className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>Progress</span>
+                                                                <span className={`text-xs font-medium ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>
+                                                                    {goal.progress}%
+                                                                </span>
+                                                            </div>
+                                                            <div className={`w-full h-2 ${isLightMode ? 'bg-gray-200' : 'bg-gray-700'} rounded-full overflow-hidden`}>
+                                                                <div
+                                                                    className={`h-full transition-all duration-300 ${
+                                                                        goal.progress >= 100 ? 'bg-green-500' :
+                                                                        goal.progress >= 50 ? 'bg-blue-500' :
+                                                                        'bg-indigo-500'
+                                                                    }`}
+                                                                    style={{ width: `${goal.progress}%` }}
+                                                                ></div>
+                                                            </div>
+                                                        </div>
+                                                        {daysRemaining > 0 && (
+                                                            <div className={`text-xs mt-2 ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>
+                                                                {daysRemaining} days remaining
+                                                            </div>
+                                                        )}
+                                                        {daysRemaining <= 0 && goal.status !== 'completed' && (
+                                                            <div className="text-xs mt-2 text-orange-400">
+                                                                Target date passed
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     )}
