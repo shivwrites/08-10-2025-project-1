@@ -48241,6 +48241,7 @@ Generate the repurposed content:`;
                 trend: 'all',
                 emergingStatus: 'all',
                 priority: 'all',
+                tag: 'all',
                 searchQuery: ''
             });
             const [watchlistSortBy, setWatchlistSortBy] = useState('dateAdded'); // dateAdded, demand, growth, salary, jobs, priority
@@ -48248,6 +48249,16 @@ Generate the repurposed content:`;
             const [watchlistData, setWatchlistData] = useState({}); // Store watchlist metadata (added_at, priority, etc.)
             const [watchlistHistory, setWatchlistHistory] = useState({}); // Store historical data for each skill {skillId: [{date, demand, growth, etc.}]}
             const [skillChanges, setSkillChanges] = useState({}); // Store detected changes {skillId: {demandChange, growthChange, etc.}}
+            
+            // Notes and Tags editing state
+            const [editingSkillId, setEditingSkillId] = useState(null); // Currently editing skill ID
+            const [editingNotes, setEditingNotes] = useState(''); // Notes being edited
+            const [editingTags, setEditingTags] = useState([]); // Tags being edited
+            const [tagInput, setTagInput] = useState(''); // Tag input value
+            const [tagSuggestions, setTagSuggestions] = useState([]); // Tag autocomplete suggestions
+            
+            // Bulk selection state for priority updates
+            const [selectedSkillIds, setSelectedSkillIds] = useState(new Set()); // Set of selected skill IDs for bulk operations
 
             // Check for light mode
             const isLightMode = !document.documentElement.classList.contains('dark');
@@ -50056,6 +50067,14 @@ Generate the repurposed content:`;
                     });
                 }
 
+                // Apply tag filter
+                if (watchlistFilter.tag !== 'all') {
+                    filtered = filtered.filter(skill => {
+                        const metadata = watchlistData[skill.id];
+                        return metadata && metadata.tags && Array.isArray(metadata.tags) && metadata.tags.includes(watchlistFilter.tag);
+                    });
+                }
+
                 // Apply sorting
                 filtered.sort((a, b) => {
                     let aValue, bValue;
@@ -50236,6 +50255,315 @@ Generate the repurposed content:`;
                             )
                         );
                     }
+                }
+            };
+
+            // Update watchlist metadata (notes, tags, priority)
+            const updateWatchlistMetadata = async (skillId, updates) => {
+                const supabaseClient = getSupabaseClient();
+                if (!supabaseClient) {
+                    console.warn('Supabase not available, cannot update metadata');
+                    return;
+                }
+
+                try {
+                    const { data: { user } } = await supabaseClient.auth.getUser();
+                    if (!user) {
+                        console.log('User not logged in, cannot update metadata');
+                        return;
+                    }
+
+                    // Update in database
+                    const { error } = await supabaseClient
+                        .from('skill_watchlist')
+                        .update(updates)
+                        .eq('user_id', user.id)
+                        .eq('skill_id', skillId);
+
+                    if (error) {
+                        console.error('Error updating watchlist metadata:', error);
+                        return;
+                    }
+
+                    // Update local state
+                    setWatchlistData(prev => ({
+                        ...prev,
+                        [skillId]: {
+                            ...prev[skillId],
+                            ...updates
+                        }
+                    }));
+
+                    // Close editing mode
+                    setEditingSkillId(null);
+                    setEditingNotes('');
+                    setEditingTags([]);
+                    setTagInput('');
+                } catch (error) {
+                    console.error('Error updating watchlist metadata:', error);
+                }
+            };
+
+            // Get all unique tags from watchlist
+            const getAllTags = () => {
+                const allTags = new Set();
+                Object.values(watchlistData).forEach(metadata => {
+                    if (metadata.tags && Array.isArray(metadata.tags)) {
+                        metadata.tags.forEach(tag => allTags.add(tag));
+                    }
+                });
+                return Array.from(allTags).sort();
+            };
+
+            // Enhanced Analytics Calculation Functions
+            const calculateWatchlistAnalytics = () => {
+                const watchedSkills = skills.filter(s => s.isWatched);
+                if (watchedSkills.length === 0) {
+                    return {
+                        healthScore: 0,
+                        avgGrowthRate: 0,
+                        totalJobOpportunities: 0,
+                        priorityDistribution: { high: 0, medium: 0, low: 0 },
+                        categoryBreakdown: {},
+                        avgTimeInWatchlist: 0,
+                        projectedROI: 0,
+                        topPerformingSkill: null,
+                        skillsNeedingAttention: []
+                    };
+                }
+
+                // Calculate Watchlist Health Score (0-100)
+                // Factors: average demand, growth rate, priority distribution, diversity
+                const avgDemand = watchedSkills.reduce((sum, s) => sum + s.demandScore, 0) / watchedSkills.length;
+                const avgGrowth = watchedSkills.reduce((sum, s) => sum + s.growthRate, 0) / watchedSkills.length;
+                
+                // Priority distribution score (higher priority = better)
+                const priorityScores = { high: 3, medium: 2, low: 1 };
+                const avgPriorityScore = watchedSkills.reduce((sum, s) => {
+                    const metadata = watchlistData[s.id];
+                    const priority = metadata?.priority || 'medium';
+                    return sum + (priorityScores[priority] || 2);
+                }, 0) / watchedSkills.length;
+                
+                // Category diversity (more diverse = better, max 4 categories)
+                const uniqueCategories = new Set(watchedSkills.map(s => s.category)).size;
+                const diversityScore = Math.min(uniqueCategories / 4, 1) * 20;
+                
+                // Health score calculation
+                const healthScore = Math.round(
+                    (avgDemand * 0.3) + 
+                    (avgGrowth * 0.3) + 
+                    (avgPriorityScore * 10 * 0.2) + 
+                    (diversityScore * 0.2)
+                );
+
+                // Average Growth Rate
+                const avgGrowthRate = watchedSkills.reduce((sum, s) => sum + s.growthRate, 0) / watchedSkills.length;
+
+                // Total Job Opportunities
+                const totalJobOpportunities = watchedSkills.reduce((sum, s) => sum + s.jobCount, 0);
+
+                // Priority Distribution
+                const priorityDistribution = watchedSkills.reduce((acc, s) => {
+                    const metadata = watchlistData[s.id];
+                    const priority = metadata?.priority || 'medium';
+                    acc[priority] = (acc[priority] || 0) + 1;
+                    return acc;
+                }, { high: 0, medium: 0, low: 0 });
+
+                // Category Breakdown
+                const categoryBreakdown = watchedSkills.reduce((acc, s) => {
+                    acc[s.category] = (acc[s.category] || 0) + 1;
+                    return acc;
+                }, {});
+
+                // Average Time in Watchlist (in days)
+                const now = new Date();
+                const timesInWatchlist = watchedSkills
+                    .map(s => {
+                        const metadata = watchlistData[s.id];
+                        if (metadata?.added_at) {
+                            const addedDate = new Date(metadata.added_at);
+                            return Math.floor((now - addedDate) / (1000 * 60 * 60 * 24));
+                        }
+                        return 0;
+                    })
+                    .filter(days => days > 0);
+                
+                const avgTimeInWatchlist = timesInWatchlist.length > 0
+                    ? Math.round(timesInWatchlist.reduce((sum, days) => sum + days, 0) / timesInWatchlist.length)
+                    : 0;
+
+                // Projected ROI (average salary impact weighted by priority)
+                const projectedROI = watchedSkills.reduce((sum, s) => {
+                    const metadata = watchlistData[s.id];
+                    const priority = metadata?.priority || 'medium';
+                    const priorityWeight = priorityScores[priority] || 2;
+                    return sum + (s.salaryImpact * priorityWeight);
+                }, 0) / watchedSkills.length;
+
+                // Top Performing Skill (highest demand + growth)
+                const topPerformingSkill = watchedSkills.reduce((top, s) => {
+                    const score = s.demandScore + s.growthRate;
+                    const topScore = top ? top.demandScore + top.growthRate : 0;
+                    return score > topScore ? s : top;
+                }, null);
+
+                // Skills Needing Attention (declining or low growth)
+                const skillsNeedingAttention = watchedSkills
+                    .filter(s => s.trend === 'falling' || s.growthRate < 10)
+                    .sort((a, b) => a.growthRate - b.growthRate)
+                    .slice(0, 3);
+
+                return {
+                    healthScore: Math.min(healthScore, 100),
+                    avgGrowthRate: Math.round(avgGrowthRate * 10) / 10,
+                    totalJobOpportunities,
+                    priorityDistribution,
+                    categoryBreakdown,
+                    avgTimeInWatchlist,
+                    projectedROI: Math.round(projectedROI * 10) / 10,
+                    topPerformingSkill,
+                    skillsNeedingAttention
+                };
+            };
+
+            // Handle tag input change with autocomplete
+            const handleTagInputChange = (value) => {
+                setTagInput(value);
+                if (value.trim()) {
+                    const allTags = getAllTags();
+                    const filtered = allTags.filter(tag => 
+                        tag.toLowerCase().includes(value.toLowerCase()) && 
+                        !editingTags.includes(tag)
+                    );
+                    setTagSuggestions(filtered.slice(0, 5)); // Show top 5 suggestions
+                } else {
+                    setTagSuggestions([]);
+                }
+            };
+
+            // Add tag
+            const addTag = (tag) => {
+                const trimmedTag = tag.trim();
+                if (trimmedTag && !editingTags.includes(trimmedTag)) {
+                    setEditingTags([...editingTags, trimmedTag]);
+                    setTagInput('');
+                    setTagSuggestions([]);
+                }
+            };
+
+            // Remove tag
+            const removeTag = (tagToRemove) => {
+                setEditingTags(editingTags.filter(tag => tag !== tagToRemove));
+            };
+
+            // Save notes and tags
+            const saveNotesAndTags = async (skillId) => {
+                await updateWatchlistMetadata(skillId, {
+                    notes: editingNotes,
+                    tags: editingTags
+                });
+            };
+
+            // Start editing notes and tags
+            const startEditingMetadata = (skillId) => {
+                const metadata = watchlistData[skillId] || {};
+                setEditingSkillId(skillId);
+                setEditingNotes(metadata.notes || '');
+                setEditingTags(metadata.tags || []);
+                setTagInput('');
+                setTagSuggestions([]);
+            };
+
+            // Cancel editing
+            const cancelEditingMetadata = () => {
+                setEditingSkillId(null);
+                setEditingNotes('');
+                setEditingTags([]);
+                setTagInput('');
+                setTagSuggestions([]);
+            };
+
+            // Quick priority update function
+            const updatePriority = async (skillId, newPriority) => {
+                await updateWatchlistMetadata(skillId, { priority: newPriority });
+            };
+
+            // Bulk priority update function
+            const bulkUpdatePriority = async (priority) => {
+                if (selectedSkillIds.size === 0) {
+                    alert('Please select at least one skill to update');
+                    return;
+                }
+
+                const supabaseClient = getSupabaseClient();
+                if (!supabaseClient) {
+                    console.warn('Supabase not available, cannot update priorities');
+                    return;
+                }
+
+                try {
+                    const { data: { user } } = await supabaseClient.auth.getUser();
+                    if (!user) {
+                        console.log('User not logged in, cannot update priorities');
+                        return;
+                    }
+
+                    // Update all selected skills in batch
+                    const skillIdArray = Array.from(selectedSkillIds);
+                    const updatePromises = skillIdArray.map(skillId =>
+                        supabaseClient
+                            .from('skill_watchlist')
+                            .update({ priority })
+                            .eq('user_id', user.id)
+                            .eq('skill_id', skillId)
+                    );
+
+                    await Promise.all(updatePromises);
+
+                    // Update local state
+                    setWatchlistData(prev => {
+                        const updated = { ...prev };
+                        skillIdArray.forEach(skillId => {
+                            updated[skillId] = {
+                                ...updated[skillId],
+                                priority
+                            };
+                        });
+                        return updated;
+                    });
+
+                    // Clear selection
+                    setSelectedSkillIds(new Set());
+                } catch (error) {
+                    console.error('Error bulk updating priorities:', error);
+                    alert('Failed to update priorities. Please try again.');
+                }
+            };
+
+            // Toggle watchlist skill selection for bulk operations
+            const toggleWatchlistSkillSelection = (skillId) => {
+                setSelectedSkillIds(prev => {
+                    const newSet = new Set(prev);
+                    if (newSet.has(skillId)) {
+                        newSet.delete(skillId);
+                    } else {
+                        newSet.add(skillId);
+                    }
+                    return newSet;
+                });
+            };
+
+            // Toggle all skills selection
+            const toggleAllSkillsSelection = () => {
+                const watchedSkills = getFilteredAndSortedWatchlist();
+                if (selectedSkillIds.size === watchedSkills.length) {
+                    // Deselect all
+                    setSelectedSkillIds(new Set());
+                } else {
+                    // Select all
+                    setSelectedSkillIds(new Set(watchedSkills.map(s => s.id)));
                 }
             };
 
@@ -52075,6 +52403,58 @@ Generate the repurposed content:`;
                                         </div>
                                     </div>
                                     
+                                    {/* Bulk Selection Controls */}
+                                    {skills.filter(skill => skill.isWatched).length > 0 && (
+                                        <div className={`${isLightMode ? 'bg-blue-50 border-blue-200' : 'bg-blue-500/10 border-blue-500/30'} border rounded-lg p-4 mb-6`}>
+                                            <div className="flex items-center justify-between flex-wrap gap-4">
+                                                <div className="flex items-center gap-4">
+                                                    <label className="flex items-center gap-2 cursor-pointer">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={selectedSkillIds.size > 0 && selectedSkillIds.size === getFilteredAndSortedWatchlist().length}
+                                                            onChange={toggleAllSkillsSelection}
+                                                            className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                                        />
+                                                        <span className={`text-sm font-medium ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>
+                                                            Select All ({selectedSkillIds.size} selected)
+                                                        </span>
+                                                    </label>
+                                                </div>
+                                                {selectedSkillIds.size > 0 && (
+                                                    <div className="flex items-center gap-3">
+                                                        <span className={`text-sm ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>
+                                                            {selectedSkillIds.size} skill{selectedSkillIds.size !== 1 ? 's' : ''} selected
+                                                        </span>
+                                                        <div className="flex items-center gap-2">
+                                                            <span className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>Set priority:</span>
+                                                            <select
+                                                                onChange={(e) => {
+                                                                    if (e.target.value) {
+                                                                        bulkUpdatePriority(e.target.value);
+                                                                        e.target.value = '';
+                                                                    }
+                                                                }}
+                                                                className={`px-3 py-1.5 text-sm rounded-lg border ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                                                                defaultValue=""
+                                                            >
+                                                                <option value="" disabled>Choose priority...</option>
+                                                                <option value="high">High</option>
+                                                                <option value="medium">Medium</option>
+                                                                <option value="low">Low</option>
+                                                            </select>
+                                                            <button
+                                                                onClick={() => setSelectedSkillIds(new Set())}
+                                                                className={`px-3 py-1.5 text-sm rounded-lg ${isLightMode ? 'bg-gray-200 text-gray-700 hover:bg-gray-300' : 'bg-gray-600 text-gray-200 hover:bg-gray-500'} transition-colors`}
+                                                            >
+                                                                Clear
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+                                    
                                     {/* Filtering and Sorting Controls */}
                                     {skills.filter(skill => skill.isWatched).length > 0 && (
                                         <div className={`${isLightMode ? 'bg-white/30' : 'bg-gray-800/50'} rounded-lg p-4 mb-6 space-y-4`}>
@@ -52090,7 +52470,7 @@ Generate the repurposed content:`;
                                             </div>
                                             
                                             {/* Filters Row */}
-                                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                                                 {/* Category Filter */}
                                                 <div>
                                                     <label className={`block text-xs font-medium mb-1 ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>Category</label>
@@ -52152,6 +52532,21 @@ Generate the repurposed content:`;
                                                         <option value="low">Low</option>
                                                     </select>
                                                 </div>
+                                                
+                                                {/* Tag Filter */}
+                                                <div>
+                                                    <label className={`block text-xs font-medium mb-1 ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>🏷️ Tag</label>
+                                                    <select
+                                                        value={watchlistFilter.tag}
+                                                        onChange={(e) => setWatchlistFilter(prev => ({ ...prev, tag: e.target.value }))}
+                                                        className={`w-full px-3 py-2 text-sm rounded-lg border ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                                                    >
+                                                        <option value="all">All Tags</option>
+                                                        {getAllTags().map(tag => (
+                                                            <option key={tag} value={tag}>{tag}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
                                             </div>
                                             
                                             {/* Sort Controls */}
@@ -52176,9 +52571,9 @@ Generate the repurposed content:`;
                                                 >
                                                     {watchlistSortOrder === 'asc' ? '↑' : '↓'}
                                                 </button>
-                                                {(watchlistFilter.category !== 'all' || watchlistFilter.trend !== 'all' || watchlistFilter.emergingStatus !== 'all' || watchlistFilter.priority !== 'all' || watchlistFilter.searchQuery) && (
+                                                {(watchlistFilter.category !== 'all' || watchlistFilter.trend !== 'all' || watchlistFilter.emergingStatus !== 'all' || watchlistFilter.priority !== 'all' || watchlistFilter.tag !== 'all' || watchlistFilter.searchQuery) && (
                                                     <button
-                                                        onClick={() => setWatchlistFilter({ category: 'all', trend: 'all', emergingStatus: 'all', priority: 'all', searchQuery: '' })}
+                                                        onClick={() => setWatchlistFilter({ category: 'all', trend: 'all', emergingStatus: 'all', priority: 'all', tag: 'all', searchQuery: '' })}
                                                         className={`px-3 py-2 text-sm rounded-lg ${isLightMode ? 'bg-gray-200 text-gray-700 hover:bg-gray-300' : 'bg-gray-600 text-gray-200 hover:bg-gray-500'} transition-colors`}
                                                     >
                                                         Clear Filters
@@ -52209,14 +52604,27 @@ Generate the repurposed content:`;
                                                 const metadata = watchlistData[skill.id] || {};
                                                 const addedDate = metadata.added_at ? new Date(metadata.added_at) : null;
                                                 return (
-                                                <div key={skill.id} className={`${isLightMode ? 'bg-white/30 backdrop-blur-xl border-yellow-500/30' : 'bg-gray-800 border-yellow-500/30'} border rounded-lg p-6`}>
+                                                <div key={skill.id} className={`${isLightMode ? 'bg-white/30 backdrop-blur-xl border-yellow-500/30' : 'bg-gray-800 border-yellow-500/30'} border rounded-lg p-6 ${
+                                                    selectedSkillIds.has(skill.id) ? (isLightMode ? 'ring-2 ring-indigo-500 bg-indigo-50/30' : 'ring-2 ring-indigo-500 bg-indigo-500/10') : ''
+                                                } ${
+                                                    (metadata.priority || 'medium') === 'high' ? (isLightMode ? 'border-l-4 border-l-red-500' : 'border-l-4 border-l-red-500') : ''
+                                                }`}>
                                                     <div className="flex items-start justify-between mb-4">
                                                         <div className="flex items-start gap-4">
+                                                            {/* Bulk Selection Checkbox */}
+                                                            <div className="pt-1">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={selectedSkillIds.has(skill.id)}
+                                                                    onChange={() => toggleWatchlistSkillSelection(skill.id)}
+                                                                    className="w-5 h-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                                                />
+                                                            </div>
                                                             <div className="w-12 h-12 bg-gradient-to-r from-yellow-500 to-orange-600 rounded-lg flex items-center justify-center">
                                                                 <div className="w-6 h-6 text-white text-xl">⭐</div>
                                                             </div>
                                                             <div className="flex-1">
-                                                                <div className="flex items-center gap-3 mb-2">
+                                                                <div className="flex items-center gap-3 mb-2 flex-wrap">
                                                                     <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>{skill.name}</h3>
                                                                     <span className={`px-2 py-1 rounded-full text-xs font-medium ${getCategoryColor(skill.category)}`}>
                                                                         {skill.category}
@@ -52224,15 +52632,26 @@ Generate the repurposed content:`;
                                                                     <span className={`px-2 py-1 rounded-full text-xs font-medium ${getEmergingColor(skill.emergingStatus)}`}>
                                                                         {skill.emergingStatus}
                                                                     </span>
-                                                                    {metadata.priority && (
-                                                                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                                                                            metadata.priority === 'high' ? 'text-red-400 bg-red-500/20' :
-                                                                            metadata.priority === 'medium' ? 'text-yellow-400 bg-yellow-500/20' :
-                                                                            'text-blue-400 bg-blue-500/20'
-                                                                        }`}>
-                                                                            {metadata.priority}
-                                                                        </span>
-                                                                    )}
+                                                                    {/* Priority Selector */}
+                                                                    <div className="flex items-center gap-2">
+                                                                        <select
+                                                                            value={metadata.priority || 'medium'}
+                                                                            onChange={(e) => updatePriority(skill.id, e.target.value)}
+                                                                            className="px-2 py-1 rounded-full text-xs font-medium border-0 cursor-pointer focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                                                            style={{
+                                                                                backgroundColor: (metadata.priority || 'medium') === 'high' ? 'rgba(239, 68, 68, 0.2)' :
+                                                                                                 (metadata.priority || 'medium') === 'medium' ? 'rgba(234, 179, 8, 0.2)' :
+                                                                                                 'rgba(59, 130, 246, 0.2)',
+                                                                                color: (metadata.priority || 'medium') === 'high' ? 'rgb(248, 113, 113)' :
+                                                                                       (metadata.priority || 'medium') === 'medium' ? 'rgb(250, 204, 21)' :
+                                                                                       'rgb(96, 165, 250)'
+                                                                            }}
+                                                                        >
+                                                                            <option value="high">🔴 High</option>
+                                                                            <option value="medium">🟡 Medium</option>
+                                                                            <option value="low">🔵 Low</option>
+                                                                        </select>
+                                                                    </div>
                                                                 </div>
                                                                 {addedDate && (
                                                                     <div className={`text-xs ${isLightMode ? 'text-gray-500' : 'text-gray-400'} mb-2`}>
@@ -52331,6 +52750,161 @@ Generate the repurposed content:`;
                                                             {renderMiniTrendChart(skill.id, 'jobCount')}
                                                         </div>
                                                     </div>
+                                                    
+                                                    {/* Notes and Tags Section */}
+                                                    <div className={`border-t ${isLightMode ? 'border-gray-300' : 'border-gray-700'} pt-4 mt-4`}>
+                                                        {editingSkillId === skill.id ? (
+                                                            /* Editing Mode */
+                                                            <div className="space-y-4">
+                                                                {/* Notes Editor */}
+                                                                <div>
+                                                                    <label className={`block text-sm font-medium mb-2 ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>
+                                                                        📝 Notes
+                                                                    </label>
+                                                                    <textarea
+                                                                        value={editingNotes}
+                                                                        onChange={(e) => setEditingNotes(e.target.value)}
+                                                                        placeholder="Add your notes about this skill..."
+                                                                        rows={3}
+                                                                        className={`w-full px-4 py-2 rounded-lg border ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none`}
+                                                                    />
+                                                                </div>
+                                                                
+                                                                {/* Tags Editor */}
+                                                                <div>
+                                                                    <label className={`block text-sm font-medium mb-2 ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>
+                                                                        🏷️ Tags
+                                                                    </label>
+                                                                    {/* Current Tags */}
+                                                                    <div className="flex flex-wrap gap-2 mb-2">
+                                                                        {editingTags.map((tag, idx) => (
+                                                                            <span
+                                                                                key={idx}
+                                                                                className="inline-flex items-center gap-1 px-3 py-1 bg-indigo-500/20 border border-indigo-500/50 text-indigo-300 rounded-full text-sm"
+                                                                            >
+                                                                                {tag}
+                                                                                <button
+                                                                                    onClick={() => removeTag(tag)}
+                                                                                    className="hover:text-red-400 transition-colors"
+                                                                                >
+                                                                                    ×
+                                                                                </button>
+                                                                            </span>
+                                                                        ))}
+                                                                    </div>
+                                                                    
+                                                                    {/* Tag Input with Autocomplete */}
+                                                                    <div className="relative">
+                                                                        <input
+                                                                            type="text"
+                                                                            value={tagInput}
+                                                                            onChange={(e) => handleTagInputChange(e.target.value)}
+                                                                            onKeyPress={(e) => {
+                                                                                if (e.key === 'Enter' && tagInput.trim()) {
+                                                                                    e.preventDefault();
+                                                                                    addTag(tagInput);
+                                                                                }
+                                                                            }}
+                                                                            placeholder="Type to add tags (press Enter)..."
+                                                                            className={`w-full px-4 py-2 rounded-lg border ${isLightMode ? 'bg-white border-gray-300 text-gray-900' : 'bg-gray-700 border-gray-600 text-gray-50'} focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+                                                                        />
+                                                                        {/* Autocomplete Suggestions */}
+                                                                        {tagSuggestions.length > 0 && (
+                                                                            <div className={`absolute z-10 w-full mt-1 rounded-lg border ${isLightMode ? 'bg-white border-gray-300' : 'bg-gray-700 border-gray-600'} shadow-lg max-h-32 overflow-y-auto`}>
+                                                                                {tagSuggestions.map((suggestion, idx) => (
+                                                                                    <button
+                                                                                        key={idx}
+                                                                                        onClick={() => addTag(suggestion)}
+                                                                                        className={`w-full text-left px-4 py-2 hover:bg-indigo-500/20 transition-colors ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}
+                                                                                    >
+                                                                                        {suggestion}
+                                                                                    </button>
+                                                                                ))}
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                    
+                                                                    {/* Quick Tag Suggestions */}
+                                                                    {getAllTags().length > 0 && (
+                                                                        <div className="mt-2">
+                                                                            <div className={`text-xs ${isLightMode ? 'text-gray-500' : 'text-gray-400'} mb-1`}>Quick add:</div>
+                                                                            <div className="flex flex-wrap gap-1">
+                                                                                {getAllTags()
+                                                                                    .filter(tag => !editingTags.includes(tag))
+                                                                                    .slice(0, 5)
+                                                                                    .map((tag, idx) => (
+                                                                                        <button
+                                                                                            key={idx}
+                                                                                            onClick={() => addTag(tag)}
+                                                                                            className={`px-2 py-1 text-xs rounded ${isLightMode ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' : 'bg-gray-600 text-gray-300 hover:bg-gray-500'} transition-colors`}
+                                                                                        >
+                                                                                            + {tag}
+                                                                                        </button>
+                                                                                    ))}
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                                
+                                                                {/* Action Buttons */}
+                                                                <div className="flex gap-2">
+                                                                    <button
+                                                                        onClick={() => saveNotesAndTags(skill.id)}
+                                                                        className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium"
+                                                                    >
+                                                                        Save
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={cancelEditingMetadata}
+                                                                        className={`px-4 py-2 rounded-lg font-medium transition-colors ${isLightMode ? 'bg-gray-200 text-gray-700 hover:bg-gray-300' : 'bg-gray-600 text-gray-200 hover:bg-gray-500'}`}
+                                                                    >
+                                                                        Cancel
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        ) : (
+                                                            /* Display Mode */
+                                                            <div className="space-y-3">
+                                                                {/* Tags Display */}
+                                                                {metadata.tags && metadata.tags.length > 0 && (
+                                                                    <div>
+                                                                        <div className="flex flex-wrap gap-2">
+                                                                            {metadata.tags.map((tag, idx) => (
+                                                                                <span
+                                                                                    key={idx}
+                                                                                    className="inline-flex items-center px-3 py-1 bg-indigo-500/20 border border-indigo-500/50 text-indigo-300 rounded-full text-sm"
+                                                                                >
+                                                                                    🏷️ {tag}
+                                                                                </span>
+                                                                            ))}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                                
+                                                                {/* Notes Display */}
+                                                                {metadata.notes && metadata.notes.trim() && (
+                                                                    <div className={`p-3 rounded-lg ${isLightMode ? 'bg-gray-50 border border-gray-200' : 'bg-gray-700/50 border border-gray-600'}`}>
+                                                                        <div className={`text-sm ${isLightMode ? 'text-gray-700' : 'text-gray-300'} whitespace-pre-wrap`}>
+                                                                            📝 {metadata.notes}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                                
+                                                                {/* Edit Button */}
+                                                                <button
+                                                                    onClick={() => startEditingMetadata(skill.id)}
+                                                                    className={`w-full px-4 py-2 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 ${
+                                                                        isLightMode 
+                                                                            ? 'bg-gray-100 text-gray-700 hover:bg-gray-200' 
+                                                                            : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                                                                    }`}
+                                                                >
+                                                                    <span>✏️</span>
+                                                                    {metadata.notes || (metadata.tags && metadata.tags.length > 0) ? 'Edit Notes & Tags' : 'Add Notes & Tags'}
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                 </div>
                                                 );
                                             })}
@@ -52423,28 +52997,177 @@ Generate the repurposed content:`;
 
                             {/* Sidebar */}
                             <div className="space-y-6">
-                                {/* Watchlist Insights */}
-                                <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
-                                    <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-4`}>Watchlist Insights</h3>
-                                    <div className="space-y-3">
-                                        <div className="flex justify-between">
-                                            <span className={`text-sm ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>Skills Watched</span>
-                                            <span className={`text-sm font-medium ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>{skills.filter(s => s.isWatched).length}</span>
-                                        </div>
-                                        <div className="flex justify-between">
-                                            <span className={`text-sm ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>Hot Skills</span>
-                                            <span className="text-sm font-medium text-red-400">
-                                                {skills.filter(s => s.isWatched && s.emergingStatus === 'hot').length}
-                                            </span>
-                                        </div>
-                                        <div className="flex justify-between">
-                                            <span className={`text-sm ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>Rising Trends</span>
-                                            <span className="text-sm font-medium text-green-400">
-                                                {skills.filter(s => s.isWatched && s.trend === 'rising').length}
-                                            </span>
-                                        </div>
-                                    </div>
-                                </div>
+                                {/* Enhanced Analytics Dashboard */}
+                                {(() => {
+                                    const analytics = calculateWatchlistAnalytics();
+                                    const watchedSkills = skills.filter(s => s.isWatched);
+                                    
+                                    return (
+                                        <>
+                                            {/* Watchlist Health Score */}
+                                            <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
+                                                <h3 className={`text-lg font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'} mb-4 flex items-center gap-2`}>
+                                                    <span>📊</span>
+                                                    Watchlist Analytics
+                                                </h3>
+                                                
+                                                {/* Health Score */}
+                                                <div className="mb-6">
+                                                    <div className="flex items-center justify-between mb-2">
+                                                        <span className={`text-sm font-medium ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>Health Score</span>
+                                                        <span className={`text-2xl font-bold ${
+                                                            analytics.healthScore >= 80 ? 'text-green-400' :
+                                                            analytics.healthScore >= 60 ? 'text-yellow-400' :
+                                                            'text-red-400'
+                                                        }`}>
+                                                            {analytics.healthScore}
+                                                        </span>
+                                                    </div>
+                                                    <div className={`w-full h-3 rounded-full overflow-hidden ${
+                                                        isLightMode ? 'bg-gray-200' : 'bg-gray-700'
+                                                    }`}>
+                                                        <div 
+                                                            className={`h-full transition-all duration-500 ${
+                                                                analytics.healthScore >= 80 ? 'bg-gradient-to-r from-green-500 to-emerald-500' :
+                                                                analytics.healthScore >= 60 ? 'bg-gradient-to-r from-yellow-500 to-orange-500' :
+                                                                'bg-gradient-to-r from-red-500 to-pink-500'
+                                                            }`}
+                                                            style={{ width: `${analytics.healthScore}%` }}
+                                                        />
+                                                    </div>
+                                                    <div className={`text-xs mt-1 ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>
+                                                        {analytics.healthScore >= 80 ? 'Excellent' :
+                                                         analytics.healthScore >= 60 ? 'Good' :
+                                                         'Needs Improvement'}
+                                                    </div>
+                                                </div>
+
+                                                {/* Key Metrics Grid */}
+                                                <div className="grid grid-cols-2 gap-4 mb-6">
+                                                    <div className={`${isLightMode ? 'bg-blue-50 border-blue-200' : 'bg-blue-500/10 border-blue-500/30'} border rounded-lg p-3`}>
+                                                        <div className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'} mb-1`}>Avg Growth</div>
+                                                        <div className="text-lg font-bold text-blue-400">{analytics.avgGrowthRate}%</div>
+                                                    </div>
+                                                    <div className={`${isLightMode ? 'bg-purple-50 border-purple-200' : 'bg-purple-500/10 border-purple-500/30'} border rounded-lg p-3`}>
+                                                        <div className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'} mb-1`}>Total Jobs</div>
+                                                        <div className="text-lg font-bold text-purple-400">{analytics.totalJobOpportunities.toLocaleString()}</div>
+                                                    </div>
+                                                    <div className={`${isLightMode ? 'bg-green-50 border-green-200' : 'bg-green-500/10 border-green-500/30'} border rounded-lg p-3`}>
+                                                        <div className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'} mb-1`}>Projected ROI</div>
+                                                        <div className="text-lg font-bold text-green-400">+{analytics.projectedROI}%</div>
+                                                    </div>
+                                                    <div className={`${isLightMode ? 'bg-orange-50 border-orange-200' : 'bg-orange-500/10 border-orange-500/30'} border rounded-lg p-3`}>
+                                                        <div className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'} mb-1`}>Avg Days</div>
+                                                        <div className="text-lg font-bold text-orange-400">{analytics.avgTimeInWatchlist}</div>
+                                                    </div>
+                                                </div>
+
+                                                {/* Priority Distribution */}
+                                                <div className="mb-6">
+                                                    <div className={`text-sm font-medium ${isLightMode ? 'text-gray-700' : 'text-gray-300'} mb-3`}>Priority Distribution</div>
+                                                    <div className="space-y-2">
+                                                        {['high', 'medium', 'low'].map(priority => {
+                                                            const count = analytics.priorityDistribution[priority] || 0;
+                                                            const total = watchedSkills.length;
+                                                            const percentage = total > 0 ? Math.round((count / total) * 100) : 0;
+                                                            const colors = {
+                                                                high: { bg: 'bg-red-500/20', border: 'border-red-500/50', text: 'text-red-400', label: '🔴 High' },
+                                                                medium: { bg: 'bg-yellow-500/20', border: 'border-yellow-500/50', text: 'text-yellow-400', label: '🟡 Medium' },
+                                                                low: { bg: 'bg-blue-500/20', border: 'border-blue-500/50', text: 'text-blue-400', label: '🔵 Low' }
+                                                            };
+                                                            const color = colors[priority];
+                                                            
+                                                            return (
+                                                                <div key={priority}>
+                                                                    <div className="flex items-center justify-between mb-1">
+                                                                        <span className={`text-xs ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>{color.label}</span>
+                                                                        <span className={`text-xs font-medium ${color.text}`}>{count} ({percentage}%)</span>
+                                                                    </div>
+                                                                    <div className={`w-full h-2 rounded-full overflow-hidden ${isLightMode ? 'bg-gray-200' : 'bg-gray-700'}`}>
+                                                                        <div 
+                                                                            className={`h-full ${color.bg.replace('/20', '')}`}
+                                                                            style={{ width: `${percentage}%` }}
+                                                                        />
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+
+                                                {/* Category Breakdown */}
+                                                {Object.keys(analytics.categoryBreakdown).length > 0 && (
+                                                    <div className="mb-6">
+                                                        <div className={`text-sm font-medium ${isLightMode ? 'text-gray-700' : 'text-gray-300'} mb-3`}>Category Breakdown</div>
+                                                        <div className="flex flex-wrap gap-2">
+                                                            {Object.entries(analytics.categoryBreakdown).map(([category, count]) => (
+                                                                <div 
+                                                                    key={category}
+                                                                    className={`px-3 py-1.5 rounded-lg text-xs font-medium ${
+                                                                        isLightMode 
+                                                                            ? 'bg-gray-100 text-gray-700 border border-gray-200' 
+                                                                            : 'bg-gray-700 text-gray-300 border border-gray-600'
+                                                                    }`}
+                                                                >
+                                                                    {category.charAt(0).toUpperCase() + category.slice(1)}: {count}
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {/* Top Performing Skill */}
+                                                {analytics.topPerformingSkill && (
+                                                    <div className={`${isLightMode ? 'bg-green-50 border-green-200' : 'bg-green-500/10 border-green-500/30'} border rounded-lg p-3 mb-4`}>
+                                                        <div className={`text-xs font-medium ${isLightMode ? 'text-gray-600' : 'text-gray-400'} mb-1`}>⭐ Top Performer</div>
+                                                        <div className={`text-sm font-semibold ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>
+                                                            {analytics.topPerformingSkill.name}
+                                                        </div>
+                                                        <div className={`text-xs mt-1 ${isLightMode ? 'text-gray-600' : 'text-gray-400'}`}>
+                                                            Demand: {analytics.topPerformingSkill.demandScore} • Growth: {analytics.topPerformingSkill.growthRate}%
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {/* Skills Needing Attention */}
+                                                {analytics.skillsNeedingAttention.length > 0 && (
+                                                    <div className={`${isLightMode ? 'bg-red-50 border-red-200' : 'bg-red-500/10 border-red-500/30'} border rounded-lg p-3`}>
+                                                        <div className={`text-xs font-medium ${isLightMode ? 'text-gray-600' : 'text-gray-400'} mb-2`}>⚠️ Needs Attention</div>
+                                                        <div className="space-y-1">
+                                                            {analytics.skillsNeedingAttention.map(skill => (
+                                                                <div key={skill.id} className={`text-xs ${isLightMode ? 'text-gray-700' : 'text-gray-300'}`}>
+                                                                    • {skill.name} ({skill.growthRate}% growth)
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {/* Basic Stats */}
+                                                <div className={`mt-6 pt-6 border-t ${isLightMode ? 'border-gray-200' : 'border-gray-700'}`}>
+                                                    <div className="space-y-2">
+                                                        <div className="flex justify-between">
+                                                            <span className={`text-sm ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>Skills Watched</span>
+                                                            <span className={`text-sm font-medium ${isLightMode ? 'text-gray-900' : 'text-gray-50'}`}>{watchedSkills.length}</span>
+                                                        </div>
+                                                        <div className="flex justify-between">
+                                                            <span className={`text-sm ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>Hot Skills</span>
+                                                            <span className="text-sm font-medium text-red-400">
+                                                                {watchedSkills.filter(s => s.emergingStatus === 'hot').length}
+                                                            </span>
+                                                        </div>
+                                                        <div className="flex justify-between">
+                                                            <span className={`text-sm ${isLightMode ? 'text-gray-500' : 'text-gray-400'}`}>Rising Trends</span>
+                                                            <span className="text-sm font-medium text-green-400">
+                                                                {watchedSkills.filter(s => s.trend === 'rising').length}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </>
+                                    );
+                                })()}
 
                                 {/* Recommended Actions */}
                                 <div className={`${isLightMode ? 'bg-white/50 backdrop-blur-xl border-white/30' : 'bg-[#111827] border-gray-700/50'} border rounded-2xl p-6`}>
