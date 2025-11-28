@@ -176,13 +176,45 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- New Navigation Logic ---
-    const sidebarLinks = document.querySelectorAll('.sidebar-link');
-    const contentSections = {
-        'dashboard': document.getElementById('dashboard-content'),
-        'brand-audit': document.getElementById('brand-audit-content'),
-        'upskilling-dash': document.getElementById('upskilling-dash-content'),
-        'career-portfolio': document.getElementById('career-portfolio-content'),
-        'resume-studio': document.getElementById('resume-studio-content')
+    // Use event delegation instead of querying once
+    // This makes it resilient to DOM changes
+    
+    // Function to get content section dynamically
+    const getContentSection = (contentId) => {
+        // Try standard content section first
+        const standardSection = document.getElementById(`${contentId}-content`);
+        if (standardSection) return standardSection;
+        
+        // Try work-history-content (special case)
+        if (contentId === 'work-history') {
+            return document.getElementById('work-history-content');
+        }
+        
+        // Try other possible variations
+        const variations = [
+            document.getElementById(`${contentId}-content`),
+            document.getElementById(`${contentId}-view`),
+            document.getElementById(`${contentId}-container`)
+        ];
+        
+        return variations.find(el => el !== null) || null;
+    };
+
+    // Function to get all content sections dynamically
+    const getAllContentSections = () => {
+        const sections = {};
+        // Query all elements with -content suffix
+        const contentElements = document.querySelectorAll('[id$="-content"]');
+        contentElements.forEach(el => {
+            const id = el.id.replace('-content', '');
+            sections[id] = el;
+        });
+        // Add work-history special case
+        const workHistory = document.getElementById('work-history-content');
+        if (workHistory) {
+            sections['work-history'] = workHistory;
+        }
+        return sections;
     };
 
     const headerMainTitle = document.getElementById('header-main-title');
@@ -219,23 +251,27 @@ document.addEventListener('DOMContentLoaded', () => {
             headerMainTitle.textContent = content.title;
             headerSubtitle.textContent = content.subtitle;
         } else { 
-            const linkText = sourceLink ? sourceLink.querySelector('.sidebar-text').textContent.trim() : 'Dashboard';
-            headerMainTitle.textContent = linkText;
-            headerSubtitle.textContent = 'Manage your career effectively.';
+            const linkText = sourceLink ? (sourceLink.querySelector('.sidebar-text')?.textContent.trim() || 'Dashboard') : 'Dashboard';
+            if (headerMainTitle) headerMainTitle.textContent = linkText;
+            if (headerSubtitle) headerSubtitle.textContent = 'Manage your career effectively.';
         }
 
         if (sourceLink && headerIconContainer) {
-            const iconSVG = sourceLink.querySelector('svg').cloneNode(true);
-            iconSVG.classList.remove(...iconSVG.classList);
-            iconSVG.classList.add('w-6', 'h-6', 'text-white');
-            headerIconContainer.innerHTML = ''; 
-            headerIconContainer.appendChild(iconSVG);
+            const iconSVG = sourceLink.querySelector('svg')?.cloneNode(true);
+            if (iconSVG) {
+                iconSVG.classList.remove(...iconSVG.classList);
+                iconSVG.classList.add('w-6', 'h-6', 'text-white');
+                headerIconContainer.innerHTML = ''; 
+                headerIconContainer.appendChild(iconSVG);
+            }
         }
     }
 
     // Set initial state
     const setActiveLink = (linkId) => {
-        sidebarLinks.forEach(link => {
+        // Re-query sidebar links dynamically to handle DOM changes
+        const allSidebarLinks = document.querySelectorAll('.sidebar-link');
+        allSidebarLinks.forEach(link => {
             link.classList.remove('active');
         });
         const activeLink = document.querySelector(`.sidebar-link[data-id="${linkId}"]`);
@@ -290,15 +326,11 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Helper function to find currently visible content section
     const getCurrentContentId = () => {
+        const contentSections = getAllContentSections();
         for (const [id, section] of Object.entries(contentSections)) {
             if (section && !section.classList.contains('hidden')) {
                 return id;
             }
-        }
-        // Also check for work-history-content directly
-        const workHistoryContent = document.getElementById('work-history-content');
-        if (workHistoryContent && !workHistoryContent.classList.contains('hidden')) {
-            return 'work-history';
         }
         return null;
     };
@@ -318,18 +350,16 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
+        // Get all content sections dynamically
+        const contentSections = getAllContentSections();
+        
         // Hide all content sections
         Object.values(contentSections).forEach(section => {
             if (section) section.classList.add('hidden');
         });
-        
-        // Also hide work-history-content if it exists (not in contentSections)
-        const workHistoryContent = document.getElementById('work-history-content');
-        if (workHistoryContent) {
-            workHistoryContent.classList.add('hidden');
-        }
 
-        const activeContent = contentSections[contentId];
+        // Show the requested content section
+        const activeContent = getContentSection(contentId);
         if (activeContent) {
             activeContent.classList.remove('hidden');
             
@@ -347,17 +377,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 }, 100);
             }
             
-            // If showing the work-history, show it and trigger rendering
+            // If showing the work-history, trigger rendering
             if (contentId === 'work-history') {
-                if (workHistoryContent) {
-                    workHistoryContent.classList.remove('hidden');
-                }
                 setTimeout(() => {
                     if (typeof window.renderWorkHistoryManager === 'function') {
                         window.renderWorkHistoryManager();
                     }
                 }, 100);
             }
+        } else {
+            console.warn(`Content section not found for: ${contentId}`);
         }
     };
 
@@ -369,17 +398,27 @@ document.addEventListener('DOMContentLoaded', () => {
         loadDashboardGoals();
     }, 500);
 
-    sidebarLinks.forEach(link => {
-        link.addEventListener('click', (e) => {
-            e.preventDefault();
-            const linkId = link.dataset.id;
-            
-            if (contentSections[linkId]) {
-                setActiveLink(linkId);
-                showContent(linkId);
+    // Use event delegation on the sidebar instead of individual link listeners
+    // This makes it resilient to DOM changes
+    if (sidebar) {
+        sidebar.addEventListener('click', (e) => {
+            const sidebarLink = e.target.closest('.sidebar-link');
+            if (sidebarLink) {
+                e.preventDefault();
+                const linkId = sidebarLink.dataset.id;
+                
+                if (linkId) {
+                    const contentSection = getContentSection(linkId);
+                    if (contentSection) {
+                        setActiveLink(linkId);
+                        showContent(linkId);
+                    } else {
+                        console.warn(`No content section found for menu item: ${linkId}`);
+                    }
+                }
             }
         });
-    });
+    }
 
     // AI Mentor Tabs Logic
     const mentorTabs = document.querySelectorAll('.ai-mentor-tab');
