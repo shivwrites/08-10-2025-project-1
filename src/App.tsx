@@ -1,252 +1,77 @@
-import { useState, useEffect } from 'react';
-import { supabase } from './lib/supabase';
+import { Suspense, lazy } from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+
+// Lazy load components for code splitting
+const DashboardLayout = lazy(() => import('./components/layout/DashboardLayout'));
+const DashboardHome = lazy(() => import('./pages/DashboardHome'));
+const ResumeStudio = lazy(() => import('./pages/ResumeStudio'));
+const ApplicationTailor = lazy(() => import('./pages/ApplicationTailor'));
+const CoverLetterGenerator = lazy(() => import('./pages/CoverLetterGenerator'));
+const JobFinder = lazy(() => import('./pages/JobFinder'));
+const JobTracker = lazy(() => import('./pages/JobTracker'));
+const InterviewPrep = lazy(() => import('./pages/InterviewPrep'));
+const WorkHistoryManager = lazy(() => import('./pages/WorkHistoryManager'));
+const BrandAudit = lazy(() => import('./pages/BrandAudit'));
+const ContentEngine = lazy(() => import('./pages/ContentEngine'));
+const AICareerPortfolio = lazy(() => import('./pages/AICareerPortfolio'));
+const CareerEventScout = lazy(() => import('./pages/CareerEventScout'));
+const UpskillingDashboard = lazy(() => import('./pages/UpskillingDashboard'));
+const SkillRadar = lazy(() => import('./pages/SkillRadar'));
+const LearningPath = lazy(() => import('./pages/LearningPath'));
+const Sprints = lazy(() => import('./pages/Sprints'));
+const Certifications = lazy(() => import('./pages/Certifications'));
+const SkillBenchmarking = lazy(() => import('./pages/SkillBenchmarking'));
+
+// Loading fallback component
+function LoadingFallback() {
+  return (
+    <div className="flex h-screen items-center justify-center bg-slate-50">
+      <div className="text-center">
+        <div className="w-12 h-12 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mx-auto mb-4"></div>
+        <p className="text-indigo-600 font-medium">Loading Application...</p>
+      </div>
+    </div>
+  );
+}
 
 function App() {
-  // Initialize currentPage from localStorage or default to 'landing'
-  const [currentPage, setCurrentPage] = useState(() => {
-    return localStorage.getItem('currentPage') || 'landing';
-  });
-  const [isLoading, setIsLoading] = useState(true);
-
-  // Check authentication status on app load only
-  useEffect(() => {
-    const checkAuthStatus = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        const savedPage = localStorage.getItem('currentPage') || 'landing';
-        
-        if (session?.user) {
-          // User is authenticated - preserve current page
-          // Only redirect to dashboard if we're starting fresh (landing page)
-          if (savedPage === 'landing') {
-            setCurrentPage('dashboard');
-            localStorage.setItem('currentPage', 'dashboard');
-          } else {
-            setCurrentPage(savedPage);
-          }
-        } else {
-          // User is not authenticated, but allow navigation to login/signup pages
-          if (savedPage !== 'login' && savedPage !== 'signup' && 
-              savedPage !== 'email-confirmation' && savedPage !== 'forgot-password' && 
-              savedPage !== 'password-reset-confirmation') {
-            setCurrentPage('landing');
-            localStorage.setItem('currentPage', 'landing');
-          } else {
-            setCurrentPage(savedPage);
-          }
-        }
-      } catch (error) {
-        console.error('Error checking auth status:', error);
-        setCurrentPage('landing');
-        localStorage.setItem('currentPage', 'landing');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    checkAuthStatus();
-
-    // Listen for auth state changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_IN' && session?.user) {
-        // Only redirect to dashboard if we're currently on landing page
-        const currentSavedPage = localStorage.getItem('currentPage') || 'landing';
-        if (currentSavedPage === 'landing') {
-          setCurrentPage('dashboard');
-          localStorage.setItem('currentPage', 'dashboard');
-        }
-      } else if (event === 'SIGNED_OUT') {
-        setCurrentPage('landing');
-        localStorage.setItem('currentPage', 'landing');
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, []); // No dependencies needed
-
-  useEffect(() => {
-    // Listen for messages from the iframe
-    const handleMessage = (event: MessageEvent) => {
-      if (event.data === 'navigate-to-signup') {
-        setCurrentPage('signup');
-        localStorage.setItem('currentPage', 'signup');
-      } else if (event.data === 'navigate-to-login') {
-        setCurrentPage('login');
-        localStorage.setItem('currentPage', 'login');
-      } else if (event.data === 'navigate-to-email-confirmation') {
-        setCurrentPage('email-confirmation');
-        localStorage.setItem('currentPage', 'email-confirmation');
-      } else if (event.data === 'navigate-to-forgot-password') {
-        setCurrentPage('forgot-password');
-        localStorage.setItem('currentPage', 'forgot-password');
-      } else if (event.data === 'navigate-to-password-reset-confirmation') {
-        setCurrentPage('password-reset-confirmation');
-        localStorage.setItem('currentPage', 'password-reset-confirmation');
-      } else if (event.data === 'navigate-to-landing') {
-        setCurrentPage('landing');
-        localStorage.setItem('currentPage', 'landing');
-      } else if (event.data === 'navigate-to-dashboard') {
-        setCurrentPage('dashboard');
-        localStorage.setItem('currentPage', 'dashboard');
-      } else if (event.data && event.data.type === 'dashboard-page-change') {
-        // Handle dashboard internal page changes
-        const dashboardPage = event.data.page;
-        localStorage.setItem('dashboardPage', dashboardPage);
-      }
-    };
-
-    window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
-  }, []);
-
-  // Show loading screen while checking authentication
-  if (isLoading) {
-    return (
-      <div style={{ 
-        width: '100%', 
-        height: '100vh', 
-        display: 'flex', 
-        alignItems: 'center', 
-        justifyContent: 'center',
-        backgroundColor: '#f8fafc'
-      }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{
-            width: '40px',
-            height: '40px',
-            border: '4px solid #e2e8f0',
-            borderTop: '4px solid #3b82f6',
-            borderRadius: '50%',
-            animation: 'spin 1s linear infinite',
-            margin: '0 auto 16px'
-          }}></div>
-          <p style={{ color: '#64748b', fontSize: '16px' }}>Loading...</p>
-        </div>
-        <style>{`
-          @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-          }
-        `}</style>
-      </div>
-    );
-  }
-
-  if (currentPage === 'signup') {
-    return (
-      <div style={{ width: '100%', height: '100vh', overflow: 'hidden' }}>
-        <iframe
-          src="/signup.html"
-          style={{
-            width: '100%',
-            height: '100%',
-            border: 'none',
-            display: 'block'
-          }}
-          title="Career Clarified Signup Page"
-        />
-      </div>
-    );
-  }
-
-  if (currentPage === 'login') {
-    return (
-      <div style={{ width: '100%', height: '100vh', overflow: 'hidden' }}>
-        <iframe
-          src="/login.html"
-          style={{
-            width: '100%',
-            height: '100%',
-            border: 'none',
-            display: 'block'
-          }}
-          title="Career Clarified Login Page"
-        />
-      </div>
-    );
-  }
-
-  if (currentPage === 'email-confirmation') {
-    return (
-      <div style={{ width: '100%', height: '100vh', overflow: 'hidden' }}>
-        <iframe
-          src="/email-confirmation.html"
-          style={{
-            width: '100%',
-            height: '100%',
-            border: 'none',
-            display: 'block'
-          }}
-          title="Career Clarified Email Confirmation Page"
-        />
-      </div>
-    );
-  }
-
-  if (currentPage === 'forgot-password') {
-    return (
-      <div style={{ width: '100%', height: '100vh', overflow: 'hidden' }}>
-        <iframe
-          src="/forgot-password.html"
-          style={{
-            width: '100%',
-            height: '100%',
-            border: 'none',
-            display: 'block'
-          }}
-          title="Career Clarified Forgot Password Page"
-        />
-      </div>
-    );
-  }
-
-  if (currentPage === 'password-reset-confirmation') {
-    return (
-      <div style={{ width: '100%', height: '100vh', overflow: 'hidden' }}>
-        <iframe
-          src="/password-reset-confirmation.html"
-          style={{
-            width: '100%',
-            height: '100%',
-            border: 'none',
-            display: 'block'
-          }}
-          title="Career Clarified Password Reset Confirmation Page"
-        />
-      </div>
-    );
-  }
-
-  if (currentPage === 'dashboard') {
-    return (
-      <div style={{ width: '100%', height: '100vh', overflow: 'hidden' }}>
-        <iframe
-          src="/dashboard.html"
-          style={{
-            width: '100%',
-            height: '100%',
-            border: 'none',
-            display: 'block'
-          }}
-          title="Career Clarified Dashboard"
-        />
-      </div>
-    );
-  }
-
   return (
-    <div style={{ width: '100%', height: '100vh', overflow: 'hidden' }}>
-      <iframe
-        src="/landing.html"
-        style={{
-          width: '100%',
-          height: '100%',
-          border: 'none',
-          display: 'block'
-        }}
-        title="Career Clarified Landing Page"
-      />
-    </div>
+    <BrowserRouter>
+      <Suspense fallback={<LoadingFallback />}>
+        <Routes>
+          {/* Redirect root to dashboard */}
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          
+          {/* Dashboard routes with layout */}
+          <Route path="/dashboard" element={<DashboardLayout />}>
+            <Route index element={<DashboardHome />} />
+            
+            {/* Career Hub Routes */}
+            <Route path="resume-studio" element={<ResumeStudio />} />
+            <Route path="application-tailor" element={<ApplicationTailor />} />
+            <Route path="cover-letter" element={<CoverLetterGenerator />} />
+            <Route path="job-finder" element={<JobFinder />} />
+            <Route path="job-tracker" element={<JobTracker />} />
+            <Route path="interview-prep" element={<InterviewPrep />} />
+            <Route path="work-history" element={<WorkHistoryManager />} />
+            
+            {/* Brand Building Routes */}
+            <Route path="brand-audit" element={<BrandAudit />} />
+            <Route path="content-engine" element={<ContentEngine />} />
+            <Route path="portfolio" element={<AICareerPortfolio />} />
+            <Route path="event-scout" element={<CareerEventScout />} />
+            
+            {/* Upskilling Routes */}
+            <Route path="upskilling" element={<UpskillingDashboard />} />
+            <Route path="skill-radar" element={<SkillRadar />} />
+            <Route path="learning-path" element={<LearningPath />} />
+            <Route path="sprints" element={<Sprints />} />
+            <Route path="certifications" element={<Certifications />} />
+            <Route path="benchmarking" element={<SkillBenchmarking />} />
+          </Route>
+        </Routes>
+      </Suspense>
+    </BrowserRouter>
   );
 }
 
