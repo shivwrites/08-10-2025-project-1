@@ -897,3 +897,7 @@ Return only the cover letter text, no additional explanation:`,
 
 export default CoverLetterGenerator;
 
+
+
+
+

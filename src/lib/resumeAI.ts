@@ -415,3 +415,4 @@ Return ONLY the professional summary text, no JSON or explanation.`;
   }
 }
 
+

@@ -603,3 +603,4 @@ export function generateTemplatePreviewHTML(template: ResumeTemplate, photoUrl?:
   `;
 }
 
+

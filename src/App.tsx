@@ -2,6 +2,8 @@ import { Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 
 // Lazy load components for code splitting
+const Login = lazy(() => import('./pages/Login'));
+const Signup = lazy(() => import('./pages/Signup'));
 const DashboardLayout = lazy(() => import('./components/layout/DashboardLayout'));
 const DashboardHome = lazy(() => import('./pages/DashboardHome'));
 const ResumeStudio = lazy(() => import('./pages/ResumeStudio'));
@@ -41,6 +43,10 @@ function App() {
         <Routes>
           {/* Redirect root to dashboard */}
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          
+          {/* Auth routes - outside DashboardLayout */}
+          <Route path="/login" element={<Login />} />
+          <Route path="/signup" element={<Signup />} />
           
           {/* Dashboard routes with layout */}
           <Route path="/dashboard" element={<DashboardLayout />}>
