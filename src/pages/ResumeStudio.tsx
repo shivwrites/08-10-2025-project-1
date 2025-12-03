@@ -1,4 +1,21 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { 
+    calculateQuickATSScore, 
+    getIndustryKeywords, 
+    analyzeCompetitorResumes, 
+    recommendSectionOrder,
+    enhanceResumeText,
+    getContextAwareSuggestions,
+    getAutoCompleteSuggestions,
+    translateResumeContent,
+    type IndustryKeywordsResult,
+    type CompetitorAnalysisResult,
+    type SectionReorderingResult,
+    type ToneType,
+    type ContextAwareSuggestionsResult,
+    type AutoCompleteResult,
+    type EnhancedTextResult
+} from '../lib/resumeAI';
 
 // --- Mock Lucide Icons ---
 const createIcon = (svgContent: string) => ({ className }: { className?: string }) => (
@@ -108,20 +125,103 @@ interface AICopilotProps {
     activeResume: Resume | null;
     selectedText: string;
     aiProcessing: boolean;
+    realTimeATSScore: number | null;
+    isCalculatingScore: boolean;
     onATSOptimization: () => void;
     onEnhanceText: () => void;
     onGapJustification: () => void;
+    onGetIndustryKeywords: () => void;
+    onCompetitorAnalysis: () => void;
+    onSectionReordering: () => void;
+    industryKeywords: IndustryKeywordsResult | null;
+    competitorAnalysis: CompetitorAnalysisResult | null;
+    sectionReordering: SectionReorderingResult | null;
+    onApplySectionOrder: () => void;
+    industry: string;
+    jobTitle: string;
+    jobDescription: string;
+    onIndustryChange: (value: string) => void;
+    onJobTitleChange: (value: string) => void;
+    onJobDescriptionChange: (value: string) => void;
+    // Smarter AI Copilot props
+    tone: ToneType;
+    onToneChange: (tone: ToneType) => void;
+    targetLanguage: string;
+    onTargetLanguageChange: (lang: string) => void;
+    onGetContextSuggestions: () => void;
+    contextSuggestions: ContextAwareSuggestionsResult | null;
+    onTranslateText: (text: string, lang: string) => void;
+    enhancedTextResult: EnhancedTextResult | null;
+    showEnhancedTextModal: boolean;
+    onCloseEnhancedModal: () => void;
+    onApplyEnhancedText: () => void;
 }
 
-const AICopilot: React.FC<AICopilotProps> = ({ activeResume, selectedText, aiProcessing, onATSOptimization, onEnhanceText, onGapJustification }) => {
+const AICopilot: React.FC<AICopilotProps> = ({ 
+    activeResume, 
+    selectedText, 
+    aiProcessing,
+    realTimeATSScore,
+    isCalculatingScore,
+    onATSOptimization, 
+    onEnhanceText, 
+    onGapJustification,
+    onGetIndustryKeywords,
+    onCompetitorAnalysis,
+    onSectionReordering,
+    industryKeywords,
+    competitorAnalysis,
+    sectionReordering,
+    onApplySectionOrder,
+    industry,
+    jobTitle,
+    jobDescription,
+    onIndustryChange,
+    onJobTitleChange,
+    onJobDescriptionChange,
+    tone,
+    onToneChange,
+    targetLanguage,
+    onTargetLanguageChange,
+    onGetContextSuggestions,
+    contextSuggestions,
+    onTranslateText,
+    enhancedTextResult,
+    showEnhancedTextModal,
+    onCloseEnhancedModal,
+    onApplyEnhancedText
+}) => {
     return (
         <div className="space-y-4">
             <div>
                 <h4 className="text-sm font-semibold text-slate-800 mb-3">AI Copilot</h4>
                 {activeResume ? (
                     <div className="p-3 bg-slate-100 border border-slate-200 rounded-lg text-sm text-slate-600">
-                        <p><span className="font-semibold text-slate-800">ATS Score:</span> {activeResume.atsScore}%</p>
-                        <p className="mt-1">AI suggestions will appear here based on your resume content.</p>
+                        <div className="flex items-center justify-between mb-2">
+                            <span className="font-semibold text-slate-800">ATS Score:</span>
+                            {isCalculatingScore ? (
+                                <span className="text-xs text-slate-500">Calculating...</span>
+                            ) : (
+                                <span className={`font-bold ${
+                                    (realTimeATSScore ?? activeResume.atsScore) >= 80 ? 'text-green-600' :
+                                    (realTimeATSScore ?? activeResume.atsScore) >= 60 ? 'text-yellow-600' : 'text-red-600'
+                                }`}>
+                                    {realTimeATSScore ?? activeResume.atsScore}%
+                                </span>
+                            )}
+                        </div>
+                        {realTimeATSScore !== null && (
+                            <div className="w-full bg-slate-200 rounded-full h-2 mt-2">
+                                <div 
+                                    className={`h-2 rounded-full transition-all ${
+                                        realTimeATSScore >= 80 ? 'bg-green-500' :
+                                        realTimeATSScore >= 60 ? 'bg-yellow-500' : 'bg-red-500'
+                                    }`}
+                                    style={{ width: `${realTimeATSScore}%` }}
+                                />
+                            </div>
+                        )}
+                        <p className="mt-2 text-xs text-slate-500">Score updates as you type</p>
                     </div>
                 ) : (
                     <div className="p-3 bg-slate-100 border border-slate-200 rounded-lg text-sm text-slate-500">
@@ -129,7 +229,75 @@ const AICopilot: React.FC<AICopilotProps> = ({ activeResume, selectedText, aiPro
                     </div>
                 )}
             </div>
+
+            {/* Job Targeting Inputs */}
+            <div className="space-y-2">
+                <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">Industry</label>
+                    <input
+                        type="text"
+                        value={industry}
+                        onChange={(e) => onIndustryChange(e.target.value)}
+                        placeholder="e.g., Technology, Finance"
+                        className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                </div>
+                <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">Job Title</label>
+                    <input
+                        type="text"
+                        value={jobTitle}
+                        onChange={(e) => onJobTitleChange(e.target.value)}
+                        placeholder="e.g., Software Engineer"
+                        className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                </div>
+                <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">Job Description (optional)</label>
+                    <textarea
+                        value={jobDescription}
+                        onChange={(e) => onJobDescriptionChange(e.target.value)}
+                        placeholder="Paste job description for targeted optimization"
+                        rows={3}
+                        className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                </div>
+            </div>
             
+            {/* Tone and Language Settings */}
+            <div className="space-y-2 p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">Writing Tone</label>
+                    <select
+                        value={tone}
+                        onChange={(e) => onToneChange(e.target.value as ToneType)}
+                        className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                        <option value="professional">Professional</option>
+                        <option value="creative">Creative</option>
+                        <option value="technical">Technical</option>
+                        <option value="executive">Executive</option>
+                        <option value="academic">Academic</option>
+                    </select>
+                </div>
+                <div>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">Target Language</label>
+                    <select
+                        value={targetLanguage}
+                        onChange={(e) => onTargetLanguageChange(e.target.value)}
+                        className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                        <option value="en">English</option>
+                        <option value="es">Spanish</option>
+                        <option value="fr">French</option>
+                        <option value="de">German</option>
+                        <option value="pt">Portuguese</option>
+                        <option value="zh">Chinese</option>
+                        <option value="ja">Japanese</option>
+                    </select>
+                </div>
+            </div>
+
             <div className="space-y-2">
                 <button
                     onClick={onATSOptimization}
@@ -150,9 +318,33 @@ const AICopilot: React.FC<AICopilotProps> = ({ activeResume, selectedText, aiPro
                     <Sparkles className="w-5 h-5 text-yellow-500" />
                     <div>
                         <p className="text-sm font-medium text-slate-800 text-left">Enhance Selected Text</p>
-                        <p className="text-xs text-slate-500 text-left">Rewrite text for more impact. Select text to enable.</p>
+                        <p className="text-xs text-slate-500 text-left">Rewrite text for more impact ({tone} tone). Select text to enable.</p>
                     </div>
                 </button>
+                <button
+                    onClick={onGetContextSuggestions}
+                    disabled={!selectedText || aiProcessing}
+                    className="w-full flex items-center gap-3 p-3 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                    <Brain className="w-5 h-5 text-purple-500" />
+                    <div>
+                        <p className="text-sm font-medium text-slate-800 text-left">Context-Aware Suggestions</p>
+                        <p className="text-xs text-slate-500 text-left">Get smart suggestions based on context. Select text to enable.</p>
+                    </div>
+                </button>
+                {targetLanguage !== 'en' && selectedText && (
+                    <button
+                        onClick={() => onTranslateText(selectedText, targetLanguage)}
+                        disabled={!selectedText || aiProcessing}
+                        className="w-full flex items-center gap-3 p-3 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        <Zap className="w-5 h-5 text-cyan-500" />
+                        <div>
+                            <p className="text-sm font-medium text-slate-800 text-left">Translate to {targetLanguage.toUpperCase()}</p>
+                            <p className="text-xs text-slate-500 text-left">Translate selected text professionally.</p>
+                        </div>
+                    </button>
+                )}
                 <button
                     onClick={onGapJustification}
                     disabled={!activeResume || aiProcessing}
@@ -164,8 +356,190 @@ const AICopilot: React.FC<AICopilotProps> = ({ activeResume, selectedText, aiPro
                         <p className="text-xs text-slate-500 text-left">Get help explaining career gaps.</p>
                     </div>
                 </button>
+                <button
+                    onClick={onGetIndustryKeywords}
+                    disabled={!industry || aiProcessing}
+                    className="w-full flex items-center gap-3 p-3 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                    <Target className="w-5 h-5 text-purple-500" />
+                    <div>
+                        <p className="text-sm font-medium text-slate-800 text-left">Industry Keywords</p>
+                        <p className="text-xs text-slate-500 text-left">Get industry-specific keyword suggestions.</p>
+                    </div>
+                </button>
+                <button
+                    onClick={onCompetitorAnalysis}
+                    disabled={!industry || !jobTitle || aiProcessing}
+                    className="w-full flex items-center gap-3 p-3 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                    <TrendingUp className="w-5 h-5 text-green-500" />
+                    <div>
+                        <p className="text-sm font-medium text-slate-800 text-left">Competitor Analysis</p>
+                        <p className="text-xs text-slate-500 text-left">Compare against successful resumes.</p>
+                    </div>
+                </button>
+                <button
+                    onClick={onSectionReordering}
+                    disabled={!jobDescription || aiProcessing}
+                    className="w-full flex items-center gap-3 p-3 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                    <ListOrdered className="w-5 h-5 text-indigo-500" />
+                    <div>
+                        <p className="text-sm font-medium text-slate-800 text-left">Optimize Section Order</p>
+                        <p className="text-xs text-slate-500 text-left">AI-powered section reordering.</p>
+                    </div>
+                </button>
                 {aiProcessing && <p className="text-sm text-center text-indigo-600 animate-pulse">AI is working...</p>}
             </div>
+
+            {/* Industry Keywords Results */}
+            {industryKeywords && (
+                <div className="mt-4 p-3 bg-purple-50 border border-purple-200 rounded-lg">
+                    <h5 className="text-sm font-semibold text-purple-900 mb-2">Industry Keywords</h5>
+                    <div className="space-y-2 max-h-40 overflow-y-auto">
+                        {industryKeywords.keywords.slice(0, 10).map((kw, idx) => (
+                            <div key={idx} className="text-xs">
+                                <span className={`font-medium ${
+                                    kw.importance === 'critical' ? 'text-red-600' :
+                                    kw.importance === 'important' ? 'text-orange-600' : 'text-blue-600'
+                                }`}>
+                                    {kw.keyword}
+                                </span>
+                                <span className="text-slate-500 ml-1">({kw.category})</span>
+                            </div>
+                        ))}
+                    </div>
+                    {industryKeywords.recommendations.length > 0 && (
+                        <div className="mt-2 pt-2 border-t border-purple-200">
+                            <p className="text-xs font-medium text-purple-900 mb-1">Recommendations:</p>
+                            <ul className="text-xs text-purple-700 space-y-1">
+                                {industryKeywords.recommendations.slice(0, 2).map((rec, idx) => (
+                                    <li key={idx}>• {rec}</li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* Competitor Analysis Results */}
+            {competitorAnalysis && (
+                <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+                    <h5 className="text-sm font-semibold text-green-900 mb-2">Competitor Analysis</h5>
+                    <div className="space-y-2 text-xs">
+                        <div className="flex justify-between">
+                            <span className="text-slate-600">Your Score:</span>
+                            <span className="font-bold text-green-700">{competitorAnalysis.yourScore}/100</span>
+                        </div>
+                        <div className="flex justify-between">
+                            <span className="text-slate-600">Industry Average:</span>
+                            <span className="text-slate-700">{competitorAnalysis.industryAverage}/100</span>
+                        </div>
+                        <div className="flex justify-between">
+                            <span className="text-slate-600">Top Performers:</span>
+                            <span className="text-slate-700">{competitorAnalysis.topPerformersAverage}/100</span>
+                        </div>
+                        <div className="flex justify-between">
+                            <span className="text-slate-600">Percentile Rank:</span>
+                            <span className="font-bold text-green-700">{competitorAnalysis.percentileRank}th</span>
+                        </div>
+                        {competitorAnalysis.strengths.length > 0 && (
+                            <div className="mt-2 pt-2 border-t border-green-200">
+                                <p className="text-xs font-medium text-green-900 mb-1">Strengths:</p>
+                                <ul className="text-xs text-green-700 space-y-1">
+                                    {competitorAnalysis.strengths.slice(0, 2).map((s, idx) => (
+                                        <li key={idx}>✓ {s}</li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
+                        {competitorAnalysis.weaknesses.length > 0 && (
+                            <div className="mt-2 pt-2 border-t border-green-200">
+                                <p className="text-xs font-medium text-green-900 mb-1">Areas to Improve:</p>
+                                <ul className="text-xs text-red-700 space-y-1">
+                                    {competitorAnalysis.weaknesses.slice(0, 2).map((w, idx) => (
+                                        <li key={idx}>• {w}</li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* Section Reordering Results */}
+            {sectionReordering && (
+                <div className="mt-4 p-3 bg-indigo-50 border border-indigo-200 rounded-lg">
+                    <h5 className="text-sm font-semibold text-indigo-900 mb-2">Recommended Section Order</h5>
+                    <div className="text-xs space-y-1 mb-2">
+                        {sectionReordering.recommendedOrder.map((section, idx) => (
+                            <div key={idx} className="flex items-center gap-2">
+                                <span className="w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs font-bold">
+                                    {idx + 1}
+                                </span>
+                                <span className="text-indigo-900">{section}</span>
+                            </div>
+                        ))}
+                    </div>
+                    <div className="text-xs text-indigo-700 mb-2">
+                        <p className="font-medium">Impact Score: {sectionReordering.impactScore}/100</p>
+                    </div>
+                    <button
+                        onClick={onApplySectionOrder}
+                        className="w-full px-3 py-1.5 bg-indigo-600 text-white text-xs font-medium rounded-md hover:bg-indigo-700 transition-colors"
+                    >
+                        Apply This Order
+                    </button>
+                    {sectionReordering.reasoning.length > 0 && (
+                        <div className="mt-2 pt-2 border-t border-indigo-200">
+                            <p className="text-xs font-medium text-indigo-900 mb-1">Why this order:</p>
+                            <ul className="text-xs text-indigo-700 space-y-1">
+                                {sectionReordering.reasoning.slice(0, 2).map((r, idx) => (
+                                    <li key={idx}>• {r}</li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* Context-Aware Suggestions Results */}
+            {contextSuggestions && (
+                <div className="mt-4 p-3 bg-purple-50 border border-purple-200 rounded-lg">
+                    <h5 className="text-sm font-semibold text-purple-900 mb-2">Context-Aware Suggestions</h5>
+                    <p className="text-xs text-purple-700 mb-2">{contextSuggestions.contextAnalysis}</p>
+                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                        {contextSuggestions.suggestions.map((suggestion, idx) => (
+                            <div key={idx} className="p-2 bg-white rounded border border-purple-100">
+                                <div className="flex items-start justify-between mb-1">
+                                    <span className={`text-xs font-medium px-2 py-0.5 rounded ${
+                                        suggestion.type === 'enhancement' ? 'bg-blue-100 text-blue-700' :
+                                        suggestion.type === 'keyword' ? 'bg-green-100 text-green-700' :
+                                        suggestion.type === 'metric' ? 'bg-yellow-100 text-yellow-700' :
+                                        suggestion.type === 'action-verb' ? 'bg-orange-100 text-orange-700' :
+                                        'bg-gray-100 text-gray-700'
+                                    }`}>
+                                        {suggestion.type}
+                                    </span>
+                                    <span className="text-xs text-slate-500">{suggestion.confidence}%</span>
+                                </div>
+                                <p className="text-xs text-purple-900 mb-1">{suggestion.suggestion}</p>
+                                <p className="text-xs text-purple-600">{suggestion.explanation}</p>
+                            </div>
+                        ))}
+                    </div>
+                    {contextSuggestions.recommendedActions.length > 0 && (
+                        <div className="mt-2 pt-2 border-t border-purple-200">
+                            <p className="text-xs font-medium text-purple-900 mb-1">Recommended Actions:</p>
+                            <ul className="text-xs text-purple-700 space-y-1">
+                                {contextSuggestions.recommendedActions.map((action, idx) => (
+                                    <li key={idx}>→ {action}</li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
+                </div>
+            )}
         </div>
     );
 };
@@ -321,6 +695,26 @@ export default function ResumeStudio() {
     const [templateCategory, setTemplateCategory] = useState('all');
     const [selectedText] = useState('');
     const [aiProcessing, setAiProcessing] = useState(false);
+    
+    // Advanced AI features state
+    const [realTimeATSScore, setRealTimeATSScore] = useState<number | null>(null);
+    const [isCalculatingScore, setIsCalculatingScore] = useState(false);
+    const [jobDescription, setJobDescription] = useState('');
+    const [industry, setIndustry] = useState('');
+    const [jobTitle, setJobTitle] = useState('');
+    const [industryKeywords, setIndustryKeywords] = useState<IndustryKeywordsResult | null>(null);
+    const [competitorAnalysis, setCompetitorAnalysis] = useState<CompetitorAnalysisResult | null>(null);
+    const [sectionReordering, setSectionReordering] = useState<SectionReorderingResult | null>(null);
+    const [showAdvancedAI, setShowAdvancedAI] = useState(false);
+    
+    // Smarter AI Copilot state
+    const [tone, setTone] = useState<ToneType>('professional');
+    const [targetLanguage, setTargetLanguage] = useState<string>('en');
+    const [contextSuggestions, setContextSuggestions] = useState<ContextAwareSuggestionsResult | null>(null);
+    const [autoCompleteSuggestions, setAutoCompleteSuggestions] = useState<AutoCompleteResult | null>(null);
+    const [enhancedTextResult, setEnhancedTextResult] = useState<EnhancedTextResult | null>(null);
+    const [showEnhancedTextModal, setShowEnhancedTextModal] = useState(false);
+    const [cursorPosition, setCursorPosition] = useState<number>(0);
 
     const mockUserCV = `JOHN DOE
 Software Engineer
@@ -361,6 +755,102 @@ University of Technology | 2016-2020
 CERTIFICATIONS
 • AWS Certified Solutions Architect
 • Certified Scrum Master (CSM)`;
+
+    // Real-time ATS scoring with debouncing
+    useEffect(() => {
+        if (!editorContent || editorContent.length < 50) {
+            setRealTimeATSScore(null);
+            return;
+        }
+
+        setIsCalculatingScore(true);
+        const timeoutId = setTimeout(async () => {
+            try {
+                const score = await calculateQuickATSScore(editorContent, jobDescription || undefined);
+                setRealTimeATSScore(score);
+                // Update active resume score
+                if (activeResume) {
+                    setActiveResume({ ...activeResume, atsScore: score });
+                }
+            } catch (error) {
+                console.error('Error calculating ATS score:', error);
+            } finally {
+                setIsCalculatingScore(false);
+            }
+        }, 1000); // 1 second debounce
+
+        return () => clearTimeout(timeoutId);
+    }, [editorContent, jobDescription, activeResume]);
+
+    // Handler for industry keyword suggestions
+    const handleGetIndustryKeywords = useCallback(async () => {
+        if (!industry) {
+            alert('Please enter an industry first');
+            return;
+        }
+        setAiProcessing(true);
+        try {
+            const result = await getIndustryKeywords(industry, jobTitle || undefined);
+            setIndustryKeywords(result);
+        } catch (error) {
+            console.error('Error getting industry keywords:', error);
+            alert('Failed to get industry keywords. Please check your API key.');
+        } finally {
+            setAiProcessing(false);
+        }
+    }, [industry, jobTitle]);
+
+    // Handler for competitor analysis
+    const handleCompetitorAnalysis = useCallback(async () => {
+        if (!industry || !jobTitle) {
+            alert('Please enter industry and job title first');
+            return;
+        }
+        if (!editorContent || editorContent.length < 100) {
+            alert('Please add more content to your resume first');
+            return;
+        }
+        setAiProcessing(true);
+        try {
+            const result = await analyzeCompetitorResumes(editorContent, industry, jobTitle);
+            setCompetitorAnalysis(result);
+        } catch (error) {
+            console.error('Error analyzing competitors:', error);
+            alert('Failed to analyze competitors. Please check your API key.');
+        } finally {
+            setAiProcessing(false);
+        }
+    }, [industry, jobTitle, editorContent]);
+
+    // Handler for section reordering
+    const handleSectionReordering = useCallback(async () => {
+        if (!jobDescription) {
+            alert('Please enter a job description first');
+            return;
+        }
+        if (!editorContent || editorContent.length < 100) {
+            alert('Please add more content to your resume first');
+            return;
+        }
+        setAiProcessing(true);
+        try {
+            const result = await recommendSectionOrder(editorContent, jobDescription, activeSections);
+            setSectionReordering(result);
+        } catch (error) {
+            console.error('Error recommending section order:', error);
+            alert('Failed to get section recommendations. Please check your API key.');
+        } finally {
+            setAiProcessing(false);
+        }
+    }, [jobDescription, editorContent, activeSections]);
+
+    // Apply recommended section order
+    const applySectionOrder = useCallback(() => {
+        if (sectionReordering?.recommendedOrder) {
+            setActiveSections(sectionReordering.recommendedOrder);
+            alert('Section order updated!');
+        }
+    }, [sectionReordering]);
 
     const handleStartFromScratch = () => {
         const emptyResume: Resume = {
@@ -548,11 +1038,99 @@ CERTIFICATIONS
     };
 
     const handleEnhanceText = async () => {
+        if (!selectedText || selectedText.length < 10) {
+            alert('Please select some text to enhance (at least 10 characters)');
+            return;
+        }
         setAiProcessing(true);
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        // In a real app, you would call an API and replace the selected text.
-        setAiProcessing(false);
+        try {
+            // Get context around selected text (100 chars before and after)
+            const selectedIndex = editorContent.indexOf(selectedText);
+            const contextBefore = editorContent.substring(Math.max(0, selectedIndex - 100), selectedIndex);
+            const contextAfter = editorContent.substring(selectedIndex + selectedText.length, Math.min(editorContent.length, selectedIndex + selectedText.length + 100));
+            const context = contextBefore + '[...SELECTED...]' + contextAfter;
+            
+            const result = await enhanceResumeText(
+                selectedText,
+                context,
+                tone,
+                targetLanguage !== 'en' ? targetLanguage : undefined
+            );
+            setEnhancedTextResult(result);
+            setShowEnhancedTextModal(true);
+        } catch (error) {
+            console.error('Error enhancing text:', error);
+            alert('Failed to enhance text. Please check your API key.');
+        } finally {
+            setAiProcessing(false);
+        }
     };
+
+    const handleGetContextSuggestions = useCallback(async () => {
+        if (!selectedText || selectedText.length < 10) {
+            alert('Please select some text to get suggestions');
+            return;
+        }
+        setAiProcessing(true);
+        try {
+            const result = await getContextAwareSuggestions(selectedText, editorContent);
+            setContextSuggestions(result);
+        } catch (error) {
+            console.error('Error getting context suggestions:', error);
+            alert('Failed to get suggestions. Please check your API key.');
+        } finally {
+            setAiProcessing(false);
+        }
+    }, [selectedText, editorContent]);
+
+    const handleGetAutoComplete = useCallback(async (partialText: string) => {
+        if (!partialText || partialText.length < 3) {
+            setAutoCompleteSuggestions(null);
+            return;
+        }
+        try {
+            const result = await getAutoCompleteSuggestions(partialText, editorContent);
+            setAutoCompleteSuggestions(result);
+        } catch (error) {
+            console.error('Error getting auto-complete:', error);
+            // Don't show alert for auto-complete failures, just fail silently
+        }
+    }, [editorContent]);
+
+    const handleTranslateText = useCallback(async (text: string, targetLang: string) => {
+        if (!text) {
+            alert('Please select text to translate');
+            return;
+        }
+        setAiProcessing(true);
+        try {
+            const translated = await translateResumeContent(text, targetLang, 'en', editorContent);
+            // Replace selected text with translated version
+            const newContent = editorContent.replace(selectedText, translated);
+            setEditorContent(newContent);
+            if (activeResume) {
+                setActiveResume({ ...activeResume, content: newContent });
+            }
+            alert('Text translated successfully!');
+        } catch (error) {
+            console.error('Error translating text:', error);
+            alert('Failed to translate text. Please check your API key.');
+        } finally {
+            setAiProcessing(false);
+        }
+    }, [selectedText, editorContent, activeResume]);
+
+    const applyEnhancedText = useCallback(() => {
+        if (enhancedTextResult) {
+            const newContent = editorContent.replace(selectedText, enhancedTextResult.enhancedText);
+            setEditorContent(newContent);
+            if (activeResume) {
+                setActiveResume({ ...activeResume, content: newContent });
+            }
+            setShowEnhancedTextModal(false);
+            setEnhancedTextResult(null);
+        }
+    }, [enhancedTextResult, selectedText, editorContent, activeResume]);
 
     const handleGapJustification = async () => {
         setAiProcessing(true);
@@ -898,7 +1476,45 @@ CERTIFICATIONS
                                     </div>
                                 </div>
                             )}
-                            {activeTab === 'ai' && <AICopilot activeResume={activeResume} selectedText={selectedText} aiProcessing={aiProcessing} onATSOptimization={handleATSOptimization} onEnhanceText={handleEnhanceText} onGapJustification={handleGapJustification} />}
+                            {activeTab === 'ai' && (
+                                <AICopilot 
+                                    activeResume={activeResume} 
+                                    selectedText={selectedText} 
+                                    aiProcessing={aiProcessing}
+                                    realTimeATSScore={realTimeATSScore}
+                                    isCalculatingScore={isCalculatingScore}
+                                    onATSOptimization={handleATSOptimization} 
+                                    onEnhanceText={handleEnhanceText} 
+                                    onGapJustification={handleGapJustification}
+                                    onGetIndustryKeywords={handleGetIndustryKeywords}
+                                    onCompetitorAnalysis={handleCompetitorAnalysis}
+                                    onSectionReordering={handleSectionReordering}
+                                    industryKeywords={industryKeywords}
+                                    competitorAnalysis={competitorAnalysis}
+                                    sectionReordering={sectionReordering}
+                                    onApplySectionOrder={applySectionOrder}
+                                    industry={industry}
+                                    jobTitle={jobTitle}
+                                    jobDescription={jobDescription}
+                                    onIndustryChange={setIndustry}
+                                    onJobTitleChange={setJobTitle}
+                                    onJobDescriptionChange={setJobDescription}
+                                    tone={tone}
+                                    onToneChange={setTone}
+                                    targetLanguage={targetLanguage}
+                                    onTargetLanguageChange={setTargetLanguage}
+                                    onGetContextSuggestions={handleGetContextSuggestions}
+                                    contextSuggestions={contextSuggestions}
+                                    onTranslateText={handleTranslateText}
+                                    enhancedTextResult={enhancedTextResult}
+                                    showEnhancedTextModal={showEnhancedTextModal}
+                                    onCloseEnhancedModal={() => {
+                                        setShowEnhancedTextModal(false);
+                                        setEnhancedTextResult(null);
+                                    }}
+                                    onApplyEnhancedText={applyEnhancedText}
+                                />
+                            )}
                         </div>
                     </div>
                 </div>
@@ -907,7 +1523,17 @@ CERTIFICATIONS
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-3">
                                 <h3 className="text-lg font-semibold text-slate-900">{activeResume?.title || 'Select a Resume'}</h3>
-                                {activeResume && (<div className="px-2 py-1 rounded-full text-xs font-medium text-blue-700 bg-blue-100">ATS: {activeResume.atsScore}%</div>)}
+                                {activeResume && (
+                                    <div className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                        (realTimeATSScore ?? activeResume.atsScore) >= 80 ? 'text-green-700 bg-green-100' :
+                                        (realTimeATSScore ?? activeResume.atsScore) >= 60 ? 'text-yellow-700 bg-yellow-100' : 'text-red-700 bg-red-100'
+                                    }`}>
+                                        ATS: {isCalculatingScore ? '...' : (realTimeATSScore ?? activeResume.atsScore)}%
+                                        {realTimeATSScore !== null && realTimeATSScore !== activeResume.atsScore && (
+                                            <span className="ml-1 text-xs">(live)</span>
+                                        )}
+                                    </div>
+                                )}
                             </div>
                             <div className="flex items-center gap-2">
                                 <button onClick={() => setViewMode(viewMode === 'edit' ? 'manage' : 'edit')} className="flex items-center gap-2 px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition-colors text-sm"><Eye className="w-4 h-4" />{viewMode === 'edit' ? 'Manage CVs' : 'Back to Editor'}</button>
@@ -963,6 +1589,82 @@ CERTIFICATIONS
                             </div>
                             <div className="flex justify-end gap-3 mt-6">
                                 <button onClick={() => setShowExportModal(false)} className="px-4 py-2 border border-slate-600 text-slate-300 rounded-lg hover:border-slate-500 transition-colors">Cancel</button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Enhanced Text Modal */}
+                {showEnhancedTextModal && enhancedTextResult && (
+                    <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 p-4">
+                        <div className="bg-slate-800 rounded-lg p-6 w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+                            <div className="flex items-center justify-between mb-4">
+                                <h3 className="text-lg font-semibold text-white">Enhanced Text Preview</h3>
+                                <button onClick={() => {
+                                    setShowEnhancedTextModal(false);
+                                    setEnhancedTextResult(null);
+                                }} className="text-slate-400 hover:text-white transition-colors">
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+                            
+                            <div className="space-y-4">
+                                <div>
+                                    <h4 className="text-sm font-medium text-slate-300 mb-2">Original Text:</h4>
+                                    <div className="p-3 bg-slate-700 rounded-lg text-slate-200 text-sm whitespace-pre-wrap">
+                                        {selectedText}
+                                    </div>
+                                </div>
+                                
+                                <div>
+                                    <h4 className="text-sm font-medium text-slate-300 mb-2">Enhanced Text:</h4>
+                                    <div className="p-3 bg-slate-700 rounded-lg text-slate-200 text-sm whitespace-pre-wrap">
+                                        {enhancedTextResult.enhancedText}
+                                    </div>
+                                </div>
+
+                                {enhancedTextResult.beforeAfterComparison.length > 0 && (
+                                    <div>
+                                        <h4 className="text-sm font-medium text-slate-300 mb-2">Key Changes:</h4>
+                                        <div className="space-y-2">
+                                            {enhancedTextResult.beforeAfterComparison.map((change, idx) => (
+                                                <div key={idx} className="p-2 bg-slate-700 rounded text-xs">
+                                                    <div className="text-red-300 line-through mb-1">{change.before}</div>
+                                                    <div className="text-green-300">→ {change.after}</div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {enhancedTextResult.changes.length > 0 && (
+                                    <div>
+                                        <h4 className="text-sm font-medium text-slate-300 mb-2">Improvements Made:</h4>
+                                        <ul className="list-disc list-inside text-slate-300 text-sm space-y-1">
+                                            {enhancedTextResult.changes.map((change, idx) => (
+                                                <li key={idx}>{change}</li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="flex justify-end gap-3 mt-6">
+                                <button 
+                                    onClick={() => {
+                                        setShowEnhancedTextModal(false);
+                                        setEnhancedTextResult(null);
+                                    }} 
+                                    className="px-4 py-2 border border-slate-600 text-slate-300 rounded-lg hover:border-slate-500 transition-colors"
+                                >
+                                    Cancel
+                                </button>
+                                <button 
+                                    onClick={applyEnhancedText}
+                                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium transition-colors"
+                                >
+                                    Apply Enhanced Text
+                                </button>
                             </div>
                         </div>
                     </div>

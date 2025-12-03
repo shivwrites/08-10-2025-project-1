@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
-import { Outlet, Link, useLocation } from 'react-router-dom';
+import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import ChatWidget from '../widgets/ChatWidget';
 import SettingsModal from '../widgets/SettingsModal';
 import NotificationModal from '../widgets/NotificationModal';
+import { auth } from '../../lib/supabase';
 
 export default function DashboardLayout() {
   const location = useLocation();
+  const navigate = useNavigate();
   
   // State for sidebar collapse
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -74,6 +76,25 @@ export default function DashboardLayout() {
   // Toggle user menu
   const toggleUserMenu = () => {
     setIsUserMenuOpen(prev => !prev);
+  };
+
+  // Handle logout
+  const handleLogout = async () => {
+    try {
+      const { error } = await auth.signOut();
+      if (error) {
+        console.error('Logout error:', error);
+        alert('Error signing out: ' + error.message);
+      } else {
+        // Close the user menu
+        setIsUserMenuOpen(false);
+        // Navigate to home page
+        navigate('/');
+      }
+    } catch (err) {
+      console.error('Logout error:', err);
+      alert('Error signing out. Please try again.');
+    }
   };
 
   // Close user menu when clicking outside
@@ -561,7 +582,11 @@ export default function DashboardLayout() {
                       </svg>
                       <span>Settings</span>
                     </button>
-                    <button id="signout-button" className="user-menu-item group w-full text-left text-sm text-slate-700 rounded-md p-2 flex items-center gap-2">
+                    <button 
+                      id="signout-button" 
+                      onClick={handleLogout}
+                      className="user-menu-item group w-full text-left text-sm text-slate-700 rounded-md p-2 flex items-center gap-2"
+                    >
                       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-slate-500 dark:text-slate-400">
                         <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
                         <polyline points="16 17 21 12 16 7"/>
