@@ -368,8 +368,65 @@
             }
         }
 
-        // Add back button functionality
+        // Handle email confirmation callback
+        async function handleEmailConfirmation() {
+            // Check for email confirmation tokens in URL hash
+            const hashParams = new URLSearchParams(window.location.hash.substring(1));
+            const accessToken = hashParams.get('access_token');
+            const type = hashParams.get('type');
+
+            if (accessToken && type === 'email') {
+                try {
+                    // Ensure Supabase client is initialized
+                    if (typeof AuthService === 'undefined' || !AuthService) {
+                        console.error('AuthService not available');
+                        return;
+                    }
+
+                    // Get the session from the URL hash using AuthService
+                    const user = await AuthService.getCurrentUser();
+                    
+                    if (user) {
+                        alert('Email verified successfully! Redirecting to dashboard...');
+                        // Clear the URL hash
+                        window.history.replaceState(null, '', window.location.pathname);
+                        // Redirect to dashboard
+                        navigateToDashboard();
+                    } else {
+                        // If user is null, the email might still be verified
+                        // Supabase automatically processes the token from the URL hash
+                        // Try to get session using the Supabase client directly
+                        if (typeof supabase !== 'undefined') {
+                            const SUPABASE_URL = 'https://bialelscmftlquykreij.supabase.co';
+                            const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJpYWxlbHNjbWZ0bHF1eWtyZWlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk4NzgxMTgsImV4cCI6MjA3NTQ1NDExOH0.wUywvxuTxDlgwVi6y8KaT9E64D4iVRKFFoqUx8wAalI';
+                            const { createClient } = supabase;
+                            const tempClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                            const { data: { session }, error: sessionError } = await tempClient.auth.getSession();
+                            
+                            if (sessionError) {
+                                alert('Failed to verify email: ' + sessionError.message);
+                                return;
+                            }
+
+                            if (session) {
+                                alert('Email verified successfully! Redirecting to dashboard...');
+                                window.history.replaceState(null, '', window.location.pathname);
+                                navigateToDashboard();
+                            }
+                        }
+                    }
+                } catch (err) {
+                    console.error('Email confirmation error:', err);
+                    alert('Failed to verify email. Please try again.');
+                }
+            }
+        }
+
+        // Add back button functionality and handle email confirmation
         document.addEventListener('DOMContentLoaded', function() {
+            // Handle email confirmation first
+            handleEmailConfirmation();
+            
             // Add a back button to the header
             const header = document.querySelector('body > div > div');
             if (header) {

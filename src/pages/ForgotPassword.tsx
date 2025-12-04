@@ -1,14 +1,16 @@
 import { useState, FormEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { Mail, ArrowLeft, CheckCircle } from 'lucide-react';
+import { Mail, ArrowLeft } from 'lucide-react';
 
 function ForgotPassword() {
   const [email, setEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
 
-  const handleResetPassword = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  const handleResetPassword = async (e?: FormEvent<HTMLFormElement>) => {
+    if (e) {
+      e.preventDefault();
+    }
     setIsLoading(true);
     
     try {
@@ -22,6 +24,11 @@ function ForgotPassword() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleResend = () => {
+    setIsSubmitted(false);
+    handleResetPassword();
   };
 
   return (
@@ -46,18 +53,19 @@ function ForgotPassword() {
           {/* Forgot Password Form */}
           <div className="w-full flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8 bg-[#eff2fd] bg-opacity-95">
             <div className="mx-auto w-full max-w-sm">
-              {/* Header Section */}
-              <div>
-                <h2 className="text-3xl font-bold tracking-tight text-gray-900">Forgot password?</h2>
-                <p className="mt-2 text-sm text-gray-600">
-                  No worries, we'll send you reset instructions.
-                </p>
-              </div>
+              {!isSubmitted ? (
+                <>
+                  {/* Header Section */}
+                  <div>
+                    <h2 className="text-3xl font-bold tracking-tight text-gray-900">Forgot password?</h2>
+                    <p className="mt-2 text-sm text-gray-600">
+                      No worries, we'll send you reset instructions.
+                    </p>
+                  </div>
 
-              {/* Form Section */}
-              <div className="mt-8">
-                <div className="mt-6">
-                  {!isSubmitted ? (
+                  {/* Form Section */}
+                <div className="mt-8">
+                  <div className="mt-6">
                     <form onSubmit={handleResetPassword} className="space-y-6">
                       {/* Email Input */}
                       <div>
@@ -91,32 +99,96 @@ function ForgotPassword() {
                         </button>
                       </div>
                     </form>
-                  ) : (
-                    <div className="space-y-6">
-                      {/* Success Message */}
-                      <div className="text-center">
-                        <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-green-100">
-                          <CheckCircle className="h-6 w-6 text-green-600" />
-                        </div>
-                        <h3 className="mt-4 text-lg font-semibold text-gray-900">Check your email</h3>
-                        <p className="mt-2 text-sm text-gray-600">
-                          We've sent password reset instructions to <span className="font-medium text-gray-900">{email}</span>
-                        </p>
-                        <p className="mt-2 text-sm text-gray-500">
-                          Didn't receive the email? Check your spam folder or try again.
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                  
-                  <p className="mt-8 text-center text-sm text-gray-500">
-                    <Link to="/login" className="flex items-center justify-center gap-2 font-semibold leading-6 text-indigo-600 hover:text-indigo-500">
-                      <ArrowLeft className="w-5 h-5" />
-                      Back to log in
-                    </Link>
-                  </p>
+                    
+                    <p className="mt-8 text-center text-sm text-gray-500">
+                      <Link to="/login" className="flex items-center justify-center gap-2 font-semibold leading-6 text-indigo-600 hover:text-indigo-500">
+                        <ArrowLeft className="w-5 h-5" />
+                        Back to log in
+                      </Link>
+                    </p>
+                  </div>
                 </div>
-              </div>
+                </>
+              ) : (
+                <div className="mx-auto w-full max-w-sm text-center">
+                  {/* Icon */}
+                  <div className="flex justify-center">
+                    <div className="relative flex h-12 w-12 items-center justify-center rounded-full bg-indigo-100 overflow-hidden">
+                      {/* Email Icon */}
+                      <svg 
+                        className="email-icon-animated h-6 w-6 text-indigo-600" 
+                        fill="none" 
+                        viewBox="0 0 24 24" 
+                        strokeWidth="1.5" 
+                        stroke="currentColor" 
+                        aria-hidden="true"
+                      >
+                        <path 
+                          strokeLinecap="round" 
+                          strokeLinejoin="round" 
+                          d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" 
+                        />
+                      </svg>
+                      {/* Checkmark Icon */}
+                      <svg 
+                        className="checkmark-icon-animated h-7 w-7 text-indigo-600 absolute opacity-0" 
+                        xmlns="http://www.w3.org/2000/svg" 
+                        fill="none" 
+                        viewBox="0 0 24 24" 
+                        strokeWidth="2.5" 
+                        stroke="currentColor"
+                      >
+                        <path 
+                          strokeLinecap="round" 
+                          strokeLinejoin="round" 
+                          d="M4.5 12.75l6 6 9-13.5" 
+                        />
+                      </svg>
+                    </div>
+                  </div>
+                  
+                  {/* Header Section */}
+                  <div className="mt-4">
+                    <h2 className="text-3xl font-bold tracking-tight text-gray-900">Check your email</h2>
+                    <p className="mt-4 text-base text-gray-600">
+                      We've sent password reset instructions to your email address.
+                    </p>
+                  </div>
+
+                  {/* Footer Links */}
+                  <div className="mt-10 space-y-4">
+                    <p className="text-center text-sm text-gray-500">
+                      Didn't receive the email?&nbsp;
+                      <button
+                        onClick={handleResend}
+                        className="font-semibold leading-6 text-indigo-600 hover:text-indigo-500 cursor-pointer"
+                      >
+                        Click to resend
+                      </button>
+                    </p>
+                    <p className="text-center text-sm text-gray-500">
+                      <Link 
+                        to="/login" 
+                        className="inline-flex items-center justify-center gap-1.5 font-semibold leading-6 text-indigo-600 hover:text-indigo-500"
+                      >
+                        <svg 
+                          xmlns="http://www.w3.org/2000/svg" 
+                          viewBox="0 0 20 20" 
+                          fill="currentColor" 
+                          className="w-5 h-5"
+                        >
+                          <path 
+                            fillRule="evenodd" 
+                            d="M17 10a.75.75 0 01-.75.75H5.612l4.158 3.96a.75.75 0 11-1.04 1.08l-5.5-5.25a.75.75 0 010-1.08l5.5-5.25a.75.75 0 111.04 1.08L5.612 9.25H16.25A.75.75 0 0117 10z" 
+                            clipRule="evenodd" 
+                          />
+                        </svg>
+                        Back to log in
+                      </Link>
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -126,4 +198,5 @@ function ForgotPassword() {
 }
 
 export default ForgotPassword;
+
 

@@ -342,12 +342,22 @@
             submitButton.disabled = true;
             
             try {
+                // Check if AuthService is available
+                if (typeof AuthService === 'undefined') {
+                    alert('Error: Authentication service not loaded. Please refresh the page and try again.');
+                    submitButton.textContent = originalText;
+                    submitButton.disabled = false;
+                    return;
+                }
+
                 // Sign up with Supabase
                 const { data, error } = await AuthService.signUp(email, password, name);
                 
                 if (error) {
-                    alert('Error: ' + error.message);
-                } else {
+                    const errorMessage = error.message || 'An unknown error occurred. Please try again.';
+                    alert('Error: ' + errorMessage);
+                    console.error('Sign up error details:', error);
+                } else if (data) {
                     // Store the email for the confirmation page
                     localStorage.setItem('signup-email', email);
                     
@@ -356,9 +366,13 @@
                     
                     // Navigate to email confirmation page
                     navigateToEmailConfirmation();
+                } else {
+                    alert('No data returned. Please try again.');
                 }
             } catch (err) {
-                alert('Error: ' + err.message);
+                const errorMessage = err.message || 'Failed to sign up. Please check your internet connection and try again.';
+                alert('Error: ' + errorMessage);
+                console.error('Sign up exception:', err);
             } finally {
                 // Reset button state
                 submitButton.textContent = originalText;

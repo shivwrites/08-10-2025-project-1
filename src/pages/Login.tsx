@@ -1,31 +1,93 @@
-import { useState, FormEvent } from 'react';
+import { useState, FormEvent, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { supabase } from '../lib/supabase';
 
 function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const navigate = useNavigate();
+
+  // Handle email confirmation callback
+  useEffect(() => {
+    const handleEmailConfirmation = async () => {
+      // Check for email confirmation tokens in URL hash
+      const hashParams = new URLSearchParams(window.location.hash.substring(1));
+      const accessToken = hashParams.get('access_token');
+      const type = hashParams.get('type');
+
+      if (accessToken && type === 'email') {
+        try {
+          // Get the session from the URL hash
+          const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+          
+          if (sessionError) {
+            setError('Failed to verify email. Please try again.');
+            return;
+          }
+
+          if (session) {
+            setSuccessMessage('Email verified successfully! Redirecting to dashboard...');
+            // Clear the URL hash
+            window.history.replaceState(null, '', window.location.pathname);
+            // Redirect to dashboard after a short delay
+            setTimeout(() => {
+              navigate('/dashboard');
+            }, 2000);
+          }
+        } catch (err) {
+          setError('Failed to verify email. Please try again.');
+        }
+      }
+    };
+
+    handleEmailConfirmation();
+  }, [navigate]);
 
   const handleLogin = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsLoading(true);
+    setError(null);
     
     try {
-      // Mock login - navigate to dashboard
-      // TODO: Replace with actual authentication logic
-      await new Promise(resolve => setTimeout(resolve, 500)); // Simulate API call
-      navigate('/dashboard');
+      const { data, error } = await supabase.auth.signInWithPassword({ 
+        email, 
+        password 
+      });
+
+      if (error) {
+        // Check if error message includes "Invalid login credentials" (covers both wrong password and user not found)
+        if (error.message.includes('Invalid login credentials')) {
+          setError('Incorrect email or password. If you are not registered, please create an account.');
+        } else {
+          setError(error.message);
+        }
+      } else if (data && data.session) {
+        navigate('/dashboard');
+      }
     } catch (err) {
-      alert('Error: ' + (err instanceof Error ? err.message : 'Unknown error'));
+      setError(err instanceof Error ? err.message : 'Unknown error occurred');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleLinkedInLogin = () => {
-    // TODO: Implement LinkedIn login
-    alert('LinkedIn login coming soon');
+  const handleLinkedInLogin = async () => {
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'linkedin',
+        options: {
+          redirectTo: `${window.location.origin}/dashboard`,
+        },
+      });
+      if (error) throw error;
+    } catch (error) {
+      // Handle error (e.g., setError state)
+      console.error("LinkedIn login error:", error);
+      setError(error instanceof Error ? error.message : 'Failed to sign in with LinkedIn');
+    }
   };
 
   const handleGoogleLogin = () => {
@@ -201,6 +263,23 @@ function Login() {
               {/* Form Section */}
               <div className="mt-8">
                 <div className="mt-6">
+                  {successMessage && (
+                    <div className="mb-4 rounded-lg bg-green-50 p-4 text-sm text-green-800">
+                      {successMessage}
+                    </div>
+                  )}
+                  {error && (
+                    <div className="mb-4 rounded-lg border-2 border-red-300 bg-red-50 p-4 text-sm text-red-800">
+                      <div className="mb-2">{error}</div>
+                      {error.includes('Incorrect email or password') && (
+                        <div>
+                          <Link to="/signup" className="font-semibold text-red-900 underline hover:text-red-700">
+                            Sign Up Now
+                          </Link>
+                        </div>
+                      )}
+                    </div>
+                  )}
                   <form onSubmit={handleLogin} className="space-y-6">
                     {/* Email Input */}
                     <div>
@@ -376,5 +455,6 @@ function Login() {
 }
 
 export default Login;
+
 
 

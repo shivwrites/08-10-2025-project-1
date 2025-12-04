@@ -721,3 +721,34 @@ aside.collapsed .dropdown-container {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Email Sent Success Animations */
+@keyframes fly-away {
+  0% {
+    transform: rotate(0) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: rotate(360deg) scale(0);
+    opacity: 0;
+  }
+}
+
+@keyframes fade-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.email-icon-animated {
+  animation: fly-away 1.2s cubic-bezier(0.68, -0.55, 0.27, 1.55) 0.5s forwards;
+}
+
+.checkmark-icon-animated {
+  animation: fade-in 0.8s ease-out 1.7s forwards;
+}
